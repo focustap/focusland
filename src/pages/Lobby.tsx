@@ -1,12 +1,18 @@
 // Lobby page.
 // Single-screen point-and-click room built with Phaser.
-// The player (a simple rectangle) walks toward clicked positions,
-// and clicking buildings around the edges moves the player to entrances
-// which then navigate to the appropriate React routes.
+// Now supports simple real-time multiplayer presence using Supabase Realtime.
 import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import Phaser from "phaser";
+import { supabase } from "../lib/supabase";
+import {
+  LOBBY_ROOM_NAME,
+  subscribeToRoomPresence,
+  upsertInitialPresence,
+  updatePlayerPosition,
+  type LobbyPresenceRow
+} from "../lib/lobbyPresence";
 
 const Lobby: React.FC = () => {
   const navigate = useNavigate();
@@ -15,12 +21,37 @@ const Lobby: React.FC = () => {
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) {
-      // Avoid creating multiple Phaser game instances.
       return;
     }
 
-    const width = 640;
-    const height = 480;
+    let isUnmounted = false;
+
+    const setup = async () => {
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        navigate("/login");
+        return;
+      }
+
+      const userId = session.user.id;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", userId)
+        .maybeSingle();
+
+      const username: string | null = (profile?.username as string) ?? session.user.email ?? null;
+
+      if (isUnmounted || !containerRef.current) {
+        return;
+      }
+
+      const width = 640;
+      const height = 480;
 
     // Simple structure to describe a building zone.
     type Building = {
@@ -51,9 +82,22 @@ const Lobby: React.FC = () => {
       key: "LobbyScene"
     };
 
-    class LobbyScene extends Phaser.Scene {
+      class LobbyScene extends Phaser.Scene {
+        otherPlayers: Map<
+          string,
+          {
+            rect: Phaser.GameObjects.Rectangle;
+            label: Phaser.GameObjects.Text;
+          }
+        > = new Map();
+
+        localUserId: string;
+        localUsername: string | null;
+
       constructor() {
         super(sceneConfig);
+          this.localUserId = userId;
+          this.localUsername = username;
       }
 
       create() {
@@ -62,13 +106,41 @@ const Lobby: React.FC = () => {
 
         this.add.rectangle(width / 2, height / 2, width - 40, height - 40, 0x111827);
 
+        const localColor = 0x38bdf8;
+
         // Player in the center of the room.
-        player = this.add.rectangle(width / 2, height / 2 + 60, 24, 32, 0x38bdf8);
+        player = this.add.rectangle(width / 2, height / 2 + 60, 24, 32, localColor);
         this.physics.add.existing(player);
         playerBody = player.body as Phaser.Physics.Arcade.Body;
         playerBody.setCollideWorldBounds(true);
         playerBody.setAllowGravity(false);
         playerBody.setImmovable(false);
+
+        void upsertInitialPresence({
+          userId,
+          username,
+          x: player.x,
+          y: player.y,
+          color: `#${localColor.toString(16)}`
+        });
+
+        this.time.addEvent({
+          delay: 250,
+          loop: true,
+          callback: () => {
+            if (!player) return;
+            void updatePlayerPosition({
+              userId,
+              x: player.x,
+              y: player.y
+            });
+          }
+        });
+
+        subscribeToRoomPresence(LOBBY_ROOM_NAME, ({ type, row }) => {
+          if (!player) return;
+          this.handlePresenceEvent(type, row);
+        });
 
         // Buildings around the edges.
         buildings = [
@@ -156,6 +228,40 @@ const Lobby: React.FC = () => {
         });
       }
 
+      handlePresenceEvent(eventType: "INSERT" | "UPDATE" | "DELETE", row: LobbyPresenceRow) {
+        if (row.room_name !== LOBBY_ROOM_NAME) return;
+        if (row.user_id === this.localUserId) return;
+
+        const existing = this.otherPlayers.get(row.user_id);
+
+        if (eventType === "DELETE") {
+          if (existing) {
+            existing.rect.destroy();
+            existing.label.destroy();
+            this.otherPlayers.delete(row.user_id);
+          }
+          return;
+        }
+
+        const colorNumber = parseInt(row.color.replace("#", ""), 16) || 0x22c55e;
+
+        if (!existing) {
+          const rect = this.add.rectangle(row.x, row.y, 24, 32, colorNumber);
+          const label = this.add.text(row.x, row.y - 24, row.username ?? "Player", {
+            fontSize: "12px",
+            color: "#e5e7eb"
+          });
+          label.setOrigin(0.5);
+
+          this.otherPlayers.set(row.user_id, { rect, label });
+        } else {
+          existing.rect.setPosition(row.x, row.y);
+          existing.rect.fillColor = colorNumber;
+          existing.label.setText(row.username ?? "Player");
+          existing.label.setPosition(row.x, row.y - 24);
+        }
+      }
+
       update() {
         if (!player || !playerBody) return;
 
@@ -193,7 +299,7 @@ const Lobby: React.FC = () => {
       }
     }
 
-    const config: Phaser.Types.Core.GameConfig = {
+      const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
       width,
       height,
@@ -208,13 +314,20 @@ const Lobby: React.FC = () => {
       scene: LobbyScene
     };
 
-    const game = new Phaser.Game(config);
-    gameRef.current = game;
+      const game = new Phaser.Game(config);
+      gameRef.current = game;
+
+      return () => {
+        game.destroy(true);
+        gameRef.current = null;
+      };
+    };
+
+    const cleanup = setup();
 
     return () => {
-      // Clean up Phaser game on unmount.
-      game.destroy(true);
-      gameRef.current = null;
+      isUnmounted = true;
+      void cleanup;
     };
   }, [navigate]);
 
