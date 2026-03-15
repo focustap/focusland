@@ -12,6 +12,13 @@ export type LobbyPresenceRow = {
 
 export const LOBBY_ROOM_NAME = "main_lobby";
 
+export async function fetchRoomPresence(roomName: string = LOBBY_ROOM_NAME) {
+  return supabase
+    .from("lobby_presence")
+    .select("*")
+    .eq("room_name", roomName);
+}
+
 export async function upsertInitialPresence(params: {
   userId: string;
   username: string | null;

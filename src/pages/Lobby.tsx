@@ -8,6 +8,7 @@ import Phaser from "phaser";
 import { supabase } from "../lib/supabase";
 import {
   LOBBY_ROOM_NAME,
+  fetchRoomPresence,
   subscribeToRoomPresence,
   upsertInitialPresence,
   updatePlayerPosition,
@@ -53,34 +54,34 @@ const Lobby: React.FC = () => {
       const width = 640;
       const height = 480;
 
-    // Simple structure to describe a building zone.
-    type Building = {
-      name: string;
-      color: number;
-      rect: Phaser.GameObjects.Rectangle | null;
-      entranceX: number;
-      entranceY: number;
-      route: string;
-    };
+      // Simple structure to describe a building zone.
+      type Building = {
+        name: string;
+        color: number;
+        rect: Phaser.GameObjects.Rectangle | null;
+        entranceX: number;
+        entranceY: number;
+        route: string;
+      };
 
-    // This function will be called when the player reaches an entrance.
-    const goToRoute = (route: string) => {
-      navigate(route);
-    };
+      // This function will be called when the player reaches an entrance.
+      const goToRoute = (route: string) => {
+        navigate(route);
+      };
 
-    let player: Phaser.GameObjects.Rectangle | null = null;
-    let playerBody: Phaser.Physics.Arcade.Body | null = null;
-    let targetX: number | null = null;
-    let targetY: number | null = null;
-    let buildings: Building[] = [];
-    const walkSpeed = 150;
-    const arrivalThreshold = 10; // pixels
-    let isTransitioning = false;
+      let player: Phaser.GameObjects.Rectangle | null = null;
+      let playerBody: Phaser.Physics.Arcade.Body | null = null;
+      let targetX: number | null = null;
+      let targetY: number | null = null;
+      let buildings: Building[] = [];
+      const walkSpeed = 150;
+      const arrivalThreshold = 10; // pixels
+      let isTransitioning = false;
 
-    const sceneConfig: Phaser.Types.Scenes.SettingsConfig = {
-      active: true,
-      key: "LobbyScene"
-    };
+      const sceneConfig: Phaser.Types.Scenes.SettingsConfig = {
+        active: true,
+        key: "LobbyScene"
+      };
 
       class LobbyScene extends Phaser.Scene {
         otherPlayers: Map<
@@ -93,14 +94,15 @@ const Lobby: React.FC = () => {
 
         localUserId: string;
         localUsername: string | null;
+        unsubscribePresence?: () => void;
 
-      constructor() {
-        super(sceneConfig);
+        constructor() {
+          super(sceneConfig);
           this.localUserId = userId;
           this.localUsername = username;
-      }
+        }
 
-      create() {
+        create() {
         // Background floor.
         this.cameras.main.setBackgroundColor("#0f172a");
 
@@ -116,7 +118,7 @@ const Lobby: React.FC = () => {
         playerBody.setAllowGravity(false);
         playerBody.setImmovable(false);
 
-        void upsertInitialPresence({
+          void upsertInitialPresence({
           userId,
           username,
           x: player.x,
@@ -124,7 +126,7 @@ const Lobby: React.FC = () => {
           color: `#${localColor.toString(16)}`
         });
 
-        this.time.addEvent({
+          this.time.addEvent({
           delay: 250,
           loop: true,
           callback: () => {
@@ -137,10 +139,38 @@ const Lobby: React.FC = () => {
           }
         });
 
-        subscribeToRoomPresence(LOBBY_ROOM_NAME, ({ type, row }) => {
-          if (!player) return;
-          this.handlePresenceEvent(type, row);
-        });
+          // Load any existing players already in this room so
+          // they appear immediately when we join.
+          void (async () => {
+            const { data, error } = await fetchRoomPresence(LOBBY_ROOM_NAME);
+            if (error || !data) {
+              return;
+            }
+            data.forEach((row) => {
+              this.handlePresenceEvent("INSERT", row as LobbyPresenceRow);
+            });
+          })();
+
+          // Subscribe to realtime changes (INSERT, UPDATE, DELETE)
+          // so new players and movement updates appear live.
+          this.unsubscribePresence = subscribeToRoomPresence(
+            LOBBY_ROOM_NAME,
+            ({ type, row }) => {
+              if (!player) return;
+              this.handlePresenceEvent(type, row);
+            }
+          );
+
+          this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+            if (this.unsubscribePresence) {
+              this.unsubscribePresence();
+            }
+          });
+          this.events.once(Phaser.Scenes.Events.DESTROY, () => {
+            if (this.unsubscribePresence) {
+              this.unsubscribePresence();
+            }
+          });
 
         // Buildings around the edges.
         buildings = [
