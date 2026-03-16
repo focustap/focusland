@@ -229,6 +229,23 @@ input {
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
 }
 
+.casino-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.casino-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #dbe2ea;
+}
+
 .score-display {
   font-weight: bold;
 }

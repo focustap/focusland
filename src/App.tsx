@@ -6,6 +6,7 @@ import Lobby from "./pages/Lobby";
 import Profile from "./pages/Profile";
 import Game from "./pages/Game";
 import CatchGame from "./pages/CatchGame";
+import Casino from "./pages/Casino";
 import { AuthProvider } from "./components/AuthProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -44,6 +45,14 @@ const App = () => {
           element={
             <ProtectedRoute>
               <CatchGame />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/casino"
+          element={
+            <ProtectedRoute>
+              <Casino />
             </ProtectedRoute>
           }
         />

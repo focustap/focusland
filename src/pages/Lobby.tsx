@@ -224,12 +224,12 @@ const Lobby: React.FC = () => {
             route: "/profile"
           },
           {
-            name: "Leaderboard",
-            color: 0xeab308,
+            name: "Casino",
+            color: 0xe11d48,
             rect: null,
             entranceX: width / 2,
             entranceY: height - 80,
-            route: "/leaderboard"
+            route: "/casino"
           }
         ];
 
@@ -243,7 +243,7 @@ const Lobby: React.FC = () => {
           // Adjust building position so the entrance is roughly centered on one side.
           if (building.name === "Arcade") {
             y = 40;
-          } else if (building.name === "Leaderboard") {
+          } else if (building.name === "Casino") {
             y = height - 40;
           } else if (building.name === "Catch Club") {
             x = width - 70;
