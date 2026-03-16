@@ -95,6 +95,8 @@ const Lobby: React.FC = () => {
         localUserId: string;
         localUsername: string | null;
         unsubscribePresence?: () => void;
+        lastSentX: number = 0;
+        lastSentY: number = 0;
 
         constructor() {
           super(sceneConfig);
@@ -118,6 +120,10 @@ const Lobby: React.FC = () => {
         playerBody.setAllowGravity(false);
         playerBody.setImmovable(false);
 
+          // Start "last sent" position at the initial spawn location.
+          this.lastSentX = player.x;
+          this.lastSentY = player.y;
+
           void upsertInitialPresence({
           userId,
           username,
@@ -127,14 +133,27 @@ const Lobby: React.FC = () => {
         });
 
           this.time.addEvent({
-          delay: 250,
+            delay: 200,
           loop: true,
           callback: () => {
-            if (!player) return;
+              if (!player) return;
+
+              // Only send an update if the player actually moved
+              // more than a tiny amount since last send.
+              const currentX = player.x;
+              const currentY = player.y;
+              const movedDistance = Math.hypot(currentX - this.lastSentX, currentY - this.lastSentY);
+              if (movedDistance < 2) {
+                return;
+              }
+
+              this.lastSentX = currentX;
+              this.lastSentY = currentY;
+
             void updatePlayerPosition({
               userId,
-              x: player.x,
-              y: player.y
+                x: currentX,
+                y: currentY
             });
           }
         });
@@ -285,10 +304,16 @@ const Lobby: React.FC = () => {
 
           this.otherPlayers.set(row.user_id, { rect, label });
         } else {
-          existing.rect.setPosition(row.x, row.y);
+            // Light smoothing so remote players don't "teleport"
+            // between their last known and new positions.
+            const lerpFactor = 0.3;
+            const nextX = existing.rect.x + (row.x - existing.rect.x) * lerpFactor;
+            const nextY = existing.rect.y + (row.y - existing.rect.y) * lerpFactor;
+
+            existing.rect.setPosition(nextX, nextY);
           existing.rect.fillColor = colorNumber;
           existing.label.setText(row.username ?? "Player");
-          existing.label.setPosition(row.x, row.y - 24);
+            existing.label.setPosition(nextX, nextY - 24);
         }
       }
 
