@@ -9,7 +9,7 @@ type PlayerPresence = {
 };
 
 type InvaderKind = "normal" | "tank" | "boss";
-type BulletKind = "player" | "fireball" | "enemy" | "boss";
+type BulletKind = "player" | "fireball" | "enemy" | "missile" | "boss";
 
 type Invader = {
   id: string;
@@ -34,6 +34,7 @@ type Bullet = {
   speed: number;
   color: string;
   kind: BulletKind;
+  vx?: number;
 };
 
 type Effect = {
@@ -146,18 +147,21 @@ function createWaveInvaders(wave: number): Invader[] {
 
   const rows = Math.min(4 + Math.floor((wave - 1) / 2), 6);
   const cols = INVADER_COLS;
-  const tankCount = wave >= 3 ? Math.min(1 + Math.floor((wave - 3) / 2), 3) : 0;
-  const centerColumnsByCount: Record<number, number[]> = {
-    1: [3],
-    2: [3, 4],
-    3: [2, 3, 4]
-  };
-  const tankColumns = centerColumnsByCount[tankCount] ?? [];
+  const tankCount = wave >= 3 ? Math.min(2 + Math.floor((wave - 3) / 2), 6) : 0;
+  const tankSlots: Array<{ row: number; col: number }> = [
+    { row: 0, col: 2 },
+    { row: 0, col: 5 },
+    { row: 1, col: 1 },
+    { row: 1, col: 6 },
+    { row: 0, col: 3 },
+    { row: 0, col: 4 }
+  ];
+  const activeTankSlots = tankSlots.slice(0, Math.min(tankCount, rows > 1 ? tankSlots.length : 2));
   const invaders: Invader[] = [];
 
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
-      const isTank = row === 0 && tankColumns.includes(col);
+      const isTank = activeTankSlots.some((slot) => slot.row === row && slot.col === col);
       invaders.push({
         id: `wave-${wave}-enemy-${row}-${col}`,
         x: INVADER_START_X + col * INVADER_SPACING_X,
@@ -456,6 +460,7 @@ const SpaceInvaders: React.FC = () => {
       const enemyStep = bossWave ? 3.8 : 1.8 + wave * 0.35;
       const enemyDrop = bossWave ? 0 : 16 + wave * 1.5;
       const enemyFireChance = bossWave ? 0.08 : Math.min(0.018 + wave * 0.004, 0.07);
+      const tankMissileChance = bossWave ? 0 : Math.min(0.014 + Math.max(wave - 3, 0) * 0.004, 0.05);
 
       const nextPlayers = Object.fromEntries(
         Object.entries(currentState.players).map(([playerId, playerState]) => [
@@ -612,13 +617,66 @@ const SpaceInvaders: React.FC = () => {
             }
           }
         }
+
+        if (!bossWave && Math.random() < tankMissileChance) {
+          const livingTanks = nextInvaders.filter((invader) => invader.alive && invader.kind === "tank");
+          const activePlayers = currentPlayers
+            .map((player) => ({ player, state: nextPlayers[player.userId] }))
+            .filter((entry) => entry.state?.alive);
+          if (livingTanks.length > 0 && activePlayers.length > 0) {
+            const shooter = livingTanks[Math.floor(Math.random() * livingTanks.length)];
+            const target = activePlayers.reduce((closest, candidate) => {
+              if (!closest) return candidate;
+              return Math.abs(candidate.state!.x - shooter.x) < Math.abs(closest.state!.x - shooter.x)
+                ? candidate
+                : closest;
+            }, activePlayers[0]);
+            const horizontalDirection = Math.sign((target.state?.x ?? shooter.x) - shooter.x) || 1;
+            nextEnemyBullets.push({
+              id: `missile-${Date.now()}-${Math.random()}`,
+              ownerId: "enemy",
+              x: shooter.x,
+              y: shooter.y + shooter.height / 2,
+              damage: 1,
+              width: 12,
+              height: 18,
+              speed: 3.2 + wave * 0.16,
+              color: "#c084fc",
+              kind: "missile",
+              vx: horizontalDirection * 1.6
+            });
+          }
+        }
       }
 
       nextBullets = nextBullets
         .map((bullet) => ({ ...bullet, y: bullet.y - bullet.speed }))
         .filter((bullet) => bullet.y > -30);
       nextEnemyBullets = nextEnemyBullets
-        .map((bullet) => ({ ...bullet, y: bullet.y + bullet.speed }))
+        .map((bullet) => {
+          if (bullet.kind !== "missile") {
+            return { ...bullet, y: bullet.y + bullet.speed };
+          }
+
+          const livingTargets = currentPlayers
+            .map((player) => nextPlayers[player.userId])
+            .filter((playerState): playerState is PlayerState => Boolean(playerState?.alive));
+          const target = livingTargets.reduce<PlayerState | null>((closest, playerState) => {
+            if (!closest) return playerState;
+            return Math.abs(playerState.x - bullet.x) < Math.abs(closest.x - bullet.x) ? playerState : closest;
+          }, null);
+          const targetDelta = target ? target.x - bullet.x : 0;
+          const desiredVx = Math.max(-3.4, Math.min(3.4, targetDelta * 0.07));
+          const currentVx = bullet.vx ?? 0;
+          const nextVx = currentVx + (desiredVx - currentVx) * 0.18;
+
+          return {
+            ...bullet,
+            x: bullet.x + nextVx,
+            y: bullet.y + bullet.speed * 0.88,
+            vx: nextVx
+          };
+        })
         .filter((bullet) => bullet.y < HEIGHT + 30);
 
       const registerInvaderKill = (invader: Invader) => {
@@ -630,6 +688,27 @@ const SpaceInvaders: React.FC = () => {
 
       const survivingPlayerBullets: Bullet[] = [];
       nextBullets.forEach((bullet) => {
+        const hitProjectileIndex = nextEnemyBullets.findIndex(
+          (enemyBullet) =>
+            Math.abs(enemyBullet.x - bullet.x) < (enemyBullet.width + bullet.width) / 2 &&
+            Math.abs(enemyBullet.y - bullet.y) < (enemyBullet.height + bullet.height) / 2
+        );
+
+        if (hitProjectileIndex >= 0) {
+          const destroyedProjectile = nextEnemyBullets[hitProjectileIndex];
+          nextEnemyBullets.splice(hitProjectileIndex, 1);
+          nextEffects.push(
+            createEffect(
+              destroyedProjectile.x,
+              destroyedProjectile.y,
+              destroyedProjectile.kind === "missile" ? "#c084fc" : "#f8fafc",
+              destroyedProjectile.kind === "missile" ? 14 : 8,
+              180
+            )
+          );
+          return;
+        }
+
         const hitEnemy = nextInvaders.find(
           (invader) =>
             invader.alive &&
@@ -925,12 +1004,24 @@ const SpaceInvaders: React.FC = () => {
 
     gameState.enemyBullets.forEach((bullet) => {
       ctx.fillStyle = bullet.color;
-      ctx.fillRect(
-        bullet.x - bullet.width / 2,
-        bullet.y - bullet.height / 2,
-        bullet.width,
-        bullet.height
-      );
+      if (bullet.kind === "missile") {
+        ctx.beginPath();
+        ctx.moveTo(bullet.x, bullet.y - bullet.height / 2);
+        ctx.lineTo(bullet.x + bullet.width / 2, bullet.y + bullet.height / 3);
+        ctx.lineTo(bullet.x, bullet.y + bullet.height / 2);
+        ctx.lineTo(bullet.x - bullet.width / 2, bullet.y + bullet.height / 3);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillRect(bullet.x - 2, bullet.y + 1, 4, 7);
+      } else {
+        ctx.fillRect(
+          bullet.x - bullet.width / 2,
+          bullet.y - bullet.height / 2,
+          bullet.width,
+          bullet.height
+        );
+      }
     });
 
     gameState.effects.forEach((effect) => {
@@ -994,7 +1085,7 @@ const SpaceInvaders: React.FC = () => {
       <NavBar />
       <div className="content card">
         <h2>Space Invaders</h2>
-        <p>Two-player co-op with purple tanks, fireballs, and a wave 8 boss.</p>
+        <p>Two-player co-op with purple tanks, heat-seeking missiles, fireballs, and a wave 8 boss.</p>
         <div className="info">
           Seats filled: {Math.min(players.length, 2)}/2
           {connected && !roomFull ? ` | ${currentUsername}` : ""}
@@ -1026,7 +1117,7 @@ const SpaceInvaders: React.FC = () => {
             />
             <p className="info">{gameState.message}</p>
             <p>
-              Kill 40 enemies to charge a fireball. Press `Space` to launch it. Use `W` or `Arrow Up` for normal shots.
+              Purple tanks fire heat-seeking missiles you can dodge or shoot. Kill 40 enemies to charge a fireball. Press `Space` to launch it. Use `W` or `Arrow Up` for normal shots.
             </p>
             <p>{currentUsername} and {opponent?.username ?? "your co-pilot"} defend the bottom line.</p>
             {gameState.phase === "waiting" && isHost && (
