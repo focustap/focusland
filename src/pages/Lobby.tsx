@@ -88,7 +88,6 @@ const Lobby: React.FC = () => {
       let buildings: Building[] = [];
       const walkSpeed = 150;
       const arrivalThreshold = 10; // pixels
-      const remotePresenceTimeoutMs = 5000;
       let isTransitioning = false;
       let detachPageHideListener: (() => void) | undefined;
 
@@ -188,7 +187,7 @@ const Lobby: React.FC = () => {
         });
 
           this.time.addEvent({
-            delay: 120,
+            delay: 60,
           loop: true,
           callback: () => {
               if (!player) return;
@@ -460,21 +459,22 @@ const Lobby: React.FC = () => {
         if (!player || !playerBody) return;
 
         this.otherPlayers.forEach((otherPlayer) => {
-          if (Date.now() - otherPlayer.lastSeenAt > remotePresenceTimeoutMs) {
-            otherPlayer.rect.destroy();
-            otherPlayer.label.destroy();
-            return;
-          }
-
-          const nextX = Phaser.Math.Linear(otherPlayer.rect.x, otherPlayer.targetX, 0.2);
-          const nextY = Phaser.Math.Linear(otherPlayer.rect.y, otherPlayer.targetY, 0.2);
+          const distance = Phaser.Math.Distance.Between(
+            otherPlayer.rect.x,
+            otherPlayer.rect.y,
+            otherPlayer.targetX,
+            otherPlayer.targetY
+          );
+          const nextX =
+            distance < 0.75
+              ? otherPlayer.targetX
+              : Phaser.Math.Linear(otherPlayer.rect.x, otherPlayer.targetX, 0.14);
+          const nextY =
+            distance < 0.75
+              ? otherPlayer.targetY
+              : Phaser.Math.Linear(otherPlayer.rect.y, otherPlayer.targetY, 0.14);
           otherPlayer.rect.setPosition(nextX, nextY);
           otherPlayer.label.setPosition(nextX, nextY - 24);
-        });
-        this.otherPlayers.forEach((otherPlayer, otherUserId) => {
-          if (!otherPlayer.rect.active || !otherPlayer.label.active) {
-            this.otherPlayers.delete(otherUserId);
-          }
         });
 
         // If there is no target, stop moving.
