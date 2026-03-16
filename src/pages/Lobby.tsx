@@ -325,6 +325,20 @@ const Lobby: React.FC = () => {
             height: 72,
             labelColor: "#4c0519",
             roofOffsetX: 72
+          },
+          {
+            name: "Invaders",
+            color: 0x8b5cf6,
+            body: null,
+            entranceX: width - 120,
+            entranceY: height - 80,
+            route: "/invaders",
+            x: width - 88,
+            y: height - 62,
+            width: 116,
+            height: 72,
+            labelColor: "#2e1065",
+            roofOffsetX: 66
           }
         ];
 
