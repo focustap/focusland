@@ -85,6 +85,10 @@ const SHIP_WIDTH = 28;
 const SHIP_HEIGHT = 18;
 const STARTING_LIVES = 3;
 const FIREBALL_KILL_REQUIREMENT = 40;
+const FIREBALL_SPLASH_RADIUS = 60;
+const INVADER_COLS = 8;
+const INVADER_SPACING_X = 60;
+const INVADER_START_X = WIDTH / 2 - ((INVADER_COLS - 1) * INVADER_SPACING_X) / 2;
 
 const DEFAULT_STATE: GameState = {
   phase: "waiting",
@@ -141,9 +145,14 @@ function createWaveInvaders(wave: number): Invader[] {
   }
 
   const rows = Math.min(4 + Math.floor((wave - 1) / 2), 6);
-  const cols = 8;
+  const cols = INVADER_COLS;
   const tankCount = wave >= 3 ? Math.min(1 + Math.floor((wave - 3) / 2), 3) : 0;
-  const tankColumns = Array.from({ length: tankCount }, (_, index) => cols - 1 - index);
+  const centerColumnsByCount: Record<number, number[]> = {
+    1: [3],
+    2: [3, 4],
+    3: [2, 3, 4]
+  };
+  const tankColumns = centerColumnsByCount[tankCount] ?? [];
   const invaders: Invader[] = [];
 
   for (let row = 0; row < rows; row += 1) {
@@ -151,14 +160,14 @@ function createWaveInvaders(wave: number): Invader[] {
       const isTank = row === 0 && tankColumns.includes(col);
       invaders.push({
         id: `wave-${wave}-enemy-${row}-${col}`,
-        x: 100 + col * 52,
+        x: INVADER_START_X + col * INVADER_SPACING_X,
         y: 70 + row * 36,
         alive: true,
         kind: isTank ? "tank" : "normal",
         hp: isTank ? 3 : 1,
         maxHp: isTank ? 3 : 1,
-        width: isTank ? 32 : 28,
-        height: isTank ? 22 : 18
+        width: isTank ? 56 : 28,
+        height: isTank ? 36 : 18
       });
     }
   }
@@ -579,7 +588,7 @@ const SpaceInvaders: React.FC = () => {
           } else {
             const bottomByColumn = new Map<number, Invader>();
             livingInvaders.forEach((invader) => {
-              const column = Math.round(invader.x / 52);
+              const column = Math.round((invader.x - INVADER_START_X) / INVADER_SPACING_X);
               const currentBottom = bottomByColumn.get(column);
               if (!currentBottom || invader.y > currentBottom.y) {
                 bottomByColumn.set(column, invader);
@@ -612,6 +621,13 @@ const SpaceInvaders: React.FC = () => {
         .map((bullet) => ({ ...bullet, y: bullet.y + bullet.speed }))
         .filter((bullet) => bullet.y < HEIGHT + 30);
 
+      const registerInvaderKill = (invader: Invader) => {
+        if (!invader.alive) return;
+        invader.alive = false;
+        nextScore += invader.kind === "boss" ? 500 : invader.kind === "tank" ? 30 : 10;
+        nextKillsTowardFireball += invader.kind === "boss" ? 8 : invader.kind === "tank" ? 3 : 1;
+      };
+
       const survivingPlayerBullets: Bullet[] = [];
       nextBullets.forEach((bullet) => {
         const hitEnemy = nextInvaders.find(
@@ -626,21 +642,26 @@ const SpaceInvaders: React.FC = () => {
           return;
         }
 
-        hitEnemy.hp -= bullet.damage;
-        nextEffects.push(
-          createEffect(
-            hitEnemy.x,
-            hitEnemy.y,
-            bullet.kind === "fireball" ? "#fb923c" : "#facc15",
-            bullet.kind === "fireball" ? 16 : 10,
-            200
-          )
-        );
+        if (bullet.kind === "fireball") {
+          nextEffects.push(createEffect(hitEnemy.x, hitEnemy.y, "#fb923c", FIREBALL_SPLASH_RADIUS, 260));
 
-        if (hitEnemy.hp <= 0) {
-          hitEnemy.alive = false;
-          nextScore += hitEnemy.kind === "boss" ? 500 : hitEnemy.kind === "tank" ? 30 : 10;
-          nextKillsTowardFireball += hitEnemy.kind === "boss" ? 8 : hitEnemy.kind === "tank" ? 3 : 1;
+          nextInvaders.forEach((invader) => {
+            if (!invader.alive) return;
+            const distance = Math.hypot(invader.x - hitEnemy.x, invader.y - hitEnemy.y);
+            const splashReach = FIREBALL_SPLASH_RADIUS + Math.max(invader.width, invader.height) / 2;
+            if (distance > splashReach) return;
+
+            invader.hp -= bullet.damage;
+            if (invader.hp <= 0) {
+              registerInvaderKill(invader);
+            }
+          });
+        } else {
+          hitEnemy.hp -= bullet.damage;
+          nextEffects.push(createEffect(hitEnemy.x, hitEnemy.y, "#facc15", 10, 200));
+          if (hitEnemy.hp <= 0) {
+            registerInvaderKill(hitEnemy);
+          }
         }
       });
       nextBullets = survivingPlayerBullets;
