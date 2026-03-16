@@ -83,7 +83,6 @@ const Lobby: React.FC = () => {
       };
 
       let player: Phaser.GameObjects.Rectangle | null = null;
-      let playerBody: Phaser.Physics.Arcade.Body | null = null;
       let targetX: number | null = null;
       let targetY: number | null = null;
       let buildings: Building[] = [];
@@ -159,11 +158,6 @@ const Lobby: React.FC = () => {
 
         // Player in the center of the room.
         player = this.add.rectangle(width / 2, height / 2 + 60, 24, 32, localColor);
-        this.physics.add.existing(player);
-        playerBody = player.body as Phaser.Physics.Arcade.Body;
-        playerBody.setCollideWorldBounds(true);
-        playerBody.setAllowGravity(false);
-        playerBody.setImmovable(false);
 
         const handlePageHide = () => {
           void removePresenceForUser({ userId, roomName: LOBBY_ROOM_NAME });
@@ -470,8 +464,8 @@ const Lobby: React.FC = () => {
         }
       }
 
-      update() {
-        if (!player || !playerBody) return;
+      update(_time: number, delta: number) {
+        if (!player) return;
 
         this.otherPlayers.forEach((otherPlayer) => {
           const distance = Phaser.Math.Distance.Between(
@@ -494,18 +488,14 @@ const Lobby: React.FC = () => {
 
         // If there is no target, stop moving.
         if (targetX == null || targetY == null) {
-          playerBody.setVelocity(0, 0);
           return;
         }
 
-        // Move in full 2D toward the target.
         const dx = targetX - player.x;
         const dy = targetY - player.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
+        const distance = Math.hypot(dx, dy);
 
         if (distance < arrivalThreshold) {
-          // Arrived at the target location.
-          playerBody.setVelocity(0, 0);
           player.setPosition(targetX, targetY);
 
           // If a route is pending and we just arrived at its entrance, navigate once.
@@ -519,9 +509,21 @@ const Lobby: React.FC = () => {
           targetX = null;
           targetY = null;
         } else {
-          const vx = (dx / distance) * walkSpeed;
-          const vy = (dy / distance) * walkSpeed;
-          playerBody.setVelocity(vx, vy);
+          // Use delta-time movement instead of physics velocity so speed
+          // stays consistent even if the browser has a rough frame.
+          const step = (walkSpeed * delta) / 1000;
+          const moveDistance = Math.min(step, distance);
+          const nextX = Phaser.Math.Clamp(
+            player.x + (dx / distance) * moveDistance,
+            12,
+            width - 12
+          );
+          const nextY = Phaser.Math.Clamp(
+            player.y + (dy / distance) * moveDistance,
+            16,
+            height - 16
+          );
+          player.setPosition(nextX, nextY);
         }
       }
     }
