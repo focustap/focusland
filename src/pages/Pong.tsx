@@ -114,8 +114,7 @@ const Pong: React.FC = () => {
   const currentUserIdRef = useRef<string | null>(null);
   const playersRef = useRef<PlayerPresence[]>([]);
   const isHostRef = useRef(false);
-  const localTargetYRef = useRef(CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2);
-  const remoteTargetYRef = useRef(CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2);
+  const paddleTargetsRef = useRef<Record<string, number>>({});
   const stateRef = useRef<PongState>(DEFAULT_STATE);
   const tickRef = useRef<number | null>(null);
 
@@ -141,6 +140,13 @@ const Pong: React.FC = () => {
   useEffect(() => {
     playersRef.current = players;
     isHostRef.current = isHost;
+
+    const nextTargets = { ...paddleTargetsRef.current };
+    players.forEach((player) => {
+      nextTargets[player.userId] =
+        nextTargets[player.userId] ?? CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2;
+    });
+    paddleTargetsRef.current = nextTargets;
   }, [players, isHost]);
 
   const broadcastState = async (nextState: PongState, nextStatus?: string) => {
@@ -230,8 +236,11 @@ const Pong: React.FC = () => {
 
       channel.on("broadcast", { event: "pong-input" }, ({ payload }) => {
         const nextPayload = payload as { userId: string; y: number };
-        if (nextPayload.userId !== currentUserIdRef.current) {
-          remoteTargetYRef.current = clamp(nextPayload.y, 0, CANVAS_HEIGHT - PADDLE_HEIGHT);
+        if (playersRef.current.some((player) => player.userId === nextPayload.userId)) {
+          paddleTargetsRef.current = {
+            ...paddleTargetsRef.current,
+            [nextPayload.userId]: clamp(nextPayload.y, 0, CANVAS_HEIGHT - PADDLE_HEIGHT)
+          };
         }
       });
 
@@ -290,8 +299,11 @@ const Pong: React.FC = () => {
 
     const hostPlayerId = players[0].userId;
     const guestPlayerId = players[1].userId;
-    localTargetYRef.current = stateRef.current.paddles[hostPlayerId] ?? localTargetYRef.current;
-    remoteTargetYRef.current = stateRef.current.paddles[guestPlayerId] ?? remoteTargetYRef.current;
+    paddleTargetsRef.current = {
+      ...paddleTargetsRef.current,
+      [hostPlayerId]: stateRef.current.paddles[hostPlayerId] ?? paddleTargetsRef.current[hostPlayerId] ?? CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2,
+      [guestPlayerId]: stateRef.current.paddles[guestPlayerId] ?? paddleTargetsRef.current[guestPlayerId] ?? CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2
+    };
 
     tickRef.current = window.setInterval(() => {
       const currentState = stateRef.current;
@@ -299,8 +311,16 @@ const Pong: React.FC = () => {
         return;
       }
 
-      const leftY = clamp(localTargetYRef.current, 0, CANVAS_HEIGHT - PADDLE_HEIGHT);
-      const rightY = clamp(remoteTargetYRef.current, 0, CANVAS_HEIGHT - PADDLE_HEIGHT);
+      const leftY = clamp(
+        paddleTargetsRef.current[hostPlayerId] ?? CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2,
+        0,
+        CANVAS_HEIGHT - PADDLE_HEIGHT
+      );
+      const rightY = clamp(
+        paddleTargetsRef.current[guestPlayerId] ?? CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2,
+        0,
+        CANVAS_HEIGHT - PADDLE_HEIGHT
+      );
       let { x, y, vx, vy } = currentState.ball;
       x += vx;
       y += vy;
@@ -320,8 +340,9 @@ const Pong: React.FC = () => {
         y >= leftY &&
         y <= leftY + PADDLE_HEIGHT
       ) {
-        vx = Math.abs(vx) + 0.2;
-        vy += (y - (leftY + PADDLE_HEIGHT / 2)) * 0.05;
+        vx = Math.abs(vx) + 0.45;
+        vy += (y - (leftY + PADDLE_HEIGHT / 2)) * 0.07;
+        vy = clamp(vy, -7, 7);
         x = leftPaddleX + PADDLE_WIDTH + BALL_SIZE / 2;
       }
 
@@ -332,8 +353,9 @@ const Pong: React.FC = () => {
         y >= rightY &&
         y <= rightY + PADDLE_HEIGHT
       ) {
-        vx = -Math.abs(vx) - 0.2;
-        vy += (y - (rightY + PADDLE_HEIGHT / 2)) * 0.05;
+        vx = -Math.abs(vx) - 0.45;
+        vy += (y - (rightY + PADDLE_HEIGHT / 2)) * 0.07;
+        vy = clamp(vy, -7, 7);
         x = rightPaddleX - BALL_SIZE / 2;
       }
 
@@ -407,16 +429,15 @@ const Pong: React.FC = () => {
 
       event.preventDefault();
       const nextY = clamp(
-        (currentUserId === hostId ? localTargetYRef.current : remoteTargetYRef.current) + delta,
+        (paddleTargetsRef.current[currentUserId] ?? CANVAS_HEIGHT / 2 - PADDLE_HEIGHT / 2) + delta,
         0,
         CANVAS_HEIGHT - PADDLE_HEIGHT
       );
 
-      if (currentUserId === hostId) {
-        localTargetYRef.current = nextY;
-      } else {
-        remoteTargetYRef.current = nextY;
-      }
+      paddleTargetsRef.current = {
+        ...paddleTargetsRef.current,
+        [currentUserId]: nextY
+      };
 
       if (channelRef.current) {
         void channelRef.current.send({
@@ -486,8 +507,10 @@ const Pong: React.FC = () => {
     }
 
     const nextState = createInitialState(players, Math.random() > 0.5);
-    localTargetYRef.current = nextState.paddles[players[0].userId];
-    remoteTargetYRef.current = nextState.paddles[players[1].userId];
+    paddleTargetsRef.current = {
+      [players[0].userId]: nextState.paddles[players[0].userId],
+      [players[1].userId]: nextState.paddles[players[1].userId]
+    };
     await broadcastState(nextState, "Match started. Use W/S or Arrow keys.");
   };
 
