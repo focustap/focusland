@@ -98,7 +98,7 @@ const BOSS_SHIELD_RESPAWN_MS = 8000;
 const INVADER_COLS = 8;
 const INVADER_SPACING_X = 60;
 const INVADER_START_X = WIDTH / 2 - ((INVADER_COLS - 1) * INVADER_SPACING_X) / 2;
-const SPACE_INVADERS_VERSION = "1.0.3";
+const SPACE_INVADERS_VERSION = "1.0.4";
 
 const DEFAULT_STATE: GameState = {
   phase: "waiting",
@@ -237,6 +237,10 @@ function createWaveInvaders(wave: number): Invader[] {
 }
 
 function buildInitialState(players: PlayerPresence[]): GameState {
+  return buildStateForWave(players, 1);
+}
+
+function buildStateForWave(players: PlayerPresence[], wave: number): GameState {
   const playerState = players.reduce<Record<string, PlayerState>>((acc, player, index) => {
     acc[player.userId] = {
       x: index === 0 ? WIDTH * 0.3 : WIDTH * 0.7,
@@ -252,14 +256,21 @@ function buildInitialState(players: PlayerPresence[]): GameState {
   return {
     phase: "playing",
     players: playerState,
-    invaders: createWaveInvaders(1),
+    invaders: createWaveInvaders(wave),
     bullets: [],
     enemyBullets: [],
     effects: [],
     enemyDirection: 1,
-    score: 0,
-    wave: 1,
-    message: "Wave 1. It gets ugly fast.",
+    score: Math.max(0, (wave - 1) * 120),
+    wave,
+    message:
+      wave === 8
+        ? "Boss wave. Good luck."
+        : wave >= 9 && wave <= 11
+          ? `Wave ${wave}. Yellow blinkers incoming.`
+          : wave === 12
+            ? "Wave 12. The duo has arrived."
+            : `Wave ${wave}. It gets ugly fast.`,
     waveDelayMs: 0,
     killsTowardFireball: 0,
     fireballsReady: 0
@@ -1432,6 +1443,22 @@ const SpaceInvaders: React.FC = () => {
     await broadcastState(nextState);
   };
 
+  const startAtWaveNine = async () => {
+    ensureAudio();
+    if (!isHost || players.length !== 2) return;
+
+    const nextState = buildStateForWave(players, 9);
+    players.forEach((player) => {
+      inputStatesRef.current[player.userId] = {
+        left: false,
+        right: false,
+        shoot: false,
+        fireball: false
+      };
+    });
+    await broadcastState(nextState);
+  };
+
   return (
     <div className="page">
       <NavBar />
@@ -1473,14 +1500,24 @@ const SpaceInvaders: React.FC = () => {
             </p>
             <p>{currentUsername} and {opponent?.username ?? "your co-pilot"} defend the bottom line.</p>
             {gameState.phase === "waiting" && isHost && (
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => void startGame()}
-                disabled={players.length !== 2}
-              >
-                Start wave
-              </button>
+              <div className="button-row">
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => void startGame()}
+                  disabled={players.length !== 2}
+                >
+                  Start wave
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void startAtWaveNine()}
+                  disabled={players.length !== 2}
+                >
+                  Test wave 9
+                </button>
+              </div>
             )}
             {gameState.phase === "gameOver" && isHost && (
               <button className="primary-button" type="button" onClick={() => void startGame()}>
