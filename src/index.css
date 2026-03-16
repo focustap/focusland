@@ -161,6 +161,15 @@ input {
   margin-top: 0.5rem;
 }
 
+.warning {
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  margin-top: 0.5rem;
+}
+
 .avatar {
   margin: 1rem 0;
 }

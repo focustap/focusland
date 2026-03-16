@@ -28,6 +28,7 @@ type Invader = {
   homeY?: number;
   attackMode?: "idle" | "slam" | "return";
   attackCooldownMs?: number;
+  hasBurstShot?: boolean;
 };
 
 type Bullet = {
@@ -98,7 +99,7 @@ const BOSS_SHIELD_RESPAWN_MS = 8000;
 const INVADER_COLS = 8;
 const INVADER_SPACING_X = 60;
 const INVADER_START_X = WIDTH / 2 - ((INVADER_COLS - 1) * INVADER_SPACING_X) / 2;
-const SPACE_INVADERS_VERSION = "1.0.4";
+const SPACE_INVADERS_VERSION = "1.0.5";
 
 const DEFAULT_STATE: GameState = {
   phase: "waiting",
@@ -195,7 +196,8 @@ function createWaveInvaders(wave: number): Invader[] {
   const rows = Math.min(4 + Math.floor((wave - 1) / 2), 6);
   const cols = INVADER_COLS;
   const tankCount = wave >= 3 ? Math.min(2 + Math.floor((wave - 3) / 2), 6) : 0;
-  const yellowCount = wave >= 9 && wave <= 11 ? Math.min(2 + (wave - 9), 4) : 0;
+  const yellowCount =
+    wave === 9 ? 1 : wave === 10 ? 2 : wave === 11 ? 3 : 0;
   const tankSlots: Array<{ row: number; col: number }> = [
     { row: 0, col: 2 },
     { row: 0, col: 5 },
@@ -228,7 +230,8 @@ function createWaveInvaders(wave: number): Invader[] {
         maxHp: isTank ? 3 : isYellow ? 2 : 1,
         width: isTank ? 56 : isYellow ? 22 : 28,
         height: isTank ? 36 : isYellow ? 22 : 18,
-        attackCooldownMs: isYellow ? 600 + row * 180 + col * 45 : 0
+        attackCooldownMs: isYellow ? 1200 + row * 180 + col * 45 : 0,
+        hasBurstShot: isYellow ? false : undefined
       });
     }
   }
@@ -240,7 +243,7 @@ function buildInitialState(players: PlayerPresence[]): GameState {
   return buildStateForWave(players, 1);
 }
 
-function buildStateForWave(players: PlayerPresence[], wave: number): GameState {
+function buildStateForWave(players: PlayerPresence[], wave: number, fireballsReady = 0): GameState {
   const playerState = players.reduce<Record<string, PlayerState>>((acc, player, index) => {
     acc[player.userId] = {
       x: index === 0 ? WIDTH * 0.3 : WIDTH * 0.7,
@@ -273,7 +276,7 @@ function buildStateForWave(players: PlayerPresence[], wave: number): GameState {
             : `Wave ${wave}. It gets ugly fast.`,
     waveDelayMs: 0,
     killsTowardFireball: 0,
-    fireballsReady: 0
+    fireballsReady
   };
 }
 
@@ -546,8 +549,6 @@ const SpaceInvaders: React.FC = () => {
       const enemyFireChance = rainbowBossWave ? 0.08 : duoWave ? 0.05 : Math.min(0.018 + speedWave * 0.004, 0.05);
       const tankMissileChance =
         bossWave ? 0 : Math.min(0.014 + Math.max(speedWave - 3, 0) * 0.004, 0.04);
-      const yellowBurstChance = wave >= 9 && wave <= 11 ? 0.018 + (wave - 9) * 0.008 : 0;
-
       const nextPlayers = Object.fromEntries(
         Object.entries(currentState.players).map(([playerId, playerState]) => [
           playerId,
@@ -841,27 +842,33 @@ const SpaceInvaders: React.FC = () => {
           }
         }
 
-        if (yellowBurstChance > 0 && Math.random() < yellowBurstChance) {
-          const yellowShooters = nextInvaders.filter((invader) => invader.alive && invader.kind === "yellow");
-          if (yellowShooters.length > 0) {
-            const shooter = yellowShooters[Math.floor(Math.random() * yellowShooters.length)];
-            [-1.7, 0, 1.7].forEach((vx) => {
-              nextEnemyBullets.push({
-                id: `yellow-burst-${Date.now()}-${Math.random()}-${vx}`,
-                ownerId: "enemy",
-                x: shooter.x,
-                y: shooter.y + shooter.height / 2,
-                damage: 1,
-                width: 6,
-                height: 10,
-                speed: 4.6,
-                color: "#fde047",
-                kind: "enemy",
-                vx
-              });
-            });
+        nextInvaders.forEach((invader) => {
+          if (
+            !invader.alive ||
+            invader.kind !== "yellow" ||
+            invader.hasBurstShot ||
+            (invader.attackCooldownMs ?? 0) > 0
+          ) {
+            return;
           }
-        }
+
+          [-1.7, 0, 1.7].forEach((vx) => {
+            nextEnemyBullets.push({
+              id: `yellow-burst-${invader.id}-${Date.now()}-${Math.random()}-${vx}`,
+              ownerId: "enemy",
+              x: invader.x,
+              y: invader.y + invader.height / 2,
+              damage: 1,
+              width: 6,
+              height: 10,
+              speed: 4.6,
+              color: "#fde047",
+              kind: "enemy",
+              vx
+            });
+          });
+          invader.hasBurstShot = true;
+        });
       }
 
       nextBullets = nextBullets
@@ -1447,7 +1454,7 @@ const SpaceInvaders: React.FC = () => {
     ensureAudio();
     if (!isHost || players.length !== 2) return;
 
-    const nextState = buildStateForWave(players, 9);
+    const nextState = buildStateForWave(players, 9, 5);
     players.forEach((player) => {
       inputStatesRef.current[player.userId] = {
         left: false,

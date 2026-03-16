@@ -12,6 +12,7 @@ const Login: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
 
   useEffect(() => {
     const checkExistingSession = async () => {
@@ -113,6 +114,12 @@ const Login: React.FC = () => {
     }
   };
 
+  const handlePasswordKeyState = (
+    event: React.KeyboardEvent<HTMLInputElement> | React.FocusEvent<HTMLInputElement>
+  ) => {
+    setCapsLockOn(event.getModifierState("CapsLock"));
+  };
+
   return (
     <div className="page auth-page">
       <h2>{isSignUp ? "Sign up" : "Log in"}</h2>
@@ -132,9 +139,14 @@ const Login: React.FC = () => {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={handlePasswordKeyState}
+            onKeyUp={handlePasswordKeyState}
+            onFocus={handlePasswordKeyState}
+            onBlur={() => setCapsLockOn(false)}
             required
           />
         </label>
+        {capsLockOn && <div className="warning">Caps Lock is on.</div>}
         {error && <div className="error">{error}</div>}
         {message && <div className="info">{message}</div>}
         <button className="primary-button" type="submit" disabled={loading}>
