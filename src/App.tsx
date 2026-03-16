@@ -7,6 +7,7 @@ import Profile from "./pages/Profile";
 import Game from "./pages/Game";
 import CatchGame from "./pages/CatchGame";
 import Casino from "./pages/Casino";
+import Pong from "./pages/Pong";
 import { AuthProvider } from "./components/AuthProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
@@ -53,6 +54,14 @@ const App = () => {
           element={
             <ProtectedRoute>
               <Casino />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/pong"
+          element={
+            <ProtectedRoute>
+              <Pong />
             </ProtectedRoute>
           }
         />

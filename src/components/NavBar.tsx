@@ -13,6 +13,7 @@ const NavBar: React.FC = () => {
         <Link to="/game">Dodge</Link>
         <Link to="/catch">Catch</Link>
         <Link to="/casino">Casino</Link>
+        <Link to="/pong">Pong</Link>
       </div>
     </nav>
   );
