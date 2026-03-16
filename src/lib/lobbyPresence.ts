@@ -19,6 +19,19 @@ export async function fetchRoomPresence(roomName: string = LOBBY_ROOM_NAME) {
     .eq("room_name", roomName);
 }
 
+export async function removePresenceForUser(params: {
+  userId: string;
+  roomName?: string;
+}) {
+  const { userId, roomName = LOBBY_ROOM_NAME } = params;
+
+  await supabase
+    .from("lobby_presence")
+    .delete()
+    .eq("user_id", userId)
+    .eq("room_name", roomName);
+}
+
 export async function upsertInitialPresence(params: {
   userId: string;
   username: string | null;

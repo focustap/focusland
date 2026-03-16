@@ -12,6 +12,7 @@ import {
   subscribeToRoomPresence,
   upsertInitialPresence,
   updatePlayerPosition,
+  removePresenceForUser,
   type LobbyPresenceRow
 } from "../lib/lobbyPresence";
 
@@ -66,6 +67,9 @@ const Lobby: React.FC = () => {
 
       // This function will be called when the player reaches an entrance.
       const goToRoute = (route: string) => {
+        // When leaving the lobby (e.g. to the arcade), remove our presence row
+        // so other players no longer see us in this room.
+        void removePresenceForUser({ userId, roomName: LOBBY_ROOM_NAME });
         navigate(route);
       };
 
@@ -133,7 +137,7 @@ const Lobby: React.FC = () => {
         });
 
           this.time.addEvent({
-            delay: 200,
+            delay: 120,
           loop: true,
           callback: () => {
               if (!player) return;
@@ -143,7 +147,7 @@ const Lobby: React.FC = () => {
               const currentX = player.x;
               const currentY = player.y;
               const movedDistance = Math.hypot(currentX - this.lastSentX, currentY - this.lastSentY);
-              if (movedDistance < 2) {
+              if (movedDistance < 1) {
                 return;
               }
 
@@ -304,16 +308,12 @@ const Lobby: React.FC = () => {
 
           this.otherPlayers.set(row.user_id, { rect, label });
         } else {
-            // Light smoothing so remote players don't "teleport"
-            // between their last known and new positions.
-            const lerpFactor = 0.3;
-            const nextX = existing.rect.x + (row.x - existing.rect.x) * lerpFactor;
-            const nextY = existing.rect.y + (row.y - existing.rect.y) * lerpFactor;
-
-            existing.rect.setPosition(nextX, nextY);
+            // Snap remote players directly to their latest known position
+            // so they don't appear to get "stuck" between updates.
+            existing.rect.setPosition(row.x, row.y);
           existing.rect.fillColor = colorNumber;
           existing.label.setText(row.username ?? "Player");
-            existing.label.setPosition(nextX, nextY - 24);
+            existing.label.setPosition(row.x, row.y - 24);
         }
       }
 
@@ -373,6 +373,9 @@ const Lobby: React.FC = () => {
       gameRef.current = game;
 
       return () => {
+        // When the lobby scene is torn down (e.g. navigating away),
+        // also remove this user's presence row from the lobby.
+        void removePresenceForUser({ userId, roomName: LOBBY_ROOM_NAME });
         game.destroy(true);
         gameRef.current = null;
       };
