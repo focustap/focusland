@@ -233,7 +233,7 @@ const Lobby: React.FC = () => {
         // Buildings around the edges.
         buildings = [
           {
-            name: "Arcade",
+            name: "Try to Dodge",
             color: 0x22c55e,
             body: null,
             entranceX: width / 2,
@@ -285,7 +285,7 @@ const Lobby: React.FC = () => {
             labelColor: "#172554"
           },
           {
-            name: "Casino",
+            name: "21",
             color: 0xe11d48,
             body: null,
             entranceX: width / 2,
@@ -303,6 +303,7 @@ const Lobby: React.FC = () => {
           const roofColor = Phaser.Display.Color.IntegerToColor(building.color)
             .darken(20)
             .color;
+          const roofBaseY = building.y - building.height / 2;
           const body = this.add.rectangle(
             building.x,
             building.y,
@@ -312,13 +313,13 @@ const Lobby: React.FC = () => {
           );
           this.add.triangle(
             building.x,
-            building.y - building.height / 2 - 18,
+            roofBaseY - 14,
             -building.width / 2 - 6,
-            10,
+            18,
             building.width / 2 + 6,
-            10,
+            18,
             0,
-            -30,
+            -20,
             roofColor
           );
           this.add.rectangle(
@@ -342,10 +343,11 @@ const Lobby: React.FC = () => {
             18,
             0xfef3c7
           );
+          const signWidth = Math.max(72, building.name.length * 8 + 18);
           this.add.rectangle(
             building.x,
             building.y + building.height / 2 + 16,
-            72,
+            signWidth,
             18,
             0xf8fafc
           );
