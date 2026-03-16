@@ -313,13 +313,20 @@ const Lobby: React.FC = () => {
           );
           this.add.triangle(
             building.x,
-            roofBaseY - 14,
+            roofBaseY - 2,
             -building.width / 2 - 6,
-            18,
+            8,
             building.width / 2 + 6,
-            18,
+            8,
             0,
-            -20,
+            -28,
+            roofColor
+          );
+          this.add.rectangle(
+            building.x,
+            roofBaseY + 4,
+            building.width + 6,
+            10,
             roofColor
           );
           this.add.rectangle(
