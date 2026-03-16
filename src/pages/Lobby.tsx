@@ -28,14 +28,14 @@ const Lobby: React.FC = () => {
 
     let isUnmounted = false;
 
-    const setup = async () => {
+    const setup = async (): Promise<(() => void) | undefined> => {
       const {
         data: { session }
       } = await supabase.auth.getSession();
 
       if (!session) {
         navigate("/login");
-        return;
+        return () => {};
       }
 
       const userId = session.user.id;
@@ -49,7 +49,7 @@ const Lobby: React.FC = () => {
       const username: string | null = (profile?.username as string) ?? session.user.email ?? null;
 
       if (isUnmounted || !containerRef.current) {
-        return;
+        return () => {};
       }
 
       const width = 640;
@@ -362,7 +362,7 @@ const Lobby: React.FC = () => {
       physics: {
         default: "arcade",
         arcade: {
-          gravity: { y: 0 },
+          gravity: { x: 0, y: 0 },
           debug: false
         }
       },
@@ -381,12 +381,16 @@ const Lobby: React.FC = () => {
       };
     };
 
-    const cleanup = setup();
+    let cleanup: (() => void) | undefined;
 
-    return () => {
-      isUnmounted = true;
-      void cleanup;
-    };
+void setup().then((returnedCleanup) => {
+  cleanup = returnedCleanup;
+});
+
+return () => {
+  isUnmounted = true;
+  cleanup?.();
+};
   }, [navigate]);
 
   return (
