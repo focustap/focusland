@@ -312,8 +312,8 @@ const Lobby: React.FC = () => {
             building.color
           );
           this.add.triangle(
-            building.x + 4,
-            roofBaseY + 4,
+            building.x + 7,
+            roofBaseY + 8,
             -building.width / 2 - 6,
             8,
             building.width / 2 + 6,
@@ -323,8 +323,8 @@ const Lobby: React.FC = () => {
             roofColor
           );
           this.add.rectangle(
-            building.x + 4,
-            roofBaseY + 9,
+            building.x,
+            roofBaseY + 4,
             building.width + 6,
             10,
             roofColor
