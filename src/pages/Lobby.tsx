@@ -55,8 +55,8 @@ const Lobby: React.FC = () => {
         return () => {};
       }
 
-      const width = 720;
-      const height = 540;
+      const width = 640;
+      const height = 480;
 
       // Simple structure to describe a building zone.
       type Building = {
@@ -571,20 +571,14 @@ return () => {
       return (
     <div className="page">
       <NavBar />
-      <div
-        className="content card"
-        style={{
-          maxWidth: 800,
-          overflow: "hidden"
-        }}
-      >
+      <div className="content card">
         <h2>Town Lobby</h2>
         <p>Click on the floor to walk, or click a building to enter.</p>
         <div
           ref={containerRef}
           style={{
             width: "100%",
-            maxWidth: width,
+            maxWidth: 640,
             margin: "1rem auto"
           }}
         />
