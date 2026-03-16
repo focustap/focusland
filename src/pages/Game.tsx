@@ -69,7 +69,8 @@ const Game: React.FC = () => {
       playerBody.setCollideWorldBounds(true);
       playerBody.setAllowGravity(false);
 
-      cursors = this.input.keyboard.createCursorKeys();
+      // Use optional chaining so TypeScript knows we guard against undefined.
+      cursors = this.input.keyboard?.createCursorKeys();
 
       scoreText = this.add.text(16, 16, "Score: 0", {
         fontSize: "18px",
@@ -161,7 +162,7 @@ const Game: React.FC = () => {
       physics: {
         default: "arcade",
         arcade: {
-          gravity: { y: 0 },
+          gravity: { x: 0, y: 0 },
           debug: false
         }
       },
