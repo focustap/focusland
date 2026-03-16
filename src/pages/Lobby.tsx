@@ -88,7 +88,9 @@ const Lobby: React.FC = () => {
       let buildings: Building[] = [];
       const walkSpeed = 150;
       const arrivalThreshold = 10; // pixels
+      const remotePresenceTimeoutMs = 5000;
       let isTransitioning = false;
+      let detachPageHideListener: (() => void) | undefined;
 
       const sceneConfig: Phaser.Types.Scenes.SettingsConfig = {
         active: true,
@@ -103,6 +105,7 @@ const Lobby: React.FC = () => {
             label: Phaser.GameObjects.Text;
             targetX: number;
             targetY: number;
+            lastSeenAt: number;
           }
         > = new Map();
 
@@ -161,6 +164,16 @@ const Lobby: React.FC = () => {
         playerBody.setCollideWorldBounds(true);
         playerBody.setAllowGravity(false);
         playerBody.setImmovable(false);
+
+        const handlePageHide = () => {
+          void removePresenceForUser({ userId, roomName: LOBBY_ROOM_NAME });
+        };
+        window.addEventListener("pagehide", handlePageHide);
+        window.addEventListener("beforeunload", handlePageHide);
+        detachPageHideListener = () => {
+          window.removeEventListener("pagehide", handlePageHide);
+          window.removeEventListener("beforeunload", handlePageHide);
+        };
 
           // Start "last sent" position at the initial spawn location.
           this.lastSentX = player.x;
@@ -423,7 +436,7 @@ const Lobby: React.FC = () => {
           const rect = this.add.rectangle(row.x, row.y, 24, 32, colorNumber);
           const label = this.add.text(row.x, row.y - 24, row.username ?? "Player", {
             fontSize: "12px",
-            color: "#e5e7eb"
+            color: "#111827"
           });
           label.setOrigin(0.5);
 
@@ -431,11 +444,13 @@ const Lobby: React.FC = () => {
             rect,
             label,
             targetX: row.x,
-            targetY: row.y
+            targetY: row.y,
+            lastSeenAt: Date.now()
           });
         } else {
           existing.targetX = row.x;
           existing.targetY = row.y;
+          existing.lastSeenAt = Date.now();
           existing.rect.fillColor = colorNumber;
           existing.label.setText(row.username ?? "Player");
         }
@@ -445,10 +460,21 @@ const Lobby: React.FC = () => {
         if (!player || !playerBody) return;
 
         this.otherPlayers.forEach((otherPlayer) => {
+          if (Date.now() - otherPlayer.lastSeenAt > remotePresenceTimeoutMs) {
+            otherPlayer.rect.destroy();
+            otherPlayer.label.destroy();
+            return;
+          }
+
           const nextX = Phaser.Math.Linear(otherPlayer.rect.x, otherPlayer.targetX, 0.2);
           const nextY = Phaser.Math.Linear(otherPlayer.rect.y, otherPlayer.targetY, 0.2);
           otherPlayer.rect.setPosition(nextX, nextY);
           otherPlayer.label.setPosition(nextX, nextY - 24);
+        });
+        this.otherPlayers.forEach((otherPlayer, otherUserId) => {
+          if (!otherPlayer.rect.active || !otherPlayer.label.active) {
+            this.otherPlayers.delete(otherUserId);
+          }
         });
 
         // If there is no target, stop moving.
@@ -506,6 +532,7 @@ const Lobby: React.FC = () => {
       return () => {
         // When the lobby scene is torn down (e.g. navigating away),
         // also remove this user's presence row from the lobby.
+        detachPageHideListener?.();
         void removePresenceForUser({ userId, roomName: LOBBY_ROOM_NAME });
         game.destroy(true);
         gameRef.current = null;
