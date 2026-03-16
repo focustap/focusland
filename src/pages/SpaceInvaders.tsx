@@ -84,6 +84,7 @@ type GameState = {
   waveDelayMs: number;
   killsTowardFireball: number;
   fireballsReady: number;
+  duoComboDone?: boolean;
 };
 
 const ROOM_NAME = "focusland-invaders";
@@ -100,7 +101,7 @@ const INVADER_COLS = 8;
 const INVADER_SPACING_X = 60;
 const INVADER_START_X = WIDTH / 2 - ((INVADER_COLS - 1) * INVADER_SPACING_X) / 2;
 const SPACE_INVADERS_VERSION = "1.0.6";
-const NETWORK_RENDER_WINDOW_MS = 90;
+const NETWORK_RENDER_WINDOW_MS = 120;
 const PLAYER_SPEED_PER_TICK = 5.6;
 
 const DEFAULT_STATE: GameState = {
@@ -116,7 +117,8 @@ const DEFAULT_STATE: GameState = {
   message: "Waiting for two players.",
   waveDelayMs: 0,
   killsTowardFireball: 0,
-  fireballsReady: 0
+  fireballsReady: 0,
+  duoComboDone: false
 };
 
 function getPlayersFromPresence(
@@ -278,7 +280,8 @@ function buildStateForWave(players: PlayerPresence[], wave: number, fireballsRea
             : `Wave ${wave}. It gets ugly fast.`,
     waveDelayMs: 0,
     killsTowardFireball: 0,
-    fireballsReady
+    fireballsReady,
+    duoComboDone: false
   };
 }
 
@@ -628,12 +631,13 @@ const SpaceInvaders: React.FC = () => {
       const duoWave = wave === 12;
       const bossWave = rainbowBossWave || duoWave;
       const speedWave = Math.min(wave, 8);
+      const yellowWave = wave >= 9 && wave <= 11;
       const playerSpeed = 5.6;
-      const enemyStep = bossWave ? 3.8 : 1.8 + speedWave * 0.25;
-      const enemyDrop = bossWave ? 0 : 16 + speedWave * 1.2;
-      const enemyFireChance = rainbowBossWave ? 0.08 : duoWave ? 0.05 : Math.min(0.018 + speedWave * 0.004, 0.05);
+      const enemyStep = bossWave ? 3.8 : yellowWave ? 2.6 : 1.8 + speedWave * 0.25;
+      const enemyDrop = bossWave ? 0 : yellowWave ? 18 : 16 + speedWave * 1.2;
+      const enemyFireChance = rainbowBossWave ? 0.08 : duoWave ? 0.035 : yellowWave ? 0.03 : Math.min(0.018 + speedWave * 0.004, 0.05);
       const tankMissileChance =
-        bossWave ? 0 : Math.min(0.014 + Math.max(speedWave - 3, 0) * 0.004, 0.04);
+        bossWave ? 0 : yellowWave ? 0.022 : Math.min(0.014 + Math.max(speedWave - 3, 0) * 0.004, 0.04);
       const nextPlayers = Object.fromEntries(
         Object.entries(currentState.players).map(([playerId, playerState]) => [
           playerId,
@@ -654,6 +658,7 @@ const SpaceInvaders: React.FC = () => {
       let nextMessage = currentState.message;
       let nextKillsTowardFireball = currentState.killsTowardFireball;
       let nextFireballsReady = currentState.fireballsReady;
+      let nextDuoComboDone = currentState.duoComboDone ?? false;
 
       nextInvaders.forEach((invader) => {
         if (!invader.alive) return;
@@ -675,8 +680,8 @@ const SpaceInvaders: React.FC = () => {
           invader.attackCooldownMs = Math.max(0, (invader.attackCooldownMs ?? 0) - 33);
           if (invader.attackCooldownMs === 0 && nextWaveDelayMs === 0) {
             const dashDirection = invader.x < WIDTH / 2 ? 1 : -1;
-            invader.x = Math.min(Math.max(invader.x + dashDirection * 26, 30), WIDTH - 30);
-            invader.attackCooldownMs = 900 + Math.random() * 700;
+            invader.x = Math.min(Math.max(invader.x + dashDirection * 18, 30), WIDTH - 30);
+            invader.attackCooldownMs = 1350 + Math.random() * 850;
             nextEffects.push(createEffect(invader.x, invader.y, "#fde047", 14, 150));
           }
           return;
@@ -696,15 +701,20 @@ const SpaceInvaders: React.FC = () => {
               invader.attackMode = "idle";
               invader.attackCooldownMs = 2200;
             }
+          } else if (invader.attackMode === "idle") {
+            const livingTargets = currentPlayers
+              .map((player) => nextPlayers[player.userId])
+              .filter((playerState): playerState is PlayerState => Boolean(playerState?.alive));
+            if (livingTargets.length > 0) {
+              const target = livingTargets.reduce((closest, playerState) => {
+                if (!closest) return playerState;
+                return Math.abs(playerState.x - invader.x) < Math.abs(closest.x - invader.x) ? playerState : closest;
+              }, livingTargets[0]);
+              const delta = target.x - invader.x;
+              invader.x += Math.max(-2.2, Math.min(2.2, delta * 0.08));
+            }
           } else if (invader.attackCooldownMs === 0 && nextWaveDelayMs === 0) {
             invader.attackMode = "slam";
-            invader.x = currentPlayers.reduce((closestX, player) => {
-              const playerState = nextPlayers[player.userId];
-              if (!playerState?.alive) return closestX;
-              return Math.abs(playerState.x - invader.x) < Math.abs(closestX - invader.x)
-                ? playerState.x
-                : closestX;
-            }, invader.x);
             nextMessage = "The big one is dropping in.";
           }
           return;
@@ -836,7 +846,7 @@ const SpaceInvaders: React.FC = () => {
               skinny!.hp / skinny!.maxHp <= 0.35 &&
               fat!.hp / fat!.maxHp <= 0.35;
             if (skinny) {
-              const bolaSpeed = duoEnraged ? 5.8 : 4.8;
+              const bolaSpeed = duoEnraged ? 5.2 : 4.2;
               [-1.9, 1.9].forEach((vx) => {
                 nextEnemyBullets.push({
                   id: `bola-${Date.now()}-${Math.random()}-${vx}`,
@@ -853,19 +863,20 @@ const SpaceInvaders: React.FC = () => {
                 });
               });
             }
-            if (duoEnraged && fat) {
+            if (duoEnraged && fat && !nextDuoComboDone) {
               nextEnemyBullets.push({
-                id: `duo-combo-${Date.now()}-${Math.random()}`,
+                id: `duo-beam-${Date.now()}-${Math.random()}`,
                 ownerId: "enemy",
-                x: fat.x,
-                y: fat.y + fat.height / 2,
-                damage: 1,
-                width: 26,
-                height: 26,
-                speed: 5.2,
+                x: WIDTH / 2,
+                y: 60,
+                damage: 999,
+                width: 34,
+                height: 120,
+                speed: 5.4,
                 color: "#d6c38e",
                 kind: "boss"
               });
+              nextDuoComboDone = true;
               nextMessage = "The duo attacks together.";
             }
           } else {
@@ -1044,6 +1055,20 @@ const SpaceInvaders: React.FC = () => {
                   : 1;
       };
 
+      const canDefeatDuoTarget = (target: Invader) => {
+        if (!duoWave || (target.kind !== "duoFat" && target.kind !== "duoSkinny")) {
+          return true;
+        }
+        const other = nextInvaders.find(
+          (invader) =>
+            invader.alive &&
+            invader.id !== target.id &&
+            (invader.kind === "duoFat" || invader.kind === "duoSkinny")
+        );
+        const otherLow = !other || other.hp / other.maxHp <= 0.35;
+        return otherLow && nextDuoComboDone;
+      };
+
       const survivingPlayerBullets: Bullet[] = [];
       nextBullets.forEach((bullet) => {
         const hitProjectileIndex = nextEnemyBullets.findIndex(
@@ -1107,14 +1132,23 @@ const SpaceInvaders: React.FC = () => {
 
             invader.hp -= bullet.damage;
             if (invader.hp <= 0) {
-              registerInvaderKill(invader);
+              if (canDefeatDuoTarget(invader)) {
+                registerInvaderKill(invader);
+              } else {
+                invader.hp = 1;
+              }
             }
           });
         } else {
           hitEnemy.hp -= bullet.damage;
           nextEffects.push(createEffect(hitEnemy.x, hitEnemy.y, "#facc15", 10, 200));
           if (hitEnemy.hp <= 0) {
-            registerInvaderKill(hitEnemy);
+            if (canDefeatDuoTarget(hitEnemy)) {
+              registerInvaderKill(hitEnemy);
+            } else {
+              hitEnemy.hp = 1;
+              nextMessage = "They are resisting until the combo attack.";
+            }
           }
         }
       });
@@ -1167,6 +1201,14 @@ const SpaceInvaders: React.FC = () => {
         if (!hitPlayer) survivingEnemyBullets.push(bullet);
       });
       nextEnemyBullets = survivingEnemyBullets;
+
+      const activeDuoBeam = nextEnemyBullets.some((bullet) => bullet.id.startsWith("duo-beam-"));
+      if (duoWave && nextDuoComboDone && !activeDuoBeam) {
+        nextInvaders = nextInvaders.map((invader) =>
+          invader.kind === "duoFat" || invader.kind === "duoSkinny" ? { ...invader, alive: false } : invader
+        );
+        nextMessage = "You survived the duo. Moving on.";
+      }
 
       const anyEnemyReachedBottom = nextInvaders.some(
         (invader) =>
@@ -1226,7 +1268,8 @@ const SpaceInvaders: React.FC = () => {
             : nextMessage,
         waveDelayMs: nextWaveDelayMs,
         killsTowardFireball: nextKillsTowardFireball,
-        fireballsReady: nextFireballsReady
+        fireballsReady: nextFireballsReady,
+        duoComboDone: nextDuoComboDone
       };
 
       void broadcastState(nextState);
