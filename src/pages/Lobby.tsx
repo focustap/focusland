@@ -208,12 +208,12 @@ const Lobby: React.FC = () => {
             route: "/game"
           },
           {
-            name: "Shop",
+            name: "Catch Club",
             color: 0xf97316,
             rect: null,
             entranceX: width - 120,
             entranceY: height / 2,
-            route: "/shop"
+            route: "/catch"
           },
           {
             name: "Profile House",
@@ -245,7 +245,7 @@ const Lobby: React.FC = () => {
             y = 40;
           } else if (building.name === "Leaderboard") {
             y = height - 40;
-          } else if (building.name === "Shop") {
+          } else if (building.name === "Catch Club") {
             x = width - 70;
           } else if (building.name === "Profile House") {
             x = 70;
