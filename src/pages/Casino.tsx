@@ -89,6 +89,9 @@ const Casino: React.FC = () => {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const gameStateRef = useRef<CasinoState>(DEFAULT_GAME_STATE);
   const currentUserIdRef = useRef<string | null>(null);
+  const playersRef = useRef<PlayerPresence[]>([]);
+  const isHostRef = useRef(false);
+  const resolvingRoundRef = useRef(false);
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -166,6 +169,8 @@ const Casino: React.FC = () => {
         } else if (nextState.started) {
           setStatus(nextState.lastRound?.message ?? "Place your wager for the next hand.");
         }
+
+        void maybeResolveRound(nextState);
       });
 
       channel.subscribe(async (subscriptionStatus) => {
@@ -220,6 +225,35 @@ const Casino: React.FC = () => {
     return players.find((player) => player.userId !== currentUserId) ?? null;
   }, [players, currentUserId]);
 
+  useEffect(() => {
+    playersRef.current = players;
+    isHostRef.current = isHost;
+  }, [players, isHost]);
+
+  const maybeResolveRound = async (stateToCheck: CasinoState) => {
+    const currentPlayers = playersRef.current;
+
+    if (
+      resolvingRoundRef.current ||
+      !isHostRef.current ||
+      !stateToCheck.started ||
+      stateToCheck.gameOver ||
+      currentPlayers.length !== 2
+    ) {
+      return;
+    }
+
+    const bothBet = currentPlayers.every((player) => (stateToCheck.bets[player.userId] ?? 0) > 0);
+    if (bothBet) {
+      resolvingRoundRef.current = true;
+      try {
+        await resolveRound(stateToCheck);
+      } finally {
+        resolvingRoundRef.current = false;
+      }
+    }
+  };
+
   const broadcastState = async (nextState: CasinoState) => {
     setGameState(nextState);
 
@@ -263,20 +297,18 @@ const Casino: React.FC = () => {
 
     setStatus(`Wager locked at ${amount} chips.`);
     await broadcastState(nextState);
-
-    const bothBet = players.every((player) => nextState.bets[player.userId] && nextState.bets[player.userId] > 0);
-    if (isHost && bothBet) {
-      await resolveRound(nextState);
-    }
+    await maybeResolveRound(nextState);
   };
 
   const resolveRound = async (stateToResolve: CasinoState) => {
     const cards: Record<string, number> = {};
-    players.forEach((player) => {
+    const currentPlayers = playersRef.current;
+
+    currentPlayers.forEach((player) => {
       cards[player.userId] = Math.floor(Math.random() * 13) + 1;
     });
 
-    const [playerOne, playerTwo] = players;
+    const [playerOne, playerTwo] = currentPlayers;
     const wagerOne = stateToResolve.bets[playerOne.userId] ?? 0;
     const wagerTwo = stateToResolve.bets[playerTwo.userId] ?? 0;
     const chips = { ...stateToResolve.chips };
@@ -303,7 +335,7 @@ const Casino: React.FC = () => {
       chips[playerTwo.userId] += wagerTwo;
     }
 
-    const someoneBroke = players.find((player) => (chips[player.userId] ?? 0) <= 0);
+    const someoneBroke = currentPlayers.find((player) => (chips[player.userId] ?? 0) <= 0);
     const nextState: CasinoState = {
       started: !someoneBroke,
       chips,
