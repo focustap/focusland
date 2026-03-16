@@ -94,7 +94,7 @@ const BOSS_SHIELD_RESPAWN_MS = 8000;
 const INVADER_COLS = 8;
 const INVADER_SPACING_X = 60;
 const INVADER_START_X = WIDTH / 2 - ((INVADER_COLS - 1) * INVADER_SPACING_X) / 2;
-const SPACE_INVADERS_VERSION = "1.0.1";
+const SPACE_INVADERS_VERSION = "1.0.2";
 
 const DEFAULT_STATE: GameState = {
   phase: "waiting",
@@ -263,9 +263,11 @@ function getInvaderColor(invader: Invader) {
 
 function getBossWeakPoint(invader: Invader) {
   const phase = invader.weakPointPhase ?? 0;
+  const radiusX = invader.width / 2 + 18;
+  const radiusY = invader.height / 2 + 14;
   return {
-    x: invader.x + Math.cos(phase) * 44,
-    y: invader.y + Math.sin(phase * 1.35) * 12
+    x: invader.x + Math.cos(phase) * radiusX,
+    y: invader.y + Math.sin(phase) * radiusY
   };
 }
 
