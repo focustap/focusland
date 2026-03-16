@@ -94,6 +94,7 @@ const BOSS_SHIELD_RESPAWN_MS = 8000;
 const INVADER_COLS = 8;
 const INVADER_SPACING_X = 60;
 const INVADER_START_X = WIDTH / 2 - ((INVADER_COLS - 1) * INVADER_SPACING_X) / 2;
+const SPACE_INVADERS_VERSION = "1.0.1";
 
 const DEFAULT_STATE: GameState = {
   phase: "waiting",
@@ -1151,7 +1152,7 @@ const SpaceInvaders: React.FC = () => {
     <div className="page">
       <NavBar />
       <div className="content card">
-        <h2>Space Invaders</h2>
+        <h2>Space Invaders v{SPACE_INVADERS_VERSION}</h2>
         <p>Two-player co-op with purple tanks, heat-seeking missiles, fireballs, and a shielded wave 8 boss.</p>
         <div className="info">
           Seats filled: {Math.min(players.length, 2)}/2
