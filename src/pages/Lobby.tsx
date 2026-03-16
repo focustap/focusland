@@ -61,10 +61,15 @@ const Lobby: React.FC = () => {
       type Building = {
         name: string;
         color: number;
-        rect: Phaser.GameObjects.Rectangle | null;
+        body: Phaser.GameObjects.Rectangle | null;
         entranceX: number;
         entranceY: number;
         route: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        labelColor: string;
       };
 
       // This function will be called when the player reaches an entrance.
@@ -111,10 +116,38 @@ const Lobby: React.FC = () => {
         }
 
         create() {
-        // Background floor.
-        this.cameras.main.setBackgroundColor("#0f172a");
+        this.cameras.main.setBackgroundColor("#09111f");
 
-        this.add.rectangle(width / 2, height / 2, width - 40, height - 40, 0x111827);
+        this.add.rectangle(width / 2, height / 2, width - 18, height - 18, 0x152238);
+        this.add.rectangle(width / 2, height / 2, width - 36, height - 36, 0x1f7a4c);
+        this.add.rectangle(width / 2, height / 2, width - 60, height - 60, 0x3f9c5c, 0.18);
+        this.add.circle(width / 2, height / 2 + 8, 56, 0x0f172a, 0.3);
+        this.add.circle(width / 2, height / 2 + 8, 38, 0x7dd3fc, 0.85);
+        this.add.circle(width / 2, height / 2 + 8, 22, 0xe0f2fe, 0.7);
+
+        const pathColor = 0xd6c5a1;
+        this.add.rectangle(width / 2, height / 2 + 8, 380, 28, pathColor);
+        this.add.rectangle(width / 2, height / 2 + 8, 28, 250, pathColor);
+        this.add.rectangle(width / 2, height / 2 + 8, 120, 120, 0xe8dcc2);
+        this.add.rectangle(width / 2, height / 2 + 8, 88, 88, 0xf6eee0);
+
+        const addTree = (x: number, y: number) => {
+          this.add.rectangle(x, y + 18, 12, 26, 0x7c4a1c);
+          this.add.circle(x, y, 18, 0x1d7a46);
+          this.add.circle(x - 12, y + 6, 12, 0x155e37);
+          this.add.circle(x + 12, y + 6, 12, 0x2ca35e);
+        };
+
+        [
+          [182, 154],
+          [462, 154],
+          [182, 326],
+          [462, 326],
+          [250, 105],
+          [392, 105],
+          [248, 380],
+          [394, 380]
+        ].forEach(([x, y]) => addTree(x, y));
 
         const localColor = profileColorToNumber(profileColor);
 
@@ -202,74 +235,132 @@ const Lobby: React.FC = () => {
           {
             name: "Arcade",
             color: 0x22c55e,
-            rect: null,
+            body: null,
             entranceX: width / 2,
             entranceY: 80,
-            route: "/game"
+            route: "/game",
+            x: width / 2,
+            y: 68,
+            width: 120,
+            height: 70,
+            labelColor: "#082f1d"
           },
           {
             name: "Pong",
             color: 0x06b6d4,
-            rect: null,
+            body: null,
             entranceX: 120,
             entranceY: 80,
-            route: "/pong"
+            route: "/pong",
+            x: 94,
+            y: 82,
+            width: 108,
+            height: 62,
+            labelColor: "#082f49"
           },
           {
             name: "Catch Club",
             color: 0xf97316,
-            rect: null,
+            body: null,
             entranceX: width - 120,
             entranceY: height / 2,
-            route: "/catch"
+            route: "/catch",
+            x: width - 86,
+            y: height / 2 - 8,
+            width: 112,
+            height: 82,
+            labelColor: "#431407"
           },
           {
             name: "Profile House",
             color: 0x3b82f6,
-            rect: null,
+            body: null,
             entranceX: 120,
             entranceY: height / 2,
-            route: "/profile"
+            route: "/profile",
+            x: 84,
+            y: height / 2 - 8,
+            width: 108,
+            height: 82,
+            labelColor: "#172554"
           },
           {
             name: "Casino",
             color: 0xe11d48,
-            rect: null,
+            body: null,
             entranceX: width / 2,
             entranceY: height - 80,
-            route: "/casino"
+            route: "/casino",
+            x: width / 2,
+            y: height - 62,
+            width: 124,
+            height: 72,
+            labelColor: "#4c0519"
           }
         ];
 
-        // Draw buildings as simple rectangles with labels.
-        buildings.forEach((building) => {
-          let x = building.entranceX;
-          let y = building.entranceY;
-          let w = 100;
-          let h = 60;
-
-          // Adjust building position so the entrance is roughly centered on one side.
-          if (building.name === "Arcade") {
-            y = 40;
-          } else if (building.name === "Pong") {
-            x = 70;
-            y = 40;
-          } else if (building.name === "Casino") {
-            y = height - 40;
-          } else if (building.name === "Catch Club") {
-            x = width - 70;
-          } else if (building.name === "Profile House") {
-            x = 70;
-          }
-
-          const rect = this.add.rectangle(x, y, w, h, building.color);
-          building.rect = rect;
+        const drawBuilding = (building: Building) => {
+          const roofColor = Phaser.Display.Color.IntegerToColor(building.color)
+            .darken(20)
+            .color;
+          const body = this.add.rectangle(
+            building.x,
+            building.y,
+            building.width,
+            building.height,
+            building.color
+          );
+          this.add.triangle(
+            building.x,
+            building.y - building.height / 2 - 18,
+            -building.width / 2 - 6,
+            10,
+            building.width / 2 + 6,
+            10,
+            0,
+            -30,
+            roofColor
+          );
+          this.add.rectangle(
+            building.x,
+            building.y + building.height / 2 - 14,
+            22,
+            28,
+            0x5b3419
+          );
+          this.add.rectangle(
+            building.x - building.width / 4,
+            building.y + 4,
+            16,
+            18,
+            0xfef3c7
+          );
+          this.add.rectangle(
+            building.x + building.width / 4,
+            building.y + 4,
+            16,
+            18,
+            0xfef3c7
+          );
+          this.add.rectangle(
+            building.x,
+            building.y + building.height / 2 + 16,
+            72,
+            18,
+            0xf8fafc
+          );
           this.add
-            .text(rect.x, rect.y, building.name, {
-              fontSize: "14px",
-              color: "#0f172a"
+            .text(building.x, building.y + building.height / 2 + 16, building.name, {
+              fontSize: "13px",
+              color: building.labelColor,
+              fontStyle: "bold"
             })
             .setOrigin(0.5);
+          building.body = body;
+        };
+
+        buildings.forEach((building) => {
+          drawBuilding(building);
         });
 
         // Handle clicks: walk to clicked position.
@@ -280,8 +371,8 @@ const Lobby: React.FC = () => {
 
           // Check if click was inside a building; if so, set targetX to its entrance.
           for (const building of buildings) {
-            if (!building.rect) continue;
-            const bounds = building.rect.getBounds();
+            if (!building.body) continue;
+            const bounds = building.body.getBounds();
             if (bounds.contains(pointer.x, pointer.y)) {
               // Walk to the entrance of the building instead of the click point.
               targetX = building.entranceX;

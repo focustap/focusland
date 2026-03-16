@@ -1,12 +1,11 @@
 // Profile page.
-// Lets the user set a username and choose an avatar image.
+// Lets the user set a username and choose a rectangle color.
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import { DEFAULT_PROFILE_COLOR, normalizeProfileColor } from "../lib/profileColor";
 import { supabase } from "../lib/supabase";
 
-const AVATARS = ["/avatars/avatar1.png", "/avatars/avatar2.png", "/avatars/avatar3.png"];
 const PROFILE_COLORS = [
   "#38bdf8",
   "#22c55e",
@@ -18,7 +17,6 @@ const PROFILE_COLORS = [
 
 const Profile: React.FC = () => {
   const [username, setUsername] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState(AVATARS[0]);
   const [rectangleColor, setRectangleColor] = useState(DEFAULT_PROFILE_COLOR);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -38,7 +36,7 @@ const Profile: React.FC = () => {
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("username, avatar_url, color")
+          .select("username, color")
           .eq("id", session.user.id)
           .maybeSingle();
 
@@ -49,7 +47,6 @@ const Profile: React.FC = () => {
 
         if (data) {
           setUsername(data.username ?? "");
-          setAvatarUrl(data.avatar_url ?? AVATARS[0]);
           setRectangleColor(normalizeProfileColor(data.color));
         }
       } finally {
@@ -79,7 +76,6 @@ const Profile: React.FC = () => {
         {
           id: session.user.id,
           username,
-          avatar_url: avatarUrl,
           color: normalizeProfileColor(rectangleColor)
         },
         { onConflict: "id" }
@@ -118,25 +114,6 @@ const Profile: React.FC = () => {
                 placeholder="Pick a fun name"
               />
             </label>
-            <div className="field">
-              <span>Choose an avatar</span>
-              <div className="avatar-grid">
-                {AVATARS.map((url) => (
-                  <button
-                    type="button"
-                    key={url}
-                    className={
-                      url === avatarUrl
-                        ? "avatar-choice avatar-choice--selected"
-                        : "avatar-choice"
-                    }
-                    onClick={() => setAvatarUrl(url)}
-                  >
-                    <img src={url} alt="Avatar choice" />
-                  </button>
-                ))}
-              </div>
-            </div>
             <div className="field">
               <span>Rectangle color</span>
               <div className="color-preview-row">
