@@ -99,7 +99,9 @@ const BOSS_SHIELD_RESPAWN_MS = 8000;
 const INVADER_COLS = 8;
 const INVADER_SPACING_X = 60;
 const INVADER_START_X = WIDTH / 2 - ((INVADER_COLS - 1) * INVADER_SPACING_X) / 2;
-const SPACE_INVADERS_VERSION = "1.0.5";
+const SPACE_INVADERS_VERSION = "1.0.6";
+const NETWORK_RENDER_WINDOW_MS = 90;
+const PLAYER_SPEED_PER_TICK = 5.6;
 
 const DEFAULT_STATE: GameState = {
   phase: "waiting",
@@ -337,6 +339,78 @@ function getBossWeakPoint(invader: Invader) {
   };
 }
 
+function lerp(start: number, end: number, alpha: number) {
+  return start + (end - start) * alpha;
+}
+
+function interpolateById<T extends { id: string; x: number; y: number }>(
+  previousItems: T[],
+  nextItems: T[],
+  alpha: number
+) {
+  const previousById = new Map(previousItems.map((item) => [item.id, item]));
+  return nextItems.map((item) => {
+    const previous = previousById.get(item.id);
+    if (!previous) {
+      return item;
+    }
+    return {
+      ...item,
+      x: lerp(previous.x, item.x, alpha),
+      y: lerp(previous.y, item.y, alpha)
+    };
+  });
+}
+
+function buildRenderState(
+  currentState: GameState,
+  previousState: GameState | null,
+  alpha: number,
+  currentUserId: string | null,
+  isHostPlayer: boolean,
+  inputStates: Record<string, InputState>,
+  renderLeadMs: number
+) {
+  const renderState: GameState = {
+    ...currentState,
+    players: Object.fromEntries(
+      Object.entries(currentState.players).map(([playerId, playerState]) => {
+        const previousPlayer = previousState?.players[playerId];
+        const interpolatedX = previousPlayer
+          ? lerp(previousPlayer.x, playerState.x, alpha)
+          : playerState.x;
+        return [playerId, { ...playerState, x: interpolatedX }];
+      })
+    ),
+    invaders: previousState
+      ? interpolateById(previousState.invaders, currentState.invaders, alpha)
+      : currentState.invaders,
+    bullets: previousState
+      ? interpolateById(previousState.bullets, currentState.bullets, alpha)
+      : currentState.bullets,
+    enemyBullets: previousState
+      ? interpolateById(previousState.enemyBullets, currentState.enemyBullets, alpha)
+      : currentState.enemyBullets,
+    effects: previousState
+      ? interpolateById(previousState.effects, currentState.effects, alpha)
+      : currentState.effects
+  };
+
+  if (!isHostPlayer && currentUserId) {
+    const localPlayer = renderState.players[currentUserId];
+    const input = inputStates[currentUserId];
+    if (localPlayer?.alive && input) {
+      const direction = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+      if (direction !== 0) {
+        const predictedOffset = direction * PLAYER_SPEED_PER_TICK * (renderLeadMs / 33);
+        localPlayer.x = Math.min(Math.max(localPlayer.x + predictedOffset, 20), WIDTH - 20);
+      }
+    }
+  }
+
+  return renderState;
+}
+
 const SpaceInvaders: React.FC = () => {
   const [players, setPlayers] = useState<PlayerPresence[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -351,8 +425,11 @@ const SpaceInvaders: React.FC = () => {
   const currentUserIdRef = useRef<string | null>(null);
   const inputStatesRef = useRef<Record<string, InputState>>({});
   const tickRef = useRef<number | null>(null);
+  const renderFrameRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const previousStateRef = useRef<GameState>(DEFAULT_STATE);
+  const previousNetworkStateRef = useRef<GameState | null>(null);
+  const lastNetworkStateAtRef = useRef<number>(performance.now());
 
   const isSeated = currentUserId
     ? players.some((player) => player.userId === currentUserId)
@@ -417,6 +494,8 @@ const SpaceInvaders: React.FC = () => {
   };
 
   const broadcastState = async (nextState: GameState) => {
+    previousNetworkStateRef.current = stateRef.current;
+    lastNetworkStateAtRef.current = performance.now();
     setGameState(nextState);
     if (channelRef.current) {
       await channelRef.current.send({
@@ -470,6 +549,8 @@ const SpaceInvaders: React.FC = () => {
       channel.on("presence", { event: "sync" }, syncPresence);
       channel.on("broadcast", { event: "invaders-state" }, ({ payload }) => {
         const nextState = payload as GameState;
+        previousNetworkStateRef.current = stateRef.current;
+        lastNetworkStateAtRef.current = performance.now();
         setGameState(nextState);
         stateRef.current = nextState;
       });
@@ -515,6 +596,10 @@ const SpaceInvaders: React.FC = () => {
       if (audioContextRef.current) {
         void audioContextRef.current.close();
         audioContextRef.current = null;
+      }
+      if (renderFrameRef.current) {
+        window.cancelAnimationFrame(renderFrameRef.current);
+        renderFrameRef.current = null;
       }
       const channel = channelRef.current;
       if (channel) {
@@ -1230,19 +1315,37 @@ const SpaceInvaders: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, WIDTH, HEIGHT);
-    ctx.fillStyle = "#040712";
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    const draw = () => {
+      const currentState = stateRef.current;
+      const previousState = previousNetworkStateRef.current;
+      const renderLeadMs = Math.min(
+        Math.max(performance.now() - lastNetworkStateAtRef.current, 0),
+        NETWORK_RENDER_WINDOW_MS
+      );
+      const alpha = previousState ? Math.min(renderLeadMs / NETWORK_RENDER_WINDOW_MS, 1) : 1;
+      const renderState = buildRenderState(
+        currentState,
+        previousState,
+        alpha,
+        currentUserIdRef.current,
+        Boolean(currentUserIdRef.current && playersRef.current[0]?.userId === currentUserIdRef.current),
+        inputStatesRef.current,
+        renderLeadMs
+      );
 
-    for (let i = 0; i < 60; i += 1) {
-      ctx.fillStyle = i % 8 === 0 ? "#93c5fd" : "#e2e8f0";
-      ctx.fillRect((i * 83) % WIDTH, (i * 59) % HEIGHT, 2, 2);
-    }
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+      ctx.fillStyle = "#040712";
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    ctx.strokeStyle = "#1e293b";
-    ctx.strokeRect(10, 10, WIDTH - 20, HEIGHT - 20);
+      for (let i = 0; i < 60; i += 1) {
+        ctx.fillStyle = i % 8 === 0 ? "#93c5fd" : "#e2e8f0";
+        ctx.fillRect((i * 83) % WIDTH, (i * 59) % HEIGHT, 2, 2);
+      }
 
-    gameState.invaders.forEach((invader) => {
+      ctx.strokeStyle = "#1e293b";
+      ctx.strokeRect(10, 10, WIDTH - 20, HEIGHT - 20);
+
+      renderState.invaders.forEach((invader) => {
       if (!invader.alive) return;
 
       if (invader.kind === "boss") {
@@ -1343,9 +1446,9 @@ const SpaceInvaders: React.FC = () => {
         ctx.fillStyle = "#f8fafc";
         ctx.fillText(String(invader.hp), invader.x - 4, invader.y - 14);
       }
-    });
+      });
 
-    gameState.bullets.forEach((bullet) => {
+      renderState.bullets.forEach((bullet) => {
       ctx.fillStyle = bullet.color;
       ctx.fillRect(
         bullet.x - bullet.width / 2,
@@ -1359,9 +1462,9 @@ const SpaceInvaders: React.FC = () => {
         ctx.arc(bullet.x, bullet.y, 10, 0, Math.PI * 2);
         ctx.fill();
       }
-    });
+      });
 
-    gameState.enemyBullets.forEach((bullet) => {
+      renderState.enemyBullets.forEach((bullet) => {
       ctx.fillStyle = bullet.color;
       if (bullet.kind === "missile") {
         ctx.beginPath();
@@ -1392,9 +1495,9 @@ const SpaceInvaders: React.FC = () => {
           bullet.height
         );
       }
-    });
+      });
 
-    gameState.effects.forEach((effect) => {
+      renderState.effects.forEach((effect) => {
       const alpha = Math.max(effect.ttlMs / 320, 0.15);
       ctx.globalAlpha = alpha;
       ctx.fillStyle = effect.color;
@@ -1402,10 +1505,10 @@ const SpaceInvaders: React.FC = () => {
       ctx.arc(effect.x, effect.y, effect.radius * (1.25 - alpha), 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
-    });
+      });
 
-    players.forEach((player, index) => {
-      const playerState = gameState.players[player.userId];
+      playersRef.current.forEach((player, index) => {
+      const playerState = renderState.players[player.userId];
       if (!playerState?.alive) return;
       if (playerState.flashMs > 0 && Math.floor(playerState.flashMs / 100) % 2 === 0) return;
 
@@ -1418,21 +1521,32 @@ const SpaceInvaders: React.FC = () => {
       );
       ctx.fillStyle = "#e2e8f0";
       ctx.fillRect(playerState.x - 6, SHIP_Y - SHIP_HEIGHT / 2 - 6, 12, 8);
-    });
+      });
 
-    ctx.fillStyle = "#e2e8f0";
-    ctx.font = "18px monospace";
-    ctx.fillText(`Score ${gameState.score}`, 22, 28);
-    ctx.fillText(`Wave ${gameState.wave}`, WIDTH / 2 - 42, 28);
-    ctx.fillText(`Fireballs ${gameState.fireballsReady}`, WIDTH - 170, 28);
+      ctx.fillStyle = "#e2e8f0";
+      ctx.font = "18px monospace";
+      ctx.fillText(`Score ${renderState.score}`, 22, 28);
+      ctx.fillText(`Wave ${renderState.wave}`, WIDTH / 2 - 42, 28);
+      ctx.fillText(`Fireballs ${renderState.fireballsReady}`, WIDTH - 170, 28);
 
-    players.forEach((player, index) => {
-      const playerState = gameState.players[player.userId];
+      playersRef.current.forEach((player, index) => {
+      const playerState = renderState.players[player.userId];
       const lives = playerState?.lives ?? STARTING_LIVES;
       ctx.fillStyle = index === 0 ? "#38bdf8" : "#f97316";
       ctx.fillText(`${player.username}: ${lives}`, 22 + index * 260, HEIGHT - 14);
-    });
-  }, [gameState, players]);
+      });
+
+      renderFrameRef.current = window.requestAnimationFrame(draw);
+    };
+
+    renderFrameRef.current = window.requestAnimationFrame(draw);
+    return () => {
+      if (renderFrameRef.current) {
+        window.cancelAnimationFrame(renderFrameRef.current);
+        renderFrameRef.current = null;
+      }
+    };
+  }, []);
 
   const startGame = async () => {
     ensureAudio();
