@@ -8,8 +8,8 @@ type PlayerPresence = {
   onlineAt: string;
 };
 
-type InvaderKind = "normal" | "tank" | "boss";
-type BulletKind = "player" | "fireball" | "enemy" | "missile" | "boss";
+type InvaderKind = "normal" | "tank" | "yellow" | "boss" | "duoFat" | "duoSkinny";
+type BulletKind = "player" | "fireball" | "enemy" | "missile" | "bola" | "boss";
 
 type Invader = {
   id: string;
@@ -24,6 +24,10 @@ type Invader = {
   shieldActive?: boolean;
   shieldCooldownMs?: number;
   weakPointPhase?: number;
+  homeX?: number;
+  homeY?: number;
+  attackMode?: "idle" | "slam" | "return";
+  attackCooldownMs?: number;
 };
 
 type Bullet = {
@@ -94,7 +98,7 @@ const BOSS_SHIELD_RESPAWN_MS = 8000;
 const INVADER_COLS = 8;
 const INVADER_SPACING_X = 60;
 const INVADER_START_X = WIDTH / 2 - ((INVADER_COLS - 1) * INVADER_SPACING_X) / 2;
-const SPACE_INVADERS_VERSION = "1.0.2";
+const SPACE_INVADERS_VERSION = "1.0.3";
 
 const DEFAULT_STATE: GameState = {
   phase: "waiting",
@@ -153,9 +157,45 @@ function createWaveInvaders(wave: number): Invader[] {
     ];
   }
 
+  if (wave === 12) {
+    return [
+      {
+        id: "duo-fat",
+        x: WIDTH * 0.33,
+        y: 96,
+        alive: true,
+        kind: "duoFat",
+        hp: 130,
+        maxHp: 130,
+        width: 94,
+        height: 64,
+        homeX: WIDTH * 0.33,
+        homeY: 96,
+        attackMode: "idle",
+        attackCooldownMs: 1800
+      },
+      {
+        id: "duo-skinny",
+        x: WIDTH * 0.67,
+        y: 92,
+        alive: true,
+        kind: "duoSkinny",
+        hp: 90,
+        maxHp: 90,
+        width: 38,
+        height: 78,
+        homeX: WIDTH * 0.67,
+        homeY: 92,
+        attackMode: "idle",
+        attackCooldownMs: 0
+      }
+    ];
+  }
+
   const rows = Math.min(4 + Math.floor((wave - 1) / 2), 6);
   const cols = INVADER_COLS;
   const tankCount = wave >= 3 ? Math.min(2 + Math.floor((wave - 3) / 2), 6) : 0;
+  const yellowCount = wave >= 9 && wave <= 11 ? Math.min(2 + (wave - 9), 4) : 0;
   const tankSlots: Array<{ row: number; col: number }> = [
     { row: 0, col: 2 },
     { row: 0, col: 5 },
@@ -164,22 +204,31 @@ function createWaveInvaders(wave: number): Invader[] {
     { row: 0, col: 3 },
     { row: 0, col: 4 }
   ];
+  const yellowSlots: Array<{ row: number; col: number }> = [
+    { row: 0, col: 0 },
+    { row: 0, col: 7 },
+    { row: 1, col: 3 },
+    { row: 1, col: 4 }
+  ];
   const activeTankSlots = tankSlots.slice(0, Math.min(tankCount, rows > 1 ? tankSlots.length : 2));
+  const activeYellowSlots = yellowSlots.slice(0, Math.min(yellowCount, rows > 1 ? yellowSlots.length : 2));
   const invaders: Invader[] = [];
 
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
       const isTank = activeTankSlots.some((slot) => slot.row === row && slot.col === col);
+      const isYellow = activeYellowSlots.some((slot) => slot.row === row && slot.col === col);
       invaders.push({
         id: `wave-${wave}-enemy-${row}-${col}`,
         x: INVADER_START_X + col * INVADER_SPACING_X,
         y: 70 + row * 36,
         alive: true,
-        kind: isTank ? "tank" : "normal",
-        hp: isTank ? 3 : 1,
-        maxHp: isTank ? 3 : 1,
-        width: isTank ? 56 : 28,
-        height: isTank ? 36 : 18
+        kind: isTank ? "tank" : isYellow ? "yellow" : "normal",
+        hp: isTank ? 3 : isYellow ? 2 : 1,
+        maxHp: isTank ? 3 : isYellow ? 2 : 1,
+        width: isTank ? 56 : isYellow ? 22 : 28,
+        height: isTank ? 36 : isYellow ? 22 : 18,
+        attackCooldownMs: isYellow ? 600 + row * 180 + col * 45 : 0
       });
     }
   }
@@ -257,6 +306,9 @@ function playTone(
 
 function getInvaderColor(invader: Invader) {
   if (invader.kind === "tank") return "#a855f7";
+  if (invader.kind === "yellow") return "#facc15";
+  if (invader.kind === "duoFat") return "#f1e5c8";
+  if (invader.kind === "duoSkinny") return "#1f1726";
   if (invader.kind === "boss") return "#f43f5e";
   return "#22c55e";
 }
@@ -473,12 +525,17 @@ const SpaceInvaders: React.FC = () => {
 
       const currentPlayers = playersRef.current;
       const wave = currentState.wave;
-      const bossWave = wave === 8;
+      const rainbowBossWave = wave === 8;
+      const duoWave = wave === 12;
+      const bossWave = rainbowBossWave || duoWave;
+      const speedWave = Math.min(wave, 8);
       const playerSpeed = 5.6;
-      const enemyStep = bossWave ? 3.8 : 1.8 + wave * 0.35;
-      const enemyDrop = bossWave ? 0 : 16 + wave * 1.5;
-      const enemyFireChance = bossWave ? 0.08 : Math.min(0.018 + wave * 0.004, 0.07);
-      const tankMissileChance = bossWave ? 0 : Math.min(0.014 + Math.max(wave - 3, 0) * 0.004, 0.05);
+      const enemyStep = bossWave ? 3.8 : 1.8 + speedWave * 0.25;
+      const enemyDrop = bossWave ? 0 : 16 + speedWave * 1.2;
+      const enemyFireChance = rainbowBossWave ? 0.08 : duoWave ? 0.05 : Math.min(0.018 + speedWave * 0.004, 0.05);
+      const tankMissileChance =
+        bossWave ? 0 : Math.min(0.014 + Math.max(speedWave - 3, 0) * 0.004, 0.04);
+      const yellowBurstChance = wave >= 9 && wave <= 11 ? 0.018 + (wave - 9) * 0.008 : 0;
 
       const nextPlayers = Object.fromEntries(
         Object.entries(currentState.players).map(([playerId, playerState]) => [
@@ -502,15 +559,64 @@ const SpaceInvaders: React.FC = () => {
       let nextFireballsReady = currentState.fireballsReady;
 
       nextInvaders.forEach((invader) => {
-        if (invader.kind !== "boss" || !invader.alive) return;
-        invader.weakPointPhase = (invader.weakPointPhase ?? 0) + 0.06;
-        if (!invader.shieldActive) {
-          invader.shieldCooldownMs = Math.max(0, (invader.shieldCooldownMs ?? 0) - 33);
-          if (invader.shieldCooldownMs === 0) {
-            invader.shieldActive = true;
-            nextEffects.push(createEffect(invader.x, invader.y, "#60a5fa", 46, 320));
-            nextMessage = "Boss shield restored.";
+        if (!invader.alive) return;
+
+        if (invader.kind === "boss") {
+          invader.weakPointPhase = (invader.weakPointPhase ?? 0) + 0.06;
+          if (!invader.shieldActive) {
+            invader.shieldCooldownMs = Math.max(0, (invader.shieldCooldownMs ?? 0) - 33);
+            if (invader.shieldCooldownMs === 0) {
+              invader.shieldActive = true;
+              nextEffects.push(createEffect(invader.x, invader.y, "#60a5fa", 46, 320));
+              nextMessage = "Boss shield restored.";
+            }
           }
+          return;
+        }
+
+        if (invader.kind === "yellow") {
+          invader.attackCooldownMs = Math.max(0, (invader.attackCooldownMs ?? 0) - 33);
+          if (invader.attackCooldownMs === 0 && nextWaveDelayMs === 0) {
+            const dashDirection = invader.x < WIDTH / 2 ? 1 : -1;
+            invader.x = Math.min(Math.max(invader.x + dashDirection * 26, 30), WIDTH - 30);
+            invader.attackCooldownMs = 900 + Math.random() * 700;
+            nextEffects.push(createEffect(invader.x, invader.y, "#fde047", 14, 150));
+          }
+          return;
+        }
+
+        if (invader.kind === "duoFat") {
+          invader.attackCooldownMs = Math.max(0, (invader.attackCooldownMs ?? 0) - 33);
+          if (invader.attackMode === "slam") {
+            invader.y = Math.min(invader.y + 7.4, SHIP_Y - 48);
+            if (invader.y >= SHIP_Y - 48) {
+              invader.attackMode = "return";
+              nextEffects.push(createEffect(invader.x, SHIP_Y - 10, "#f8d7a6", 28, 250));
+            }
+          } else if (invader.attackMode === "return") {
+            invader.y = Math.max(invader.y - 5.2, invader.homeY ?? 96);
+            if (invader.y <= (invader.homeY ?? 96)) {
+              invader.attackMode = "idle";
+              invader.attackCooldownMs = 2200;
+            }
+          } else if (invader.attackCooldownMs === 0 && nextWaveDelayMs === 0) {
+            invader.attackMode = "slam";
+            invader.x = currentPlayers.reduce((closestX, player) => {
+              const playerState = nextPlayers[player.userId];
+              if (!playerState?.alive) return closestX;
+              return Math.abs(playerState.x - invader.x) < Math.abs(closestX - invader.x)
+                ? playerState.x
+                : closestX;
+            }, invader.x);
+            nextMessage = "The big one is dropping in.";
+          }
+          return;
+        }
+
+        if (invader.kind === "duoSkinny") {
+          invader.attackCooldownMs = Math.max(0, (invader.attackCooldownMs ?? 0) - 33);
+          invader.weakPointPhase = (invader.weakPointPhase ?? 0) + 0.08;
+          invader.x = (invader.homeX ?? invader.x) + Math.sin(invader.weakPointPhase) * 34;
         }
       });
 
@@ -570,11 +676,11 @@ const SpaceInvaders: React.FC = () => {
             damage: 1,
             width: 4,
             height: 12,
-            speed: 8.2 + wave * 0.25,
+            speed: 8.2 + speedWave * 0.2,
             color: "#f8fafc",
             kind: "player"
           });
-          playerState.cooldownMs = Math.max(120, 340 - wave * 18);
+          playerState.cooldownMs = Math.max(120, 340 - speedWave * 18);
         }
       });
 
@@ -582,6 +688,9 @@ const SpaceInvaders: React.FC = () => {
         let hitEdge = false;
         nextInvaders = nextInvaders.map((invader) => {
           if (!invader.alive) return invader;
+          if (invader.kind === "duoFat" || invader.kind === "duoSkinny") {
+            return invader;
+          }
           const nextX = invader.x + nextDirection * enemyStep;
           if (invader.kind === "boss") {
             if (nextX <= 110 || nextX >= WIDTH - 110) hitEdge = true;
@@ -595,6 +704,7 @@ const SpaceInvaders: React.FC = () => {
           nextDirection = nextDirection === 1 ? -1 : 1;
           nextInvaders = nextInvaders.map((invader) => {
             if (!invader.alive) return invader;
+            if (invader.kind === "duoFat" || invader.kind === "duoSkinny") return invader;
             return {
               ...invader,
               x: invader.x + nextDirection * enemyStep,
@@ -605,7 +715,7 @@ const SpaceInvaders: React.FC = () => {
 
         if (Math.random() < enemyFireChance) {
           const livingInvaders = nextInvaders.filter((invader) => invader.alive);
-          if (bossWave) {
+          if (rainbowBossWave) {
             const boss = livingInvaders[0];
             if (boss) {
               nextEnemyBullets.push({
@@ -620,6 +730,46 @@ const SpaceInvaders: React.FC = () => {
                 color: "#f43f5e",
                 kind: "boss"
               });
+            }
+          } else if (duoWave) {
+            const skinny = livingInvaders.find((invader) => invader.kind === "duoSkinny");
+            const fat = livingInvaders.find((invader) => invader.kind === "duoFat");
+            const duoEnraged =
+              Boolean(skinny && fat) &&
+              skinny!.hp / skinny!.maxHp <= 0.35 &&
+              fat!.hp / fat!.maxHp <= 0.35;
+            if (skinny) {
+              const bolaSpeed = duoEnraged ? 5.8 : 4.8;
+              [-1.9, 1.9].forEach((vx) => {
+                nextEnemyBullets.push({
+                  id: `bola-${Date.now()}-${Math.random()}-${vx}`,
+                  ownerId: "enemy",
+                  x: skinny.x,
+                  y: skinny.y + 10,
+                  damage: 1,
+                  width: duoEnraged ? 16 : 12,
+                  height: duoEnraged ? 16 : 12,
+                  speed: bolaSpeed,
+                  color: "#f4f1ea",
+                  kind: "bola",
+                  vx
+                });
+              });
+            }
+            if (duoEnraged && fat) {
+              nextEnemyBullets.push({
+                id: `duo-combo-${Date.now()}-${Math.random()}`,
+                ownerId: "enemy",
+                x: fat.x,
+                y: fat.y + fat.height / 2,
+                damage: 1,
+                width: 26,
+                height: 26,
+                speed: 5.2,
+                color: "#d6c38e",
+                kind: "boss"
+              });
+              nextMessage = "The duo attacks together.";
             }
           } else {
             const bottomByColumn = new Map<number, Invader>();
@@ -641,8 +791,9 @@ const SpaceInvaders: React.FC = () => {
                 damage: 1,
                 width: 4,
                 height: 12,
-                speed: 4.4 + wave * 0.32,
-                color: shooter.kind === "tank" ? "#c084fc" : "#fb7185",
+                speed: 4.4 + speedWave * 0.22,
+                color:
+                  shooter.kind === "tank" ? "#c084fc" : shooter.kind === "yellow" ? "#fde047" : "#fb7185",
                 kind: "enemy"
               });
             }
@@ -671,10 +822,32 @@ const SpaceInvaders: React.FC = () => {
               damage: 1,
               width: 12,
               height: 18,
-              speed: 3.2 + wave * 0.16,
+              speed: 3.2 + speedWave * 0.16,
               color: "#c084fc",
               kind: "missile",
               vx: horizontalDirection * 1.6
+            });
+          }
+        }
+
+        if (yellowBurstChance > 0 && Math.random() < yellowBurstChance) {
+          const yellowShooters = nextInvaders.filter((invader) => invader.alive && invader.kind === "yellow");
+          if (yellowShooters.length > 0) {
+            const shooter = yellowShooters[Math.floor(Math.random() * yellowShooters.length)];
+            [-1.7, 0, 1.7].forEach((vx) => {
+              nextEnemyBullets.push({
+                id: `yellow-burst-${Date.now()}-${Math.random()}-${vx}`,
+                ownerId: "enemy",
+                x: shooter.x,
+                y: shooter.y + shooter.height / 2,
+                damage: 1,
+                width: 6,
+                height: 10,
+                speed: 4.6,
+                color: "#fde047",
+                kind: "enemy",
+                vx
+              });
             });
           }
         }
@@ -685,8 +858,19 @@ const SpaceInvaders: React.FC = () => {
         .filter((bullet) => bullet.y > -30);
       nextEnemyBullets = nextEnemyBullets
         .map((bullet) => {
+          if (bullet.kind === "bola") {
+            const currentVx = bullet.vx ?? 0;
+            const nextVx = currentVx * 0.98 + Math.sign(currentVx || 1) * 0.08;
+            return {
+              ...bullet,
+              x: bullet.x + nextVx,
+              y: bullet.y + bullet.speed,
+              vx: nextVx
+            };
+          }
+
           if (bullet.kind !== "missile") {
-            return { ...bullet, y: bullet.y + bullet.speed };
+            return { ...bullet, x: bullet.x + (bullet.vx ?? 0), y: bullet.y + bullet.speed };
           }
 
           const livingTargets = currentPlayers
@@ -710,11 +894,51 @@ const SpaceInvaders: React.FC = () => {
         })
         .filter((bullet) => bullet.y < HEIGHT + 30);
 
+      nextInvaders.forEach((invader) => {
+        if (invader.kind !== "duoFat" || !invader.alive || invader.attackMode !== "slam") return;
+        currentPlayers.forEach((player) => {
+          const playerState = nextPlayers[player.userId];
+          if (!playerState?.alive || playerState.flashMs > 0) return;
+          const slamHit =
+            Math.abs(playerState.x - invader.x) < (SHIP_WIDTH + invader.width * 0.55) / 2 &&
+            Math.abs(SHIP_Y - invader.y) < (SHIP_HEIGHT + invader.height) / 2;
+          if (!slamHit) return;
+          playerState.lives = Math.max(0, playerState.lives - 1);
+          playerState.alive = false;
+          playerState.respawnMs = playerState.lives > 0 ? 1800 : 0;
+          nextEffects.push(createEffect(playerState.x, SHIP_Y, "#f8d7a6", 22, 220));
+          nextMessage =
+            playerState.lives > 0
+              ? `${player.username} got flattened. ${playerState.lives} lives left.`
+              : `${player.username} is out.`;
+        });
+      });
+
       const registerInvaderKill = (invader: Invader) => {
         if (!invader.alive) return;
         invader.alive = false;
-        nextScore += invader.kind === "boss" ? 500 : invader.kind === "tank" ? 30 : 10;
-        nextKillsTowardFireball += invader.kind === "boss" ? 8 : invader.kind === "tank" ? 3 : 1;
+        nextScore +=
+          invader.kind === "boss"
+            ? 500
+            : invader.kind === "duoFat"
+              ? 320
+              : invader.kind === "duoSkinny"
+                ? 280
+                : invader.kind === "tank"
+                  ? 30
+                  : invader.kind === "yellow"
+                    ? 25
+                    : 10;
+        nextKillsTowardFireball +=
+          invader.kind === "boss"
+            ? 8
+            : invader.kind === "duoFat" || invader.kind === "duoSkinny"
+              ? 6
+              : invader.kind === "tank"
+                ? 3
+                : invader.kind === "yellow"
+                  ? 2
+                  : 1;
       };
 
       const survivingPlayerBullets: Bullet[] = [];
@@ -842,7 +1066,11 @@ const SpaceInvaders: React.FC = () => {
       nextEnemyBullets = survivingEnemyBullets;
 
       const anyEnemyReachedBottom = nextInvaders.some(
-        (invader) => invader.alive && invader.y >= SHIP_Y - 20
+        (invader) =>
+          invader.alive &&
+          invader.kind !== "duoFat" &&
+          invader.kind !== "duoSkinny" &&
+          invader.y >= SHIP_Y - 20
       );
       const playersStillInRun = currentPlayers.some(
         (player) =>
@@ -865,7 +1093,14 @@ const SpaceInvaders: React.FC = () => {
             340
           )
         );
-        nextMessage = nextWave === 8 ? "Boss wave. Good luck." : `Wave ${nextWave}. It gets worse.`;
+        nextMessage =
+          nextWave === 8
+            ? "Boss wave. Good luck."
+            : nextWave >= 9 && nextWave <= 11
+              ? `Wave ${nextWave}. Yellow blinkers incoming.`
+              : nextWave === 12
+                ? "Wave 12. The duo has arrived."
+                : `Wave ${nextWave}. It gets worse.`;
       }
 
       const nextPhase = anyEnemyReachedBottom || !playersStillInRun ? "gameOver" : "playing";
@@ -1040,6 +1275,37 @@ const SpaceInvaders: React.FC = () => {
         return;
       }
 
+      if (invader.kind === "duoFat") {
+        ctx.fillStyle = "#f3e4be";
+        ctx.beginPath();
+        ctx.ellipse(invader.x, invader.y, invader.width / 2, invader.height / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#111827";
+        ctx.fillRect(invader.x - 18, invader.y - 10, 9, 9);
+        ctx.fillRect(invader.x + 9, invader.y - 10, 9, 9);
+        ctx.fillRect(invader.x - 14, invader.y + 12, 28, 10);
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillRect(invader.x - 44, invader.y - invader.height / 2 - 14, 88, 7);
+        ctx.fillStyle = "#d4a373";
+        ctx.fillRect(invader.x - 44, invader.y - invader.height / 2 - 14, 88 * (invader.hp / invader.maxHp), 7);
+        return;
+      }
+
+      if (invader.kind === "duoSkinny") {
+        ctx.fillStyle = "#211827";
+        ctx.fillRect(invader.x - invader.width / 2, invader.y - invader.height / 2, invader.width, invader.height);
+        ctx.fillStyle = "#f5efe2";
+        ctx.fillRect(invader.x - 8, invader.y - 20, 16, 16);
+        ctx.fillStyle = "#111827";
+        ctx.fillRect(invader.x - 6, invader.y - 18, 3, 3);
+        ctx.fillRect(invader.x + 3, invader.y - 18, 3, 3);
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillRect(invader.x - 26, invader.y - invader.height / 2 - 14, 52, 7);
+        ctx.fillStyle = "#a78bfa";
+        ctx.fillRect(invader.x - 26, invader.y - invader.height / 2 - 14, 52 * (invader.hp / invader.maxHp), 7);
+        return;
+      }
+
       ctx.fillStyle = getInvaderColor(invader);
       ctx.fillRect(
         invader.x - invader.width / 2,
@@ -1047,12 +1313,17 @@ const SpaceInvaders: React.FC = () => {
         invader.width,
         invader.height
       );
-      ctx.fillStyle = invader.kind === "tank" ? "#581c87" : "#052e16";
+      ctx.fillStyle = invader.kind === "tank" ? "#581c87" : invader.kind === "yellow" ? "#713f12" : "#052e16";
       ctx.fillRect(invader.x - 8, invader.y + 2, 4, 6);
       ctx.fillRect(invader.x + 4, invader.y + 2, 4, 6);
       if (invader.kind === "tank") {
         ctx.fillStyle = "#f8fafc";
         ctx.fillText(String(invader.hp), invader.x - 4, invader.y - 10);
+      } else if (invader.kind === "yellow") {
+        ctx.fillStyle = "#78350f";
+        ctx.fillRect(invader.x - 3, invader.y - 11, 6, 6);
+        ctx.fillStyle = "#f8fafc";
+        ctx.fillText(String(invader.hp), invader.x - 4, invader.y - 14);
       }
     });
 
@@ -1084,6 +1355,17 @@ const SpaceInvaders: React.FC = () => {
         ctx.fill();
         ctx.fillStyle = "#f8fafc";
         ctx.fillRect(bullet.x - 2, bullet.y + 1, 4, 7);
+      } else if (bullet.kind === "bola") {
+        ctx.beginPath();
+        ctx.arc(bullet.x - 5, bullet.y, bullet.width / 3, 0, Math.PI * 2);
+        ctx.arc(bullet.x + 5, bullet.y, bullet.width / 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#cbd5e1";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bullet.x - 5, bullet.y);
+        ctx.lineTo(bullet.x + 5, bullet.y);
+        ctx.stroke();
       } else {
         ctx.fillRect(
           bullet.x - bullet.width / 2,
@@ -1155,7 +1437,7 @@ const SpaceInvaders: React.FC = () => {
       <NavBar />
       <div className="content card">
         <h2>Space Invaders v{SPACE_INVADERS_VERSION}</h2>
-        <p>Two-player co-op with purple tanks, heat-seeking missiles, fireballs, and a shielded wave 8 boss.</p>
+        <p>Two-player co-op with tanks, blinkers, fireballs, a shielded wave 8 boss, and a brutal wave 12 duo.</p>
         <div className="info">
           Seats filled: {Math.min(players.length, 2)}/2
           {connected && !roomFull ? ` | ${currentUsername}` : ""}
@@ -1187,7 +1469,7 @@ const SpaceInvaders: React.FC = () => {
             />
             <p className="info">{gameState.message}</p>
             <p>
-              Purple tanks fire heat-seeking missiles you can dodge or shoot. The boss shield only breaks if you hit the moving weak point, and it comes back after 8 seconds. Kill 40 enemies to charge a fireball. Press `Space` to launch it. Use `W` or `Arrow Up` for normal shots.
+              Purple tanks fire heat-seeking missiles you can dodge or shoot. Waves 9-11 add yellow blinkers that dash and burst shots. The wave 8 boss shield only breaks if you hit the moving weak point, and it comes back after 8 seconds. Wave 12 is a two-boss fight. Kill 40 enemies to charge a fireball. Press `Space` to launch it. Use `W` or `Arrow Up` for normal shots.
             </p>
             <p>{currentUsername} and {opponent?.username ?? "your co-pilot"} defend the bottom line.</p>
             {gameState.phase === "waiting" && isHost && (
