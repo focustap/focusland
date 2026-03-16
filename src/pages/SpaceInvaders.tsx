@@ -21,6 +21,9 @@ type Invader = {
   maxHp: number;
   width: number;
   height: number;
+  shieldActive?: boolean;
+  shieldCooldownMs?: number;
+  weakPointPhase?: number;
 };
 
 type Bullet = {
@@ -87,6 +90,7 @@ const SHIP_HEIGHT = 18;
 const STARTING_LIVES = 3;
 const FIREBALL_KILL_REQUIREMENT = 40;
 const FIREBALL_SPLASH_RADIUS = 60;
+const BOSS_SHIELD_RESPAWN_MS = 8000;
 const INVADER_COLS = 8;
 const INVADER_SPACING_X = 60;
 const INVADER_START_X = WIDTH / 2 - ((INVADER_COLS - 1) * INVADER_SPACING_X) / 2;
@@ -140,7 +144,10 @@ function createWaveInvaders(wave: number): Invader[] {
         hp: 100,
         maxHp: 100,
         width: 150,
-        height: 58
+        height: 58,
+        shieldActive: true,
+        shieldCooldownMs: 0,
+        weakPointPhase: 0
       }
     ];
   }
@@ -251,6 +258,14 @@ function getInvaderColor(invader: Invader) {
   if (invader.kind === "tank") return "#a855f7";
   if (invader.kind === "boss") return "#f43f5e";
   return "#22c55e";
+}
+
+function getBossWeakPoint(invader: Invader) {
+  const phase = invader.weakPointPhase ?? 0;
+  return {
+    x: invader.x + Math.cos(phase) * 44,
+    y: invader.y + Math.sin(phase * 1.35) * 12
+  };
 }
 
 const SpaceInvaders: React.FC = () => {
@@ -482,6 +497,19 @@ const SpaceInvaders: React.FC = () => {
       let nextMessage = currentState.message;
       let nextKillsTowardFireball = currentState.killsTowardFireball;
       let nextFireballsReady = currentState.fireballsReady;
+
+      nextInvaders.forEach((invader) => {
+        if (invader.kind !== "boss" || !invader.alive) return;
+        invader.weakPointPhase = (invader.weakPointPhase ?? 0) + 0.06;
+        if (!invader.shieldActive) {
+          invader.shieldCooldownMs = Math.max(0, (invader.shieldCooldownMs ?? 0) - 33);
+          if (invader.shieldCooldownMs === 0) {
+            invader.shieldActive = true;
+            nextEffects.push(createEffect(invader.x, invader.y, "#60a5fa", 46, 320));
+            nextMessage = "Boss shield restored.";
+          }
+        }
+      });
 
       currentPlayers.forEach((player) => {
         const playerState = nextPlayers[player.userId];
@@ -721,11 +749,28 @@ const SpaceInvaders: React.FC = () => {
           return;
         }
 
+        if (hitEnemy.kind === "boss" && hitEnemy.shieldActive) {
+          const weakPoint = getBossWeakPoint(hitEnemy);
+          const hitWeakPoint =
+            Math.hypot(bullet.x - weakPoint.x, bullet.y - weakPoint.y) < 14 + Math.max(bullet.width, bullet.height) / 2;
+
+          if (hitWeakPoint) {
+            hitEnemy.shieldActive = false;
+            hitEnemy.shieldCooldownMs = BOSS_SHIELD_RESPAWN_MS;
+            nextEffects.push(createEffect(weakPoint.x, weakPoint.y, "#93c5fd", 26, 260));
+            nextMessage = "Boss shield broken. Burn it down.";
+          } else {
+            nextEffects.push(createEffect(bullet.x, bullet.y, "#60a5fa", 16, 180));
+          }
+          return;
+        }
+
         if (bullet.kind === "fireball") {
           nextEffects.push(createEffect(hitEnemy.x, hitEnemy.y, "#fb923c", FIREBALL_SPLASH_RADIUS, 260));
 
           nextInvaders.forEach((invader) => {
             if (!invader.alive) return;
+            if (invader.kind === "boss" && invader.shieldActive) return;
             const distance = Math.hypot(invader.x - hitEnemy.x, invader.y - hitEnemy.y);
             const splashReach = FIREBALL_SPLASH_RADIUS + Math.max(invader.width, invader.height) / 2;
             if (distance > splashReach) return;
@@ -958,6 +1003,28 @@ const SpaceInvaders: React.FC = () => {
         ctx.fillStyle = "#111827";
         ctx.fillRect(invader.x - 18, invader.y - 6, 12, 12);
         ctx.fillRect(invader.x + 6, invader.y - 6, 12, 12);
+        if (invader.shieldActive) {
+          const weakPoint = getBossWeakPoint(invader);
+          ctx.globalAlpha = 0.28;
+          ctx.strokeStyle = "#60a5fa";
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.ellipse(invader.x, invader.y, invader.width / 2 + 18, invader.height / 2 + 14, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = "#bfdbfe";
+          ctx.beginPath();
+          ctx.arc(weakPoint.x, weakPoint.y, 9, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#1d4ed8";
+          ctx.beginPath();
+          ctx.arc(weakPoint.x, weakPoint.y, 4, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = "#bfdbfe";
+          ctx.font = "12px monospace";
+          ctx.fillText(`${Math.ceil((invader.shieldCooldownMs ?? 0) / 1000)}s`, invader.x - 10, invader.y - 44);
+        }
         ctx.fillStyle = "#f8fafc";
         ctx.fillRect(invader.x - 50, invader.y - invader.height / 2 - 16, 100, 8);
         ctx.fillStyle = "#ef4444";
@@ -1085,7 +1152,7 @@ const SpaceInvaders: React.FC = () => {
       <NavBar />
       <div className="content card">
         <h2>Space Invaders</h2>
-        <p>Two-player co-op with purple tanks, heat-seeking missiles, fireballs, and a wave 8 boss.</p>
+        <p>Two-player co-op with purple tanks, heat-seeking missiles, fireballs, and a shielded wave 8 boss.</p>
         <div className="info">
           Seats filled: {Math.min(players.length, 2)}/2
           {connected && !roomFull ? ` | ${currentUsername}` : ""}
@@ -1117,7 +1184,7 @@ const SpaceInvaders: React.FC = () => {
             />
             <p className="info">{gameState.message}</p>
             <p>
-              Purple tanks fire heat-seeking missiles you can dodge or shoot. Kill 40 enemies to charge a fireball. Press `Space` to launch it. Use `W` or `Arrow Up` for normal shots.
+              Purple tanks fire heat-seeking missiles you can dodge or shoot. The boss shield only breaks if you hit the moving weak point, and it comes back after 8 seconds. Kill 40 enemies to charge a fireball. Press `Space` to launch it. Use `W` or `Arrow Up` for normal shots.
             </p>
             <p>{currentUsername} and {opponent?.username ?? "your co-pilot"} defend the bottom line.</p>
             {gameState.phase === "waiting" && isHost && (
