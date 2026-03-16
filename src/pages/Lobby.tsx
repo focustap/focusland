@@ -70,6 +70,7 @@ const Lobby: React.FC = () => {
         width: number;
         height: number;
         labelColor: string;
+        roofOffsetX: number;
       };
 
       // This function will be called when the player reaches an entrance.
@@ -243,7 +244,8 @@ const Lobby: React.FC = () => {
             y: 68,
             width: 120,
             height: 70,
-            labelColor: "#082f1d"
+            labelColor: "#082f1d",
+            roofOffsetX: 64
           },
           {
             name: "Pong",
@@ -256,7 +258,8 @@ const Lobby: React.FC = () => {
             y: 82,
             width: 108,
             height: 62,
-            labelColor: "#082f49"
+            labelColor: "#082f49",
+            roofOffsetX: 60
           },
           {
             name: "Catch Club",
@@ -269,7 +272,8 @@ const Lobby: React.FC = () => {
             y: height / 2 - 8,
             width: 112,
             height: 82,
-            labelColor: "#431407"
+            labelColor: "#431407",
+            roofOffsetX: 64
           },
           {
             name: "Profile House",
@@ -282,7 +286,8 @@ const Lobby: React.FC = () => {
             y: height / 2 - 8,
             width: 108,
             height: 82,
-            labelColor: "#172554"
+            labelColor: "#172554",
+            roofOffsetX: 60
           },
           {
             name: "21",
@@ -295,7 +300,8 @@ const Lobby: React.FC = () => {
             y: height - 62,
             width: 124,
             height: 72,
-            labelColor: "#4c0519"
+            labelColor: "#4c0519",
+            roofOffsetX: 72
           }
         ];
 
@@ -312,7 +318,7 @@ const Lobby: React.FC = () => {
             building.color
           );
           this.add.triangle(
-            building.x + 60,
+            building.x + building.roofOffsetX,
             roofBaseY + 11,
             -building.width / 2 - 6,
             8,
