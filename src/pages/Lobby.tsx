@@ -101,6 +101,8 @@ const Lobby: React.FC = () => {
           {
             rect: Phaser.GameObjects.Rectangle;
             label: Phaser.GameObjects.Text;
+            targetX: number;
+            targetY: number;
           }
         > = new Map();
 
@@ -425,19 +427,29 @@ const Lobby: React.FC = () => {
           });
           label.setOrigin(0.5);
 
-          this.otherPlayers.set(row.user_id, { rect, label });
+          this.otherPlayers.set(row.user_id, {
+            rect,
+            label,
+            targetX: row.x,
+            targetY: row.y
+          });
         } else {
-            // Snap remote players directly to their latest known position
-            // so they don't appear to get "stuck" between updates.
-            existing.rect.setPosition(row.x, row.y);
+          existing.targetX = row.x;
+          existing.targetY = row.y;
           existing.rect.fillColor = colorNumber;
           existing.label.setText(row.username ?? "Player");
-            existing.label.setPosition(row.x, row.y - 24);
         }
       }
 
       update() {
         if (!player || !playerBody) return;
+
+        this.otherPlayers.forEach((otherPlayer) => {
+          const nextX = Phaser.Math.Linear(otherPlayer.rect.x, otherPlayer.targetX, 0.2);
+          const nextY = Phaser.Math.Linear(otherPlayer.rect.y, otherPlayer.targetY, 0.2);
+          otherPlayer.rect.setPosition(nextX, nextY);
+          otherPlayer.label.setPosition(nextX, nextY - 24);
+        });
 
         // If there is no target, stop moving.
         if (targetX == null || targetY == null) {
