@@ -25,6 +25,19 @@ export const AuthProvider: React.FC<Props> = ({ children }) => {
 
   useEffect(() => {
     const getInitialSession = async () => {
+      const url = new URL(window.location.href);
+      const authCode = url.searchParams.get("code");
+
+      if (authCode) {
+        await supabase.auth.exchangeCodeForSession(authCode);
+        url.searchParams.delete("code");
+        url.searchParams.delete("type");
+        url.searchParams.delete("error");
+        url.searchParams.delete("error_code");
+        url.searchParams.delete("error_description");
+        window.history.replaceState({}, document.title, url.toString());
+      }
+
       const { data } = await supabase.auth.getSession();
       setSession(data.session ?? null);
       setLoading(false);

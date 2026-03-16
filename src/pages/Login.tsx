@@ -1,6 +1,6 @@
 // Login page.
 // Allows users to sign up and log in using Supabase email/password auth.
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -10,22 +10,59 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        return;
+      }
+
+      const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      navigate(existingProfile ? "/lobby" : "/profile", { replace: true });
+    };
+
+    void checkExistingSession();
+  }, [navigate]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    setMessage(null);
     setLoading(true);
 
     try {
       // First sign the user in or sign them up.
       if (isSignUp) {
-        const { error: signUpError } = await supabase.auth.signUp({
+        const emailRedirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`;
+
+        const {
+          data: signUpData,
+          error: signUpError
+        } = await supabase.auth.signUp({
           email,
-          password
+          password,
+          options: {
+            emailRedirectTo
+          }
         });
         if (signUpError) {
           setError(signUpError.message);
+          return;
+        }
+
+        if (!signUpData.session) {
+          setMessage("Account created. Check your email to confirm, then come back and log in.");
           return;
         }
       } else {
@@ -99,6 +136,7 @@ const Login: React.FC = () => {
           />
         </label>
         {error && <div className="error">{error}</div>}
+        {message && <div className="info">{message}</div>}
         <button className="primary-button" type="submit" disabled={loading}>
           {loading ? "Please wait..." : isSignUp ? "Create account" : "Log in"}
         </button>
