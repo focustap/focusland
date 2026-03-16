@@ -196,6 +196,39 @@ input {
   border-color: #4f46e5;
 }
 
+.color-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.rectangle-preview {
+  width: 56px;
+  height: 40px;
+  border-radius: 0.5rem;
+  border: 2px solid rgba(15, 23, 42, 0.18);
+}
+
+.color-swatch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.color-swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+
+.color-swatch--selected {
+  border-color: #111827;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
+}
+
 .score-display {
   font-weight: bold;
 }

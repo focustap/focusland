@@ -5,6 +5,7 @@ import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import Phaser from "phaser";
+import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } from "../lib/profileColor";
 import { supabase } from "../lib/supabase";
 import {
   LOBBY_ROOM_NAME,
@@ -42,11 +43,12 @@ const Lobby: React.FC = () => {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("username")
+        .select("username, color")
         .eq("id", userId)
         .maybeSingle();
 
       const username: string | null = (profile?.username as string) ?? session.user.email ?? null;
+      const profileColor = normalizeProfileColor((profile?.color as string | null) ?? DEFAULT_PROFILE_COLOR);
 
       if (isUnmounted || !containerRef.current) {
         return () => {};
@@ -114,7 +116,7 @@ const Lobby: React.FC = () => {
 
         this.add.rectangle(width / 2, height / 2, width - 40, height - 40, 0x111827);
 
-        const localColor = 0x38bdf8;
+        const localColor = profileColorToNumber(profileColor);
 
         // Player in the center of the room.
         player = this.add.rectangle(width / 2, height / 2 + 60, 24, 32, localColor);
@@ -133,7 +135,7 @@ const Lobby: React.FC = () => {
           username,
           x: player.x,
           y: player.y,
-          color: `#${localColor.toString(16)}`
+          color: profileColor
         });
 
           this.time.addEvent({
@@ -296,7 +298,7 @@ const Lobby: React.FC = () => {
           return;
         }
 
-        const colorNumber = parseInt(row.color.replace("#", ""), 16) || 0x22c55e;
+        const colorNumber = profileColorToNumber(row.color);
 
         if (!existing) {
           const rect = this.add.rectangle(row.x, row.y, 24, 32, colorNumber);
