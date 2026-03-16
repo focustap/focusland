@@ -9,6 +9,7 @@ import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } fr
 import { supabase } from "../lib/supabase";
 import {
   LOBBY_ROOM_NAME,
+  LOBBY_PRESENCE_STALE_AFTER_MS,
   fetchRoomPresence,
   subscribeToRoomPresence,
   upsertInitialPresence,
@@ -211,6 +212,20 @@ const Lobby: React.FC = () => {
             });
           }
         });
+
+          this.time.addEvent({
+            delay: Math.max(4000, Math.floor(LOBBY_PRESENCE_STALE_AFTER_MS / 3)),
+            loop: true,
+            callback: () => {
+              if (!player) return;
+
+              void updatePlayerPosition({
+                userId,
+                x: player.x,
+                y: player.y
+              });
+            }
+          });
 
           // Load any existing players already in this room so
           // they appear immediately when we join.

@@ -11,12 +11,16 @@ export type LobbyPresenceRow = {
 };
 
 export const LOBBY_ROOM_NAME = "main_lobby";
+export const LOBBY_PRESENCE_STALE_AFTER_MS = 15000;
 
 export async function fetchRoomPresence(roomName: string = LOBBY_ROOM_NAME) {
+  const cutoff = new Date(Date.now() - LOBBY_PRESENCE_STALE_AFTER_MS).toISOString();
+
   return supabase
     .from("lobby_presence")
     .select("*")
-    .eq("room_name", roomName);
+    .eq("room_name", roomName)
+    .gte("updated_at", cutoff);
 }
 
 export async function removePresenceForUser(params: {
