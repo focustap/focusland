@@ -17,6 +17,7 @@ type InputState = {
   right: boolean;
   jump: boolean;
   drop: boolean;
+  dash: boolean;
   attack: boolean;
   special: boolean;
   ultimate: boolean;
@@ -89,10 +90,12 @@ type FighterPlayer = {
   airJumpsRemaining: number;
   attackCooldownMs: number;
   specialCooldownMs: number;
+  dashCooldownMs: number;
   respawnMs: number;
   invulnMs: number;
   ultimateCharge: number;
   attackFlashMs: number;
+  dashReleased: boolean;
   selectedCharacter: CharacterId | null;
 };
 
@@ -123,12 +126,21 @@ type Effect = {
   ttlMs: number;
 };
 
+type LavaHazard = {
+  phase: "warning" | "active";
+  x: number;
+  width: number;
+  ttlMs: number;
+};
+
 type BrawlState = {
   phase: "waiting" | "select" | "playing" | "gameOver";
   selectedMap: MapId;
   players: Record<string, FighterPlayer>;
   projectiles: Projectile[];
   effects: Effect[];
+  lavaHazard: LavaHazard | null;
+  stageEventCooldownMs: number;
   winnerId: string | null;
   message: string;
 };
@@ -151,12 +163,14 @@ const NETWORK_RENDER_WINDOW_MS = 90;
 const BRAWL_VERSION = "0.2";
 const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
+const LAVA_LANES = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72];
+const LAVA_WIDTH = 96;
 
 const STAGES: Record<MapId, StageConfig> = {
   "sky-ruins": {
     id: "sky-ruins",
     name: "Sky Ruins",
-    subtitle: "Balanced three-platform arena",
+    subtitle: "Balanced three-platform arena for pure footsies",
     floorY: 352,
     respawnY: 136,
     platforms: [
@@ -174,7 +188,7 @@ const STAGES: Record<MapId, StageConfig> = {
   "ember-yard": {
     id: "ember-yard",
     name: "Ember Yard",
-    subtitle: "Hotter pace, lower center perch",
+    subtitle: "Lower center perch with timed lava bursts",
     floorY: 350,
     respawnY: 132,
     platforms: [
@@ -217,26 +231,26 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     color: "#8b5cf6",
     accent: "#c4b5fd",
     trim: "#f97316",
-    moveSpeed: 4.1,
+    moveSpeed: 4,
     jumpVelocity: -11.5,
     airJumps: 1,
-    meleeDamage: 8,
+    meleeDamage: 6,
     meleeRange: 52,
-    meleeKnockback: 7.2,
-    meleeLift: 6.8,
-    meleeLunge: 1.2,
-    specialDamage: 4,
+    meleeKnockback: 6.8,
+    meleeLift: 6.2,
+    meleeLunge: 0,
+    specialDamage: 0,
     specialRadius: 10,
     specialSpeed: 6,
     specialColor: "#fb923c",
     specialGravity: 0.03,
-    specialCooldownMs: 460,
-    specialChargeGain: 10,
-    ultimateDamage: 25,
+    specialCooldownMs: 720,
+    specialChargeGain: 8,
+    ultimateDamage: 28,
     ultimateRadius: 18,
     ultimateSpeed: 7.2,
     ultimateColor: "#f97316",
-    ultimateCooldownMs: 900,
+    ultimateCooldownMs: 980,
     ultimateChargeGain: 16,
     ultimateShots: 1
   },
@@ -247,27 +261,27 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     color: "#ef4444",
     accent: "#fecaca",
     trim: "#f8fafc",
-    moveSpeed: 4.45,
+    moveSpeed: 4.35,
     jumpVelocity: -11.1,
     airJumps: 1,
-    meleeDamage: 8,
-    meleeRange: 58,
-    meleeKnockback: 8.2,
+    meleeDamage: 11,
+    meleeRange: 62,
+    meleeKnockback: 8.9,
     meleeLift: 6.1,
-    meleeLunge: 2.4,
-    specialDamage: 4,
+    meleeLunge: 2.8,
+    specialDamage: 7,
     specialRadius: 7,
-    specialSpeed: 9.2,
+    specialSpeed: 10.6,
     specialColor: "#e2e8f0",
     specialGravity: 0,
-    specialCooldownMs: 380,
-    specialChargeGain: 8,
-    ultimateDamage: 25,
+    specialCooldownMs: 430,
+    specialChargeGain: 10,
+    ultimateDamage: 22,
     ultimateRadius: 13,
     ultimateSpeed: 10.5,
     ultimateColor: "#f8fafc",
-    ultimateCooldownMs: 820,
-    ultimateChargeGain: 15,
+    ultimateCooldownMs: 950,
+    ultimateChargeGain: 18,
     ultimateShots: 1
   },
   archer: {
@@ -280,25 +294,25 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     moveSpeed: 4.65,
     jumpVelocity: -11.9,
     airJumps: 2,
-    meleeDamage: 8,
+    meleeDamage: 5,
     meleeRange: 48,
-    meleeKnockback: 6.8,
-    meleeLift: 5.9,
-    meleeLunge: 0.8,
-    specialDamage: 4,
+    meleeKnockback: 6.4,
+    meleeLift: 5.4,
+    meleeLunge: 0,
+    specialDamage: 0,
     specialRadius: 6,
-    specialSpeed: 10.4,
+    specialSpeed: 10.8,
     specialColor: "#fef08a",
     specialGravity: 0.008,
-    specialCooldownMs: 320,
-    specialChargeGain: 8,
-    ultimateDamage: 25,
+    specialCooldownMs: 560,
+    specialChargeGain: 7,
+    ultimateDamage: 11,
     ultimateRadius: 9,
-    ultimateSpeed: 11,
+    ultimateSpeed: 8.8,
     ultimateColor: "#facc15",
-    ultimateCooldownMs: 900,
-    ultimateChargeGain: 12,
-    ultimateShots: 3
+    ultimateCooldownMs: 980,
+    ultimateChargeGain: 14,
+    ultimateShots: 5
   }
 };
 
@@ -307,6 +321,7 @@ const DEFAULT_INPUT: InputState = {
   right: false,
   jump: false,
   drop: false,
+  dash: false,
   attack: false,
   special: false,
   ultimate: false
@@ -318,6 +333,8 @@ const DEFAULT_STATE: BrawlState = {
   players: {},
   projectiles: [],
   effects: [],
+  lavaHazard: null,
+  stageEventCooldownMs: 3200,
   winnerId: null,
   message: "Waiting for two players."
 };
@@ -384,10 +401,12 @@ function createPlayerState(index: number, stage: StageConfig): FighterPlayer {
     airJumpsRemaining: 1,
     attackCooldownMs: 0,
     specialCooldownMs: 0,
+    dashCooldownMs: 0,
     respawnMs: 0,
     invulnMs: 0,
     ultimateCharge: 0,
     attackFlashMs: 0,
+    dashReleased: true,
     selectedCharacter: null
   };
 }
@@ -405,6 +424,8 @@ function createSelectState(players: PlayerPresence[], selectedMap: MapId): Brawl
     players: playerState,
     projectiles: [],
     effects: [],
+    lavaHazard: null,
+    stageEventCooldownMs: 3200,
     winnerId: null,
     message: "Choose fighters and a stage."
   };
@@ -431,6 +452,8 @@ function startMatchState(players: PlayerPresence[], currentState: BrawlState): B
     players: nextPlayers,
     projectiles: [],
     effects: [],
+    lavaHazard: null,
+    stageEventCooldownMs: 2600,
     winnerId: null,
     message: `${stage.name}. Fight.`
   };
@@ -662,6 +685,10 @@ const Brawl: React.FC = () => {
       let nextEffects = currentState.effects
         .map((effect) => ({ ...effect, ttlMs: effect.ttlMs - 33 }))
         .filter((effect) => effect.ttlMs > 0);
+      let nextLavaHazard = currentState.lavaHazard
+        ? { ...currentState.lavaHazard, ttlMs: currentState.lavaHazard.ttlMs - 33 }
+        : null;
+      let nextStageEventCooldownMs = Math.max(0, currentState.stageEventCooldownMs - 33);
       let nextMessage = currentState.message;
       let winnerId: string | null = null;
 
@@ -696,16 +723,17 @@ const Brawl: React.FC = () => {
 
       const applyHit = (
         targetId: string,
-        sourceId: string,
+        sourceId: string | null,
         damage: number,
         knockback: number,
         lift: number,
         hitX: number,
         hitY: number,
-        effectColor: string
+        effectColor: string,
+        hitInvulnMs = 0
       ) => {
         const target = nextPlayers[targetId];
-        const source = nextPlayers[sourceId];
+        const source = sourceId ? nextPlayers[sourceId] : null;
         if (!target || target.respawnMs > 0 || target.invulnMs > 0) return;
 
         const deltaX = target.x - (source?.x ?? hitX - 1);
@@ -725,9 +753,14 @@ const Brawl: React.FC = () => {
         if (Math.abs(target.vx) > 0.8) {
           target.facing = target.vx > 0 ? 1 : -1;
         }
+        if (hitInvulnMs > 0) {
+          target.invulnMs = Math.max(target.invulnMs, hitInvulnMs);
+        }
 
         nextEffects.push(createEffect(hitX, hitY, effectColor, 18, 180));
-        addCharge(sourceId, 12);
+        if (sourceId) {
+          addCharge(sourceId, 12);
+        }
 
         if (target.health <= 0) {
           loseStock(targetId, "got knocked out");
@@ -740,6 +773,7 @@ const Brawl: React.FC = () => {
 
         state.attackCooldownMs = Math.max(0, state.attackCooldownMs - 33);
         state.specialCooldownMs = Math.max(0, state.specialCooldownMs - 33);
+        state.dashCooldownMs = Math.max(0, state.dashCooldownMs - 33);
         state.dropThroughMs = Math.max(0, state.dropThroughMs - 33);
         state.jumpLockMs = Math.max(0, state.jumpLockMs - 33);
         state.coyoteMs = Math.max(0, state.coyoteMs - 33);
@@ -784,6 +818,19 @@ const Brawl: React.FC = () => {
           state.vx = approach(state.vx, 0, friction);
         }
 
+        if (!input.dash) {
+          state.dashReleased = true;
+        } else if (state.dashReleased && state.dashCooldownMs === 0) {
+          const dashDirection = horizontal !== 0 ? (horizontal > 0 ? 1 : -1) : state.facing;
+          const dashPower = characterId === "fighter" ? 9.8 : characterId === "archer" ? 7.2 : 6.5;
+          state.vx = dashDirection * dashPower;
+          state.vy = grounded ? Math.min(state.vy, -0.5) : state.vy * 0.72;
+          state.facing = dashDirection;
+          state.dashCooldownMs = characterId === "fighter" ? 440 : 560;
+          state.dashReleased = false;
+          nextEffects.push(createEffect(state.x, state.y + 8, config.accent, 14, 140));
+        }
+
         if (grounded) {
           state.coyoteMs = COYOTE_MS;
         }
@@ -811,51 +858,95 @@ const Brawl: React.FC = () => {
         if (input.attack && state.attackCooldownMs === 0) {
           const targetId = getOtherPlayerId(player.userId);
           const target = targetId ? nextPlayers[targetId] : null;
-          if (
-            target &&
-            target.respawnMs === 0 &&
-            Math.abs(target.y - state.y) < 48 &&
-            Math.abs(target.x - state.x) <= config.meleeRange &&
-            Math.sign(target.x - state.x || state.facing) === state.facing
-          ) {
-            applyHit(
-              targetId!,
-              player.userId,
-              config.meleeDamage,
-              config.meleeKnockback,
-              config.meleeLift,
-              (state.x + target.x) / 2,
-              state.y - 6,
-              config.trim
-            );
-            nextMessage = `${player.username} connected a melee hit.`;
-          }
-          if (config.meleeLunge > 0) {
+
+          if (characterId === "fighter") {
+            if (
+              target &&
+              target.respawnMs === 0 &&
+              Math.abs(target.y - state.y) < 48 &&
+              Math.abs(target.x - state.x) <= config.meleeRange &&
+              Math.sign(target.x - state.x || state.facing) === state.facing
+            ) {
+              applyHit(
+                targetId!,
+                player.userId,
+                config.meleeDamage,
+                config.meleeKnockback,
+                config.meleeLift,
+                (state.x + target.x) / 2,
+                state.y - 6,
+                config.trim
+              );
+              nextMessage = `${player.username} landed a heavy strike.`;
+            }
             state.vx += config.meleeLunge * state.facing;
+            state.attackCooldownMs = 280;
+          } else {
+            nextProjectiles.push({
+              id: `attack-${player.userId}-${Date.now()}-${Math.random()}`,
+              ownerId: player.userId,
+              x: state.x + state.facing * 24,
+              y: state.y - 10,
+              vx: (characterId === "archer" ? 11.4 : 7.1) * state.facing,
+              vy: characterId === "archer" ? -0.14 : -0.2,
+              radius: characterId === "archer" ? 5 : 9,
+              damage: characterId === "archer" ? 5 : 6,
+              knockback: characterId === "archer" ? 5.8 : 6.9,
+              lift: characterId === "archer" ? 4.6 : 5.8,
+              color: characterId === "archer" ? "#fef08a" : "#fb923c",
+              kind: characterId === "archer" ? "arrow" : "fireball",
+              gravity: characterId === "archer" ? 0.01 : 0.02,
+              ttlMs: characterId === "archer" ? 1200 : 1350,
+              isUltimate: false
+            });
+            addCharge(player.userId, characterId === "archer" ? 7 : 8);
+            nextMessage =
+              characterId === "archer"
+                ? `${player.username} fired a quick shot.`
+                : `${player.username} cast a flame bolt.`;
+            state.attackCooldownMs = characterId === "archer" ? 210 : 320;
           }
-          state.attackCooldownMs = 290;
           state.attackFlashMs = 130;
         }
 
         if (input.special && state.specialCooldownMs === 0) {
-          nextProjectiles.push({
-            id: `special-${player.userId}-${Date.now()}-${Math.random()}`,
-            ownerId: player.userId,
-            x: state.x + state.facing * 26,
-            y: state.y - 10,
-            vx: config.specialSpeed * state.facing,
-            vy: characterId === "mage" ? -0.35 : characterId === "archer" ? -0.18 : 0,
-            radius: config.specialRadius,
-            damage: config.specialDamage,
-            knockback: 6.4,
-            lift: 4.8,
-            color: config.specialColor,
-            kind:
-              characterId === "mage" ? "fireball" : characterId === "fighter" ? "dagger" : "arrow",
-            gravity: config.specialGravity,
-            ttlMs: 1450,
-            isUltimate: false
-          });
+          if (characterId === "fighter") {
+            const targetId = getOtherPlayerId(player.userId);
+            const target = targetId ? nextPlayers[targetId] : null;
+            state.vx = config.specialSpeed * state.facing;
+            if (
+              target &&
+              target.respawnMs === 0 &&
+              Math.abs(target.y - state.y) < 54 &&
+              Math.abs(target.x - state.x) <= 78 &&
+              Math.sign(target.x - state.x || state.facing) === state.facing
+            ) {
+              applyHit(
+                targetId!,
+                player.userId,
+                config.specialDamage,
+                8.4,
+                5.6,
+                (state.x + target.x) / 2,
+                state.y - 2,
+                config.specialColor
+              );
+              nextMessage = `${player.username} burst through with a shoulder check.`;
+            }
+          } else if (characterId === "mage") {
+            state.vy = config.jumpVelocity * 1.1;
+            state.vx *= 0.55;
+            state.onGround = false;
+            state.invulnMs = Math.max(state.invulnMs, 180);
+            nextEffects.push(createEffect(state.x, state.y + 4, config.specialColor, 22, 200));
+            nextMessage = `${player.username} blinked upward.`;
+          } else {
+            state.vy = config.jumpVelocity * 1.05;
+            state.vx = -state.facing * 3.2;
+            state.onGround = false;
+            nextEffects.push(createEffect(state.x, state.y + 8, config.specialColor, 18, 180));
+            nextMessage = `${player.username} vaulted away.`;
+          }
           state.specialCooldownMs = config.specialCooldownMs;
           addCharge(player.userId, config.specialChargeGain);
         }
@@ -865,29 +956,77 @@ const Brawl: React.FC = () => {
           state.specialCooldownMs === 0 &&
           state.ultimateCharge >= ULTIMATE_CHARGE_MAX
         ) {
-          for (let shot = 0; shot < config.ultimateShots; shot += 1) {
-            const spread = config.ultimateShots === 1 ? 0 : (shot - (config.ultimateShots - 1) / 2) * 0.45;
-            nextProjectiles.push({
-              id: `ultimate-${player.userId}-${Date.now()}-${Math.random()}-${shot}`,
-              ownerId: player.userId,
-              x: state.x + state.facing * 28,
-              y: state.y - 12 + shot * 4,
-              vx: config.ultimateSpeed * state.facing,
-              vy: spread,
-              radius: config.ultimateRadius,
-              damage: config.ultimateDamage,
-              knockback: 10.2,
-              lift: 6.8,
-              color: config.ultimateColor,
-              kind: "ultimate",
-              gravity: characterId === "archer" ? 0.01 : 0,
-              ttlMs: 1100,
-              isUltimate: true
-            });
+          if (characterId === "fighter") {
+            const targetId = getOtherPlayerId(player.userId);
+            const target = targetId ? nextPlayers[targetId] : null;
+            nextEffects.push(createEffect(state.x, state.y, config.ultimateColor, 42, 260));
+            nextEffects.push(createEffect(state.x, state.y, config.trim, 58, 320));
+            if (
+              target &&
+              target.respawnMs === 0 &&
+              Math.abs(target.x - state.x) <= 82 &&
+              Math.abs(target.y - state.y) <= 64
+            ) {
+              applyHit(
+                targetId!,
+                player.userId,
+                config.ultimateDamage,
+                11.6,
+                7.2,
+                (state.x + target.x) / 2,
+                (state.y + target.y) / 2,
+                config.ultimateColor
+              );
+            }
+            nextMessage = `${player.username} spun into a whirlwind.`;
+          } else {
+            for (let shot = 0; shot < config.ultimateShots; shot += 1) {
+              if (characterId === "archer") {
+                const spreadX = (shot - (config.ultimateShots - 1) / 2) * 26;
+                nextProjectiles.push({
+                  id: `ultimate-${player.userId}-${Date.now()}-${Math.random()}-${shot}`,
+                  ownerId: player.userId,
+                  x: state.x + state.facing * 42 + spreadX,
+                  y: 68 - Math.abs(spreadX) * 0.15,
+                  vx: state.facing * 1.1,
+                  vy: 5.8 + shot * 0.12,
+                  radius: config.ultimateRadius,
+                  damage: config.ultimateDamage,
+                  knockback: 8.6,
+                  lift: 7.1,
+                  color: config.ultimateColor,
+                  kind: "arrow",
+                  gravity: 0.08,
+                  ttlMs: 900,
+                  isUltimate: true
+                });
+              } else {
+                nextProjectiles.push({
+                  id: `ultimate-${player.userId}-${Date.now()}-${Math.random()}-${shot}`,
+                  ownerId: player.userId,
+                  x: state.x + state.facing * 28,
+                  y: state.y - 12,
+                  vx: config.ultimateSpeed * state.facing,
+                  vy: -0.25,
+                  radius: config.ultimateRadius,
+                  damage: config.ultimateDamage,
+                  knockback: 10.2,
+                  lift: 6.8,
+                  color: config.ultimateColor,
+                  kind: "ultimate",
+                  gravity: 0,
+                  ttlMs: 1100,
+                  isUltimate: true
+                });
+              }
+            }
+            nextMessage =
+              characterId === "archer"
+                ? `${player.username} called down an arrow barrage.`
+                : `${player.username} unleashed an inferno orb.`;
           }
           state.ultimateCharge = 0;
           state.specialCooldownMs = config.ultimateCooldownMs;
-          nextMessage = `${player.username} unleashed an ultimate.`;
           nextEffects.push(createEffect(state.x, state.y - 10, config.ultimateColor, 24, 220));
         }
 
@@ -926,7 +1065,48 @@ const Brawl: React.FC = () => {
         ) {
           loseStock(player.userId, "got launched out");
         }
+
+        if (
+          nextLavaHazard?.phase === "active" &&
+          Math.abs(state.x - nextLavaHazard.x) <= nextLavaHazard.width / 2 &&
+          state.y + PLAYER_HEIGHT / 2 >= stage.floorY - 10
+        ) {
+          applyHit(
+            player.userId,
+            null,
+            14,
+            8.2,
+            9.6,
+            nextLavaHazard.x,
+            stage.floorY - 8,
+            "#fb923c",
+            260
+          );
+          nextMessage = `${player.username} got clipped by lava.`;
+        }
       });
+
+      if (stage.id === "ember-yard") {
+        if (!nextLavaHazard && nextStageEventCooldownMs === 0) {
+          nextLavaHazard = {
+            phase: "warning",
+            x: LAVA_LANES[Math.floor(Math.random() * LAVA_LANES.length)],
+            width: LAVA_WIDTH,
+            ttlMs: 950
+          };
+          nextStageEventCooldownMs = 4200;
+          nextMessage = "Lava is rumbling. Move or use it.";
+        } else if (nextLavaHazard?.phase === "warning" && nextLavaHazard.ttlMs <= 0) {
+          nextLavaHazard = { ...nextLavaHazard, phase: "active", ttlMs: 650 };
+          nextEffects.push(createEffect(nextLavaHazard.x, stage.floorY - 12, "#fdba74", 32, 280));
+          nextMessage = "Lava burst!";
+        } else if (nextLavaHazard?.phase === "active" && nextLavaHazard.ttlMs <= 0) {
+          nextLavaHazard = null;
+        }
+      } else {
+        nextLavaHazard = null;
+        nextStageEventCooldownMs = 3200;
+      }
 
       nextProjectiles = nextProjectiles
         .map((projectile) => ({
@@ -980,6 +1160,8 @@ const Brawl: React.FC = () => {
         players: nextPlayers,
         projectiles: survivingProjectiles,
         effects: nextEffects,
+        lavaHazard: nextLavaHazard,
+        stageEventCooldownMs: nextStageEventCooldownMs,
         winnerId,
         message:
           winnerId
@@ -1035,6 +1217,11 @@ const Brawl: React.FC = () => {
       } else if (key === "s") {
         event.preventDefault();
         sendInput({ ...current, drop: true });
+      } else if (key === "shift") {
+        event.preventDefault();
+        if (!event.repeat) {
+          sendInput({ ...current, dash: true });
+        }
       } else if (key === "j") {
         event.preventDefault();
         sendInput({ ...current, attack: true });
@@ -1070,6 +1257,9 @@ const Brawl: React.FC = () => {
       } else if (key === "s") {
         event.preventDefault();
         sendInput({ ...current, drop: false });
+      } else if (key === "shift") {
+        event.preventDefault();
+        sendInput({ ...current, dash: false });
       } else if (key === "j") {
         event.preventDefault();
         sendInput({ ...current, attack: false });
@@ -1096,7 +1286,7 @@ const Brawl: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const drawStage = (stage: StageConfig) => {
+    const drawStage = (stage: StageConfig, lavaHazard: LavaHazard | null) => {
       const gradient = ctx.createLinearGradient(0, 0, 0, HEIGHT);
       gradient.addColorStop(0, stage.bgTop);
       gradient.addColorStop(1, stage.bgBottom);
@@ -1138,6 +1328,36 @@ const Brawl: React.FC = () => {
         ctx.fillStyle = stage.platformColor;
         ctx.fillRect(platform.x - platform.width / 2, platform.y, platform.width, PLATFORM_HEIGHT);
       });
+
+      if (stage.id === "ember-yard" && lavaHazard) {
+        const warningAlpha = lavaHazard.phase === "warning" ? 0.18 + ((lavaHazard.ttlMs % 220) / 220) * 0.34 : 0.24;
+        ctx.fillStyle =
+          lavaHazard.phase === "warning"
+            ? `rgba(254, 215, 170, ${warningAlpha})`
+            : "rgba(251, 146, 60, 0.32)";
+        ctx.fillRect(
+          lavaHazard.x - lavaHazard.width / 2,
+          stage.floorY - 18,
+          lavaHazard.width,
+          18
+        );
+        if (lavaHazard.phase === "active") {
+          ctx.fillStyle = "rgba(249, 115, 22, 0.88)";
+          for (let plume = 0; plume < 3; plume += 1) {
+            ctx.beginPath();
+            ctx.moveTo(lavaHazard.x - 30 + plume * 28, stage.floorY);
+            ctx.quadraticCurveTo(
+              lavaHazard.x - 18 + plume * 28,
+              stage.floorY - 40 - plume * 10,
+              lavaHazard.x - 8 + plume * 28,
+              stage.floorY - 10
+            );
+            ctx.strokeStyle = "#fdba74";
+            ctx.lineWidth = 8;
+            ctx.stroke();
+          }
+        }
+      }
     };
 
     const drawCharacter = (player: FighterPlayer, username: string) => {
@@ -1254,7 +1474,7 @@ const Brawl: React.FC = () => {
       });
 
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
-      drawStage(stage);
+      drawStage(stage, currentState.lavaHazard);
 
       currentState.effects.forEach((effect) => {
         const effectAlpha = Math.max(effect.ttlMs / 220, 0.12);
@@ -1381,7 +1601,7 @@ const Brawl: React.FC = () => {
       <NavBar />
       <div className="content card">
         <h2>Focus Brawl v{BRAWL_VERSION}</h2>
-        <p>Two-player platform fighter with class identity, stage select, stocks, and ult charge.</p>
+        <p>Two-player platform fighter with distinct class kits, stage identity, stocks, and ult charge.</p>
         <div className="info">
           Seats filled: {Math.min(players.length, 2)}/2
           {connected && !roomFull ? ` | ${currentUsername}` : ""}
@@ -1480,10 +1700,10 @@ const Brawl: React.FC = () => {
                 <strong>Stage:</strong> {selectedStage.name}. {selectedStage.subtitle}
               </p>
               <p>
-                <strong>Roster:</strong> Mage controls space with flame, Fighter pressures with lunges, Archer wins with speed and volleys.
+                <strong>Roster:</strong> Mage fights with bolts and vertical resets, Fighter owns close range with rushdown, Archer plays spacing with shots and a barrage.
               </p>
               <p className="brawl-controls">
-                <strong>Controls:</strong> WASD move, jump, fast-fall/drop. J melee, K special, L ultimate.
+                <strong>Controls:</strong> WASD move, Shift dash, J primary, K utility, L ultimate.
               </p>
             </div>
 
