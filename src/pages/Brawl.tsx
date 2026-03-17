@@ -150,6 +150,7 @@ const JUMP_LOCK_MS = 180;
 const NETWORK_RENDER_WINDOW_MS = 90;
 const BRAWL_VERSION = "0.2";
 const DEFAULT_MAP: MapId = "sky-ruins";
+const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
 
 const STAGES: Record<MapId, StageConfig> = {
   "sky-ruins": {
@@ -469,6 +470,9 @@ const Brawl: React.FC = () => {
     () => players.find((player) => player.userId !== currentUserId) ?? null,
     [players, currentUserId]
   );
+  const everyoneSelected =
+    players.length === 2 &&
+    players.every((player) => Boolean(brawlState.players[player.userId]?.selectedCharacter));
 
   useEffect(() => {
     stateRef.current = brawlState;
@@ -889,7 +893,7 @@ const Brawl: React.FC = () => {
 
         const previousBottom = state.y + PLAYER_HEIGHT / 2;
         state.vy = Math.min(MAX_FALL_SPEED, state.vy + GRAVITY);
-        state.x = clamp(state.x + state.vx, 16, WIDTH - 16);
+        state.x = clamp(state.x + state.vx, -BLAST_ZONE_MARGIN, WIDTH + BLAST_ZONE_MARGIN);
         state.y += state.vy;
         state.onGround = false;
 
@@ -917,8 +921,8 @@ const Brawl: React.FC = () => {
 
         if (
           state.y > HEIGHT + FLOOR_MARGIN ||
-          state.x < -FLOOR_MARGIN ||
-          state.x > WIDTH + FLOOR_MARGIN
+          state.x < -BLAST_ZONE_MARGIN ||
+          state.x > WIDTH + BLAST_ZONE_MARGIN
         ) {
           loseStock(player.userId, "got launched out");
         }
@@ -1009,41 +1013,71 @@ const Brawl: React.FC = () => {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
       const current = inputStatesRef.current[currentUserIdRef.current ?? ""] ?? DEFAULT_INPUT;
       const key = event.key.toLowerCase();
       if (key === "a") {
+        event.preventDefault();
         sendInput({ ...current, left: true });
       } else if (key === "d") {
+        event.preventDefault();
         sendInput({ ...current, right: true });
       } else if (key === "w") {
+        event.preventDefault();
         sendInput({ ...current, jump: true });
       } else if (key === "s") {
+        event.preventDefault();
         sendInput({ ...current, drop: true });
       } else if (key === "j") {
+        event.preventDefault();
         sendInput({ ...current, attack: true });
       } else if (key === "k") {
+        event.preventDefault();
         sendInput({ ...current, special: true });
       } else if (key === "l") {
+        event.preventDefault();
         sendInput({ ...current, ultimate: true });
       }
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
       const current = inputStatesRef.current[currentUserIdRef.current ?? ""] ?? DEFAULT_INPUT;
       const key = event.key.toLowerCase();
       if (key === "a") {
+        event.preventDefault();
         sendInput({ ...current, left: false });
       } else if (key === "d") {
+        event.preventDefault();
         sendInput({ ...current, right: false });
       } else if (key === "w") {
+        event.preventDefault();
         sendInput({ ...current, jump: false });
       } else if (key === "s") {
+        event.preventDefault();
         sendInput({ ...current, drop: false });
       } else if (key === "j") {
+        event.preventDefault();
         sendInput({ ...current, attack: false });
       } else if (key === "k") {
+        event.preventDefault();
         sendInput({ ...current, special: false });
       } else if (key === "l") {
+        event.preventDefault();
         sendInput({ ...current, ultimate: false });
       }
     };
@@ -1356,56 +1390,67 @@ const Brawl: React.FC = () => {
           <div className="error">Two players are already in this room. Wait for someone to leave.</div>
         ) : (
           <>
-            <div className="button-row">
+            <div className="brawl-status-grid">
               {players.map((player) => {
                 const selectedCharacter = brawlState.players[player.userId]?.selectedCharacter;
+                const isCurrentUser = player.userId === currentUserId;
                 return (
-                  <span key={player.userId} className="secondary-button">
-                    {player.username}: {selectedCharacter ?? "choosing"}
-                  </span>
+                  <div key={player.userId} className="brawl-player-pill">
+                    <strong>
+                      {player.username}
+                      {isCurrentUser ? " (you)" : ""}
+                    </strong>
+                    <span>{selectedCharacter ? CHARACTER_CONFIGS[selectedCharacter].name : "Choosing fighter"}</span>
+                  </div>
                 );
               })}
             </div>
 
             {brawlState.phase === "select" && (
               <>
-                <div className="button-row">
+                <div className="brawl-pick-grid">
                   {(["mage", "fighter", "archer"] as CharacterId[]).map((character) => {
                     const config = CHARACTER_CONFIGS[character];
+                    const selected = brawlState.players[currentUserId ?? ""]?.selectedCharacter === character;
                     return (
                       <button
                         key={character}
                         type="button"
-                        className="secondary-button"
+                        className={`brawl-pick-card${selected ? " brawl-pick-card--selected" : ""}`}
                         onClick={() => void selectCharacter(character)}
                         disabled={players.length !== 2}
                         style={{
                           borderColor: config.color,
                           color: "#0f172a",
-                          background: `linear-gradient(135deg, ${config.accent}, #ffffff)`
+                          background: `linear-gradient(160deg, ${config.accent}, #ffffff 72%)`
                         }}
                       >
-                        {config.name}
+                        <strong>{config.name}</strong>
+                        <span>{config.title}</span>
                       </button>
                     );
                   })}
                 </div>
-                <div className="button-row">
+                <div className="brawl-pick-grid">
                   {(["sky-ruins", "ember-yard", "moon-pier"] as MapId[]).map((mapId) => {
                     const map = STAGES[mapId];
                     return (
                       <button
                         key={mapId}
                         type="button"
-                        className="secondary-button"
+                        className={`brawl-pick-card${mapId === brawlState.selectedMap ? " brawl-pick-card--selected" : ""}`}
                         onClick={() => void selectMap(mapId)}
                         disabled={!isHost}
                         style={{
                           borderColor: map.accent,
-                          background: mapId === brawlState.selectedMap ? map.accent : "#ffffff"
+                          background:
+                            mapId === brawlState.selectedMap
+                              ? `linear-gradient(160deg, ${map.accent}, #ffffff 72%)`
+                              : "#ffffff"
                         }}
                       >
-                        {map.name}
+                        <strong>{map.name}</strong>
+                        <span>{map.subtitle}</span>
                       </button>
                     );
                   })}
@@ -1430,25 +1475,26 @@ const Brawl: React.FC = () => {
             />
 
             <p className="info">{brawlState.message}</p>
-            <p>Controls: `WASD` move, jump, fast-fall/drop. `J` melee, `K` special, `L` ultimate.</p>
-            <p>
-              Stage: {selectedStage.name}. {selectedStage.subtitle}
-            </p>
-            <p>
-              Mage controls space with flame, Fighter pressures with lunges, Archer wins with speed and volleys.
-            </p>
+            <div className="brawl-stage-meta">
+              <p>
+                <strong>Stage:</strong> {selectedStage.name}. {selectedStage.subtitle}
+              </p>
+              <p>
+                <strong>Roster:</strong> Mage controls space with flame, Fighter pressures with lunges, Archer wins with speed and volleys.
+              </p>
+              <p className="brawl-controls">
+                <strong>Controls:</strong> WASD move, jump, fast-fall/drop. J melee, K special, L ultimate.
+              </p>
+            </div>
 
             {brawlState.phase === "select" && isHost && (
               <button
                 className="primary-button"
                 type="button"
                 onClick={() => void startMatch()}
-                disabled={
-                  players.length !== 2 ||
-                  !players.every((player) => Boolean(brawlState.players[player.userId]?.selectedCharacter))
-                }
+                disabled={!everyoneSelected}
               >
-                Start match
+                {everyoneSelected ? "Start match" : "Waiting for both picks"}
               </button>
             )}
 
@@ -1458,7 +1504,11 @@ const Brawl: React.FC = () => {
               </button>
             )}
 
-            {opponent && <p>{currentUsername} versus {opponent.username}.</p>}
+            {opponent && (
+              <p>
+                {currentUsername} versus {opponent.username}.
+              </p>
+            )}
           </>
         )}
       </div>
