@@ -21,6 +21,8 @@ type InputState = {
   attack: boolean;
   special: boolean;
   ultimate: boolean;
+  aimX: number;
+  aimY: number;
 };
 
 type Platform = {
@@ -324,7 +326,9 @@ const DEFAULT_INPUT: InputState = {
   dash: false,
   attack: false,
   special: false,
-  ultimate: false
+  ultimate: false,
+  aimX: WIDTH / 2,
+  aimY: HEIGHT / 2
 };
 
 const DEFAULT_STATE: BrawlState = {
@@ -341,6 +345,11 @@ const DEFAULT_STATE: BrawlState = {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function normalizeVector(dx: number, dy: number) {
+  const length = Math.hypot(dx, dy) || 1;
+  return { x: dx / length, y: dy / length, length };
 }
 
 function approach(current: number, target: number, amount: number) {
@@ -596,6 +605,7 @@ const Brawl: React.FC = () => {
   const currentUserIdRef = useRef<string | null>(null);
   const lastStateAtRef = useRef<number>(performance.now());
   const inputStatesRef = useRef<Record<string, InputState>>({});
+  const lastAimBroadcastAtRef = useRef<number>(0);
 
   const isSeated = currentUserId ? players.some((player) => player.userId === currentUserId) : false;
   const isHost = Boolean(currentUserId && players[0]?.userId === currentUserId);
@@ -825,7 +835,7 @@ const Brawl: React.FC = () => {
 
       const addCharge = (playerId: string, amount: number) => {
         const player = nextPlayers[playerId];
-        if (!player) return;
+        if (!player || amount <= 0) return;
         player.ultimateCharge = clamp(player.ultimateCharge + amount, 0, ULTIMATE_CHARGE_MAX);
       };
 
@@ -858,7 +868,8 @@ const Brawl: React.FC = () => {
         hitX: number,
         hitY: number,
         effectColor: string,
-        hitInvulnMs = 0
+        hitInvulnMs = 0,
+        chargeGain = 0
       ) => {
         const target = nextPlayers[targetId];
         const source = sourceId ? nextPlayers[sourceId] : null;
@@ -887,7 +898,7 @@ const Brawl: React.FC = () => {
 
         nextEffects.push(createEffect(hitX, hitY, effectColor, 18, 180));
         if (sourceId) {
-          addCharge(sourceId, 12);
+          addCharge(sourceId, chargeGain);
         }
 
         if (target.health <= 0) {
@@ -932,6 +943,9 @@ const Brawl: React.FC = () => {
         if (!characterId) return;
         const config = CHARACTER_CONFIGS[characterId];
         const input = inputStatesRef.current[player.userId] ?? DEFAULT_INPUT;
+        const rawAimVector = normalizeVector(input.aimX - state.x, input.aimY - state.y);
+        const aimVector =
+          rawAimVector.length < 10 ? { x: state.facing, y: 0, length: 1 } : rawAimVector;
         const horizontal = (input.right ? 1 : 0) - (input.left ? 1 : 0);
         const standingPlatform = getStandingPlatform(state, stage);
         const grounded = state.onGround || Boolean(standingPlatform);
@@ -944,6 +958,10 @@ const Brawl: React.FC = () => {
           state.facing = horizontal > 0 ? 1 : -1;
         } else {
           state.vx = approach(state.vx, 0, friction);
+        }
+
+        if (Math.abs(aimVector.x) > 0.22) {
+          state.facing = aimVector.x > 0 ? 1 : -1;
         }
 
         if (!input.dash) {
@@ -991,10 +1009,10 @@ const Brawl: React.FC = () => {
             if (
               target &&
               target.respawnMs === 0 &&
-              Math.abs(target.y - state.y) < 48 &&
-              Math.abs(target.x - state.x) <= config.meleeRange &&
-              Math.sign(target.x - state.x || state.facing) === state.facing
+              Math.hypot(target.x - state.x, target.y - state.y) <= config.meleeRange
             ) {
+              const targetVector = normalizeVector(target.x - state.x, target.y - state.y);
+              if (aimVector.x * targetVector.x + aimVector.y * targetVector.y > 0.2) {
               applyHit(
                 targetId!,
                 player.userId,
@@ -1003,31 +1021,33 @@ const Brawl: React.FC = () => {
                 config.meleeLift,
                 (state.x + target.x) / 2,
                 state.y - 6,
-                config.trim
+                config.trim,
+                0,
+                8
               );
               nextMessage = `${player.username} landed a heavy strike.`;
+              }
             }
-            state.vx += config.meleeLunge * state.facing;
+            state.vx += config.meleeLunge * (Math.abs(aimVector.x) > 0.12 ? aimVector.x : state.facing);
             state.attackCooldownMs = 280;
           } else {
             nextProjectiles.push({
               id: `attack-${player.userId}-${Date.now()}-${Math.random()}`,
               ownerId: player.userId,
-              x: state.x + state.facing * 24,
-              y: state.y - 10,
-              vx: (characterId === "archer" ? 11.4 : 7.1) * state.facing,
-              vy: characterId === "archer" ? -0.14 : -0.2,
+              x: state.x + aimVector.x * 24,
+              y: state.y - 10 + aimVector.y * 10,
+              vx: (characterId === "archer" ? 11.4 : 7.1) * aimVector.x,
+              vy: (characterId === "archer" ? 11.4 : 7.1) * aimVector.y,
               radius: characterId === "archer" ? 5 : 9,
               damage: characterId === "archer" ? 5 : 6,
               knockback: characterId === "archer" ? 5.8 : 6.9,
               lift: characterId === "archer" ? 4.6 : 5.8,
               color: characterId === "archer" ? "#fef08a" : "#fb923c",
               kind: characterId === "archer" ? "arrow" : "fireball",
-              gravity: characterId === "archer" ? 0.01 : 0.02,
+              gravity: characterId === "archer" ? 0.01 : 0.015,
               ttlMs: characterId === "archer" ? 1200 : 1350,
               isUltimate: false
             });
-            addCharge(player.userId, characterId === "archer" ? 7 : 8);
             nextMessage =
               characterId === "archer"
                 ? `${player.username} fired a quick shot.`
@@ -1041,25 +1061,29 @@ const Brawl: React.FC = () => {
           if (characterId === "fighter") {
             const targetId = getOtherPlayerId(player.userId);
             const target = targetId ? nextPlayers[targetId] : null;
-            state.vx = config.specialSpeed * state.facing;
+            state.vx = config.specialSpeed * (Math.abs(aimVector.x) > 0.12 ? aimVector.x : state.facing);
+            state.vy = Math.min(state.vy, aimVector.y * 4);
             if (
               target &&
               target.respawnMs === 0 &&
-              Math.abs(target.y - state.y) < 54 &&
-              Math.abs(target.x - state.x) <= 78 &&
-              Math.sign(target.x - state.x || state.facing) === state.facing
+              Math.hypot(target.x - state.x, target.y - state.y) <= 78
             ) {
-              applyHit(
-                targetId!,
-                player.userId,
-                config.specialDamage,
-                8.4,
-                5.6,
-                (state.x + target.x) / 2,
-                state.y - 2,
-                config.specialColor
-              );
-              nextMessage = `${player.username} burst through with a shoulder check.`;
+              const targetVector = normalizeVector(target.x - state.x, target.y - state.y);
+              if (aimVector.x * targetVector.x + aimVector.y * targetVector.y > 0.15) {
+                applyHit(
+                  targetId!,
+                  player.userId,
+                  config.specialDamage,
+                  8.4,
+                  5.6,
+                  (state.x + target.x) / 2,
+                  state.y - 2,
+                  config.specialColor,
+                  0,
+                  config.specialChargeGain
+                );
+                nextMessage = `${player.username} burst through with a shoulder check.`;
+              }
             }
           } else if (characterId === "mage") {
             state.vy = config.jumpVelocity * 1.1;
@@ -1076,7 +1100,6 @@ const Brawl: React.FC = () => {
             nextMessage = `${player.username} vaulted away.`;
           }
           state.specialCooldownMs = config.specialCooldownMs;
-          addCharge(player.userId, config.specialChargeGain);
         }
 
         if (
@@ -1114,9 +1137,9 @@ const Brawl: React.FC = () => {
                 nextProjectiles.push({
                   id: `ultimate-${player.userId}-${Date.now()}-${Math.random()}-${shot}`,
                   ownerId: player.userId,
-                  x: state.x + state.facing * 42 + spreadX,
+                  x: state.x + aimVector.x * 42 + spreadX,
                   y: 68 - Math.abs(spreadX) * 0.15,
-                  vx: state.facing * 1.1,
+                  vx: aimVector.x * 1.1,
                   vy: 5.8 + shot * 0.12,
                   radius: config.ultimateRadius,
                   damage: config.ultimateDamage,
@@ -1132,17 +1155,17 @@ const Brawl: React.FC = () => {
                 nextProjectiles.push({
                   id: `ultimate-${player.userId}-${Date.now()}-${Math.random()}-${shot}`,
                   ownerId: player.userId,
-                  x: state.x + state.facing * 28,
-                  y: state.y - 12,
-                  vx: config.ultimateSpeed * state.facing,
-                  vy: -0.25,
+                  x: state.x + aimVector.x * 28,
+                  y: state.y - 12 + aimVector.y * 10,
+                  vx: config.ultimateSpeed * aimVector.x,
+                  vy: config.ultimateSpeed * aimVector.y,
                   radius: config.ultimateRadius,
                   damage: config.ultimateDamage,
                   knockback: 10.2,
                   lift: 6.8,
                   color: config.ultimateColor,
                   kind: "ultimate",
-                  gravity: 0,
+                  gravity: 0.008,
                   ttlMs: 1100,
                   isUltimate: true
                 });
@@ -1276,9 +1299,10 @@ const Brawl: React.FC = () => {
           projectile.lift,
           projectile.x,
           projectile.y,
-          projectile.color
+          projectile.color,
+          0,
+          projectile.isUltimate ? 0 : projectile.kind === "arrow" ? 7 : 8
         );
-        addCharge(projectile.ownerId, projectile.isUltimate ? 12 : 5);
         nextMessage = projectile.isUltimate ? "Ultimate connected." : "Projectile hit.";
       });
 
@@ -1322,6 +1346,11 @@ const Brawl: React.FC = () => {
       });
     };
 
+    const updateInput = (patch: Partial<InputState>) => {
+      const current = inputStatesRef.current[currentUserIdRef.current ?? ""] ?? DEFAULT_INPUT;
+      sendInput({ ...current, ...patch });
+    };
+
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (
@@ -1331,34 +1360,30 @@ const Brawl: React.FC = () => {
       ) {
         return;
       }
-      const current = inputStatesRef.current[currentUserIdRef.current ?? ""] ?? DEFAULT_INPUT;
       const key = event.key.toLowerCase();
       if (key === "a") {
         event.preventDefault();
-        sendInput({ ...current, left: true });
+        updateInput({ left: true });
       } else if (key === "d") {
         event.preventDefault();
-        sendInput({ ...current, right: true });
+        updateInput({ right: true });
       } else if (key === "w") {
         event.preventDefault();
-        sendInput({ ...current, jump: true });
+        updateInput({ jump: true });
       } else if (key === "s") {
         event.preventDefault();
-        sendInput({ ...current, drop: true });
+        updateInput({ drop: true });
       } else if (key === "shift") {
         event.preventDefault();
         if (!event.repeat) {
-          sendInput({ ...current, dash: true });
+          updateInput({ dash: true });
         }
-      } else if (key === "j") {
+      } else if (key === "e") {
         event.preventDefault();
-        sendInput({ ...current, attack: true });
-      } else if (key === "k") {
+        updateInput({ special: true });
+      } else if (key === " ") {
         event.preventDefault();
-        sendInput({ ...current, special: true });
-      } else if (key === "l") {
-        event.preventDefault();
-        sendInput({ ...current, ultimate: true });
+        updateInput({ ultimate: true });
       }
     };
 
@@ -1371,40 +1396,95 @@ const Brawl: React.FC = () => {
       ) {
         return;
       }
-      const current = inputStatesRef.current[currentUserIdRef.current ?? ""] ?? DEFAULT_INPUT;
       const key = event.key.toLowerCase();
       if (key === "a") {
         event.preventDefault();
-        sendInput({ ...current, left: false });
+        updateInput({ left: false });
       } else if (key === "d") {
         event.preventDefault();
-        sendInput({ ...current, right: false });
+        updateInput({ right: false });
       } else if (key === "w") {
         event.preventDefault();
-        sendInput({ ...current, jump: false });
+        updateInput({ jump: false });
       } else if (key === "s") {
         event.preventDefault();
-        sendInput({ ...current, drop: false });
+        updateInput({ drop: false });
       } else if (key === "shift") {
         event.preventDefault();
-        sendInput({ ...current, dash: false });
-      } else if (key === "j") {
+        updateInput({ dash: false });
+      } else if (key === "e") {
         event.preventDefault();
-        sendInput({ ...current, attack: false });
-      } else if (key === "k") {
+        updateInput({ special: false });
+      } else if (key === " ") {
         event.preventDefault();
-        sendInput({ ...current, special: false });
-      } else if (key === "l") {
-        event.preventDefault();
-        sendInput({ ...current, ultimate: false });
+        updateInput({ ultimate: false });
       }
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+
+      const nextAimX = clamp(((event.clientX - rect.left) / rect.width) * WIDTH, 0, WIDTH);
+      const nextAimY = clamp(((event.clientY - rect.top) / rect.height) * HEIGHT, 0, HEIGHT);
+      const current = inputStatesRef.current[currentUserIdRef.current ?? ""] ?? DEFAULT_INPUT;
+      const now = performance.now();
+
+      if (
+        Math.abs(current.aimX - nextAimX) < 4 &&
+        Math.abs(current.aimY - nextAimY) < 4
+      ) {
+        return;
+      }
+
+      if (now - lastAimBroadcastAtRef.current < 33) {
+        inputStatesRef.current = {
+          ...inputStatesRef.current,
+          [currentUserIdRef.current ?? ""]: { ...current, aimX: nextAimX, aimY: nextAimY }
+        };
+        return;
+      }
+
+      lastAimBroadcastAtRef.current = now;
+      updateInput({ aimX: nextAimX, aimY: nextAimY });
+    };
+
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        stateRef.current.phase !== "playing" ||
+        target?.closest("button, a, input, textarea")
+      ) {
+        return;
+      }
+      if (event.button !== 0) return;
+      event.preventDefault();
+      updateInput({ attack: true });
+    };
+
+    const handleMouseUp = (event: MouseEvent) => {
+      if (stateRef.current.phase !== "playing") {
+        return;
+      }
+      if (event.button !== 0) return;
+      event.preventDefault();
+      updateInput({ attack: false });
     };
 
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("mouseup", handleMouseUp);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [players.length, currentUserId]);
 
@@ -1844,7 +1924,7 @@ const Brawl: React.FC = () => {
                 <strong>Roster:</strong> Mage fights with bolts and vertical resets, Fighter owns close range with rushdown, Archer plays spacing with shots and a barrage.
               </p>
               <p className="brawl-controls">
-                <strong>Controls:</strong> WASD move, Shift dash, J primary, K utility, L ultimate.
+                <strong>Controls:</strong> WASD move, Shift dash, mouse aim, left click primary, E utility, Space ultimate.
               </p>
             </div>
 
