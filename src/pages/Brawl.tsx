@@ -159,7 +159,7 @@ const MAX_HEALTH = 100;
 const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
-const NETWORK_RENDER_WINDOW_MS = 90;
+const NETWORK_RENDER_WINDOW_MS = 60;
 const BRAWL_VERSION = "0.2";
 const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
@@ -467,6 +467,116 @@ function getStandingPlatform(player: FighterPlayer, stage: StageConfig) {
         Math.abs(player.x - platform.x) <= platform.width / 2 + PLAYER_WIDTH / 2
     ) ?? null
   );
+}
+
+function predictPlayerState(
+  player: FighterPlayer,
+  input: InputState,
+  stage: StageConfig,
+  elapsedMs: number
+) {
+  if (!player.selectedCharacter || player.respawnMs > 0 || elapsedMs <= 0) {
+    return player;
+  }
+
+  const next = { ...player };
+  const config = CHARACTER_CONFIGS[next.selectedCharacter];
+  let remainingMs = Math.min(elapsedMs, 132);
+
+  while (remainingMs > 0) {
+    const stepMs = Math.min(33, remainingMs);
+    const scale = stepMs / 33;
+    remainingMs -= stepMs;
+
+    next.attackCooldownMs = Math.max(0, next.attackCooldownMs - stepMs);
+    next.specialCooldownMs = Math.max(0, next.specialCooldownMs - stepMs);
+    next.dashCooldownMs = Math.max(0, next.dashCooldownMs - stepMs);
+    next.dropThroughMs = Math.max(0, next.dropThroughMs - stepMs);
+    next.jumpLockMs = Math.max(0, next.jumpLockMs - stepMs);
+    next.coyoteMs = Math.max(0, next.coyoteMs - stepMs);
+    next.invulnMs = Math.max(0, next.invulnMs - stepMs);
+
+    const standingPlatform = getStandingPlatform(next, stage);
+    const grounded = next.onGround || Boolean(standingPlatform);
+    const horizontal = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    const targetSpeed = horizontal * config.moveSpeed;
+    const accel = (grounded ? 1.25 : 0.62) * scale;
+    const friction = (grounded ? 0.9 : 0.22) * scale;
+
+    if (horizontal !== 0) {
+      next.vx = approach(next.vx, targetSpeed, accel);
+      next.facing = horizontal > 0 ? 1 : -1;
+    } else {
+      next.vx = approach(next.vx, 0, friction);
+    }
+
+    if (!input.dash) {
+      next.dashReleased = true;
+    } else if (next.dashReleased && next.dashCooldownMs === 0) {
+      const dashDirection = horizontal !== 0 ? (horizontal > 0 ? 1 : -1) : next.facing;
+      const dashPower =
+        next.selectedCharacter === "fighter" ? 9.8 : next.selectedCharacter === "archer" ? 7.2 : 6.5;
+      next.vx = dashDirection * dashPower;
+      next.vy = grounded ? Math.min(next.vy, -0.5) : next.vy * 0.72;
+      next.facing = dashDirection;
+      next.dashCooldownMs = next.selectedCharacter === "fighter" ? 440 : 560;
+      next.dashReleased = false;
+    }
+
+    if (grounded) {
+      next.coyoteMs = COYOTE_MS;
+    }
+
+    if (input.drop && grounded && standingPlatform) {
+      next.dropThroughMs = 220;
+      next.onGround = false;
+    } else if (input.drop && !grounded) {
+      next.vy = Math.min(MAX_FALL_SPEED, next.vy + 0.72 * scale);
+    }
+
+    if (input.jump && next.jumpLockMs === 0) {
+      if (grounded || next.coyoteMs > 0) {
+        next.vy = config.jumpVelocity;
+        next.onGround = false;
+        next.jumpLockMs = JUMP_LOCK_MS;
+        next.coyoteMs = 0;
+      } else if (next.airJumpsRemaining > 0) {
+        next.vy = config.jumpVelocity * 0.96;
+        next.airJumpsRemaining -= 1;
+        next.jumpLockMs = JUMP_LOCK_MS;
+      }
+    }
+
+    const previousBottom = next.y + PLAYER_HEIGHT / 2;
+    next.vy = Math.min(MAX_FALL_SPEED, next.vy + GRAVITY * scale);
+    next.x = clamp(next.x + next.vx * scale, -BLAST_ZONE_MARGIN, WIDTH + BLAST_ZONE_MARGIN);
+    next.y += next.vy * scale;
+    next.onGround = false;
+
+    if (next.y + PLAYER_HEIGHT / 2 >= stage.floorY) {
+      next.y = stage.floorY - PLAYER_HEIGHT / 2;
+      next.vy = 0;
+      next.onGround = true;
+      next.airJumpsRemaining = config.airJumps;
+    } else {
+      const landingPlatform = stage.platforms.find(
+        (platform) =>
+          next.dropThroughMs === 0 &&
+          previousBottom <= platform.y &&
+          next.y + PLAYER_HEIGHT / 2 >= platform.y &&
+          Math.abs(next.x - platform.x) <= platform.width / 2 + PLAYER_WIDTH / 2
+      );
+
+      if (landingPlatform) {
+        next.y = landingPlatform.y - PLAYER_HEIGHT / 2;
+        next.vy = 0;
+        next.onGround = true;
+        next.airJumpsRemaining = config.airJumps;
+      }
+    }
+  }
+
+  return next;
 }
 
 const Brawl: React.FC = () => {
@@ -1465,6 +1575,19 @@ const Brawl: React.FC = () => {
           ];
         })
       ) as Record<string, FighterPlayer>;
+
+      if (!isHost && currentUserId) {
+        const authoritativePlayer = currentState.players[currentUserId];
+        const localInput = inputStatesRef.current[currentUserId] ?? DEFAULT_INPUT;
+        if (authoritativePlayer) {
+          interpolatedPlayers[currentUserId] = predictPlayerState(
+            authoritativePlayer,
+            localInput,
+            stage,
+            performance.now() - lastStateAtRef.current
+          );
+        }
+      }
 
       const interpolatedProjectiles = currentState.projectiles.map((projectile) => {
         const previous = previousState?.projectiles.find((entry) => entry.id === projectile.id);
