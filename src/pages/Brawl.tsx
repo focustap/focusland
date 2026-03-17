@@ -619,8 +619,26 @@ const Brawl: React.FC = () => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
 
+  useEffect(() => {
+    if (brawlState.phase !== "playing") {
+      previousStateRef.current = null;
+      lastStateAtRef.current = performance.now();
+    }
+
+    if (currentUserId) {
+      inputStatesRef.current = {
+        ...inputStatesRef.current,
+        [currentUserId]: DEFAULT_INPUT
+      };
+    }
+  }, [brawlState.phase, currentUserId]);
+
   const applyIncomingState = (nextState: BrawlState) => {
-    previousStateRef.current = stateRef.current;
+    const currentState = stateRef.current;
+    const shouldResetInterpolation =
+      currentState.phase !== nextState.phase || currentState.selectedMap !== nextState.selectedMap;
+
+    previousStateRef.current = shouldResetInterpolation ? null : currentState;
     lastStateAtRef.current = performance.now();
     setBrawlState(nextState);
     stateRef.current = nextState;
