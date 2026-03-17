@@ -26,7 +26,7 @@ type FighterPlayer = {
   vx: number;
   vy: number;
   facing: 1 | -1;
-  damage: number;
+  health: number;
   stocks: number;
   onGround: boolean;
   dropThroughMs: number;
@@ -89,8 +89,13 @@ const ROOM_NAME = "focusland-brawl";
 const WIDTH = 700;
 const HEIGHT = 400;
 const FLOOR_Y = 330;
-const PLATFORM_Y = 220;
 const PLATFORM_WIDTH = 180;
+const PLATFORM_HEIGHT = 12;
+const STAGE_PLATFORMS = [
+  { x: WIDTH / 2, y: 250, width: 180 },
+  { x: WIDTH / 2 - 150, y: 170, width: 120 },
+  { x: WIDTH / 2 + 150, y: 170, width: 120 }
+] as const;
 const PLAYER_WIDTH = 26;
 const PLAYER_HEIGHT = 42;
 const MOVE_SPEED = 4.2;
@@ -100,6 +105,7 @@ const MAX_FALL_SPEED = 11;
 const RESPAWN_Y = 140;
 const STOCKS = 3;
 const ULTIMATE_CHARGE_MAX = 100;
+const MAX_HEALTH = 100;
 
 const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
   mage: {
@@ -110,13 +116,13 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     meleeRange: 48,
     meleeKnockbackX: 5.4,
     meleeKnockbackY: 5.8,
-    projectileDamage: 11,
+    projectileDamage: 4,
     projectileRadius: 10,
     projectileSpeed: 6,
     projectileColor: "#fb923c",
     projectileKnockbackX: 4.8,
     projectileKnockbackY: 5.2,
-    ultimateDamage: 22,
+    ultimateDamage: 25,
     ultimateRadius: 18,
     ultimateSpeed: 7,
     ultimateColor: "#f97316",
@@ -127,17 +133,17 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     name: "Fighter",
     color: "#ef4444",
     accent: "#fecaca",
-    meleeDamage: 10,
+    meleeDamage: 8,
     meleeRange: 54,
     meleeKnockbackX: 6.2,
     meleeKnockbackY: 5.6,
-    projectileDamage: 9,
+    projectileDamage: 4,
     projectileRadius: 7,
     projectileSpeed: 8,
     projectileColor: "#e2e8f0",
     projectileKnockbackX: 4.6,
     projectileKnockbackY: 4.8,
-    ultimateDamage: 18,
+    ultimateDamage: 25,
     ultimateRadius: 12,
     ultimateSpeed: 9.5,
     ultimateColor: "#f8fafc",
@@ -196,7 +202,7 @@ function createPlayerState(index: number): FighterPlayer {
     vx: 0,
     vy: 0,
     facing: index === 0 ? 1 : -1,
-    damage: 0,
+    health: MAX_HEALTH,
     stocks: STOCKS,
     onGround: false,
     dropThroughMs: 0,
@@ -246,10 +252,13 @@ function startMatchState(players: PlayerPresence[], currentState: BrawlState): B
   };
 }
 
-function isOnPlatform(player: FighterPlayer) {
+function getStandingPlatform(player: FighterPlayer) {
   return (
-    Math.abs(player.y + PLAYER_HEIGHT / 2 - PLATFORM_Y) < 2 &&
-    Math.abs(player.x - WIDTH / 2) <= PLATFORM_WIDTH / 2 + PLAYER_WIDTH / 2
+    STAGE_PLATFORMS.find(
+      (platform) =>
+        Math.abs(player.y + PLAYER_HEIGHT / 2 - platform.y) < 2 &&
+        Math.abs(player.x - platform.x) <= platform.width / 2 + PLAYER_WIDTH / 2
+    ) ?? null
   );
 }
 
@@ -453,6 +462,25 @@ const Brawl: React.FC = () => {
         player.ultimateCharge = clamp(player.ultimateCharge + amount, 0, ULTIMATE_CHARGE_MAX);
       };
 
+      const loseStock = (playerId: string, reason: string) => {
+        const state = nextPlayers[playerId];
+        if (!state) return;
+        const defeatedPlayer = currentPlayers.find((player) => player.userId === playerId);
+        state.stocks -= 1;
+        state.health = MAX_HEALTH;
+        state.vx = 0;
+        state.vy = 0;
+        state.respawnMs = state.stocks > 0 ? 1200 : 0;
+        state.invulnMs = 0;
+        nextMessage =
+          state.stocks > 0
+            ? `${defeatedPlayer?.username ?? "A fighter"} ${reason}.`
+            : `${defeatedPlayer?.username ?? "A fighter"} is out.`;
+        if (state.stocks <= 0) {
+          winnerId = getOtherPlayerId(playerId);
+        }
+      };
+
       const applyHit = (
         targetId: string,
         sourceId: string,
@@ -461,13 +489,26 @@ const Brawl: React.FC = () => {
         knockbackY: number
       ) => {
         const target = nextPlayers[targetId];
+        const source = nextPlayers[sourceId];
         if (!target || target.respawnMs > 0 || target.invulnMs > 0) return;
-        target.damage += damage;
-        const scale = 1 + target.damage / 90;
-        target.vx = knockbackX * scale;
-        target.vy = -knockbackY * scale;
+        const deltaX = target.x - (source?.x ?? target.x - 1);
+        const deltaY = target.y - (source?.y ?? target.y);
+        const distance = Math.hypot(deltaX, deltaY) || 1;
+        const horizontalDirection = Math.sign(deltaX) || target.facing;
+        target.health = clamp(target.health - damage, 0, MAX_HEALTH);
+        target.vx = (deltaX / distance) * Math.abs(knockbackX || 1.5);
+        target.vy = (deltaY / distance) * Math.abs(knockbackY || 1.5);
+        if (target.vy > -2.5) {
+          target.vy = -2.5;
+        }
+        if (horizontalDirection !== 0) {
+          target.facing = horizontalDirection > 0 ? 1 : -1;
+        }
         target.onGround = false;
         addCharge(sourceId, 14);
+        if (target.health <= 0) {
+          loseStock(targetId, "got KO'd");
+        }
       };
 
       currentPlayers.forEach((player) => {
@@ -491,7 +532,7 @@ const Brawl: React.FC = () => {
               ...reset,
               selectedCharacter: state.selectedCharacter,
               stocks: state.stocks,
-              damage: 0,
+              health: MAX_HEALTH,
               invulnMs: 1200
             };
           }
@@ -510,7 +551,8 @@ const Brawl: React.FC = () => {
           state.facing = horizontal > 0 ? 1 : -1;
         }
 
-        const onPlatform = isOnPlatform(state);
+        const standingPlatform = getStandingPlatform(state);
+        const onPlatform = Boolean(standingPlatform);
         if (input.drop && onPlatform) {
           state.dropThroughMs = 250;
           state.onGround = false;
@@ -593,31 +635,24 @@ const Brawl: React.FC = () => {
           state.y = FLOOR_Y - PLAYER_HEIGHT / 2;
           state.vy = 0;
           state.onGround = true;
-        } else if (
-          state.dropThroughMs === 0 &&
-          previousBottom <= PLATFORM_Y &&
-          state.y + PLAYER_HEIGHT / 2 >= PLATFORM_Y &&
-          Math.abs(state.x - WIDTH / 2) <= PLATFORM_WIDTH / 2 + PLAYER_WIDTH / 2
-        ) {
-          state.y = PLATFORM_Y - PLAYER_HEIGHT / 2;
-          state.vy = 0;
-          state.onGround = true;
+        } else {
+          const landingPlatform = STAGE_PLATFORMS.find(
+            (platform) =>
+              state.dropThroughMs === 0 &&
+              previousBottom <= platform.y &&
+              state.y + PLAYER_HEIGHT / 2 >= platform.y &&
+              Math.abs(state.x - platform.x) <= platform.width / 2 + PLAYER_WIDTH / 2
+          );
+
+          if (landingPlatform) {
+            state.y = landingPlatform.y - PLAYER_HEIGHT / 2;
+            state.vy = 0;
+            state.onGround = true;
+          }
         }
 
         if (state.y > HEIGHT + 90 || state.x < -90 || state.x > WIDTH + 90) {
-          state.stocks -= 1;
-          state.damage = 0;
-          state.vx = 0;
-          state.vy = 0;
-          state.respawnMs = state.stocks > 0 ? 1200 : 0;
-          state.invulnMs = 0;
-          nextMessage =
-            state.stocks > 0
-              ? `${player.username} lost a stock.`
-              : `${player.username} is out.`;
-          if (state.stocks <= 0) {
-            winnerId = getOtherPlayerId(player.userId);
-          }
+          loseStock(player.userId, "got launched out");
         }
       });
 
@@ -754,7 +789,14 @@ const Brawl: React.FC = () => {
       ctx.fillStyle = "#1e293b";
       ctx.fillRect(0, FLOOR_Y, WIDTH, HEIGHT - FLOOR_Y);
       ctx.fillStyle = "#64748b";
-      ctx.fillRect(WIDTH / 2 - PLATFORM_WIDTH / 2, PLATFORM_Y, PLATFORM_WIDTH, 12);
+      STAGE_PLATFORMS.forEach((platform) => {
+        ctx.fillRect(
+          platform.x - platform.width / 2,
+          platform.y,
+          platform.width,
+          PLATFORM_HEIGHT
+        );
+      });
 
       currentState.projectiles.forEach((projectile) => {
         ctx.fillStyle = projectile.color;
@@ -801,7 +843,7 @@ const Brawl: React.FC = () => {
         const lineY = 24 + index * 24;
         ctx.fillStyle = "#e2e8f0";
         ctx.fillText(
-          `${player.username} | ${fighter.selectedCharacter ?? "no pick"} | ${fighter.damage.toFixed(0)}% | stocks ${fighter.stocks} | ult ${fighter.ultimateCharge.toFixed(0)}`,
+          `${player.username} | ${fighter.selectedCharacter ?? "no pick"} | hp ${fighter.health.toFixed(0)} | stocks ${fighter.stocks} | ult ${fighter.ultimateCharge.toFixed(0)}`,
           18,
           lineY
         );
