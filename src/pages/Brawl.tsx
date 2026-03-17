@@ -8,7 +8,9 @@ type PlayerPresence = {
   onlineAt: string;
 };
 
-type CharacterId = "mage" | "fighter";
+type CharacterId = "mage" | "fighter" | "archer";
+type MapId = "sky-ruins" | "ember-yard" | "moon-pier";
+type ProjectileKind = "fireball" | "dagger" | "arrow" | "ultimate";
 
 type InputState = {
   left: boolean;
@@ -18,6 +20,58 @@ type InputState = {
   attack: boolean;
   special: boolean;
   ultimate: boolean;
+};
+
+type Platform = {
+  x: number;
+  y: number;
+  width: number;
+};
+
+type StageConfig = {
+  id: MapId;
+  name: string;
+  subtitle: string;
+  floorY: number;
+  respawnY: number;
+  platforms: Platform[];
+  bgTop: string;
+  bgBottom: string;
+  floorColor: string;
+  floorEdge: string;
+  platformColor: string;
+  accent: string;
+};
+
+type CharacterConfig = {
+  id: CharacterId;
+  name: string;
+  title: string;
+  color: string;
+  accent: string;
+  trim: string;
+  moveSpeed: number;
+  jumpVelocity: number;
+  airJumps: number;
+  meleeDamage: number;
+  meleeRange: number;
+  meleeKnockback: number;
+  meleeLift: number;
+  meleeLunge: number;
+  specialDamage: number;
+  specialRadius: number;
+  specialSpeed: number;
+  specialColor: string;
+  specialGravity: number;
+  specialCooldownMs: number;
+  specialChargeGain: number;
+  ultimateDamage: number;
+  ultimateRadius: number;
+  ultimateSpeed: number;
+  ultimateColor: string;
+  ultimateCooldownMs: number;
+  ultimateChargeGain: number;
+  ultimateShots: number;
 };
 
 type FighterPlayer = {
@@ -30,7 +84,9 @@ type FighterPlayer = {
   stocks: number;
   onGround: boolean;
   dropThroughMs: number;
-  jumpCooldownMs: number;
+  jumpLockMs: number;
+  coyoteMs: number;
+  airJumpsRemaining: number;
   attackCooldownMs: number;
   specialCooldownMs: number;
   respawnMs: number;
@@ -49,106 +105,199 @@ type Projectile = {
   vy: number;
   radius: number;
   damage: number;
-  knockbackX: number;
-  knockbackY: number;
+  knockback: number;
+  lift: number;
   color: string;
+  kind: ProjectileKind;
+  gravity: number;
+  ttlMs: number;
   isUltimate: boolean;
+};
+
+type Effect = {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  color: string;
+  ttlMs: number;
 };
 
 type BrawlState = {
   phase: "waiting" | "select" | "playing" | "gameOver";
+  selectedMap: MapId;
   players: Record<string, FighterPlayer>;
   projectiles: Projectile[];
+  effects: Effect[];
   winnerId: string | null;
   message: string;
 };
 
-type CharacterConfig = {
-  name: string;
-  color: string;
-  accent: string;
-  meleeDamage: number;
-  meleeRange: number;
-  meleeKnockbackX: number;
-  meleeKnockbackY: number;
-  projectileDamage: number;
-  projectileRadius: number;
-  projectileSpeed: number;
-  projectileColor: string;
-  projectileKnockbackX: number;
-  projectileKnockbackY: number;
-  ultimateDamage: number;
-  ultimateRadius: number;
-  ultimateSpeed: number;
-  ultimateColor: string;
-  ultimateKnockbackX: number;
-  ultimateKnockbackY: number;
-};
-
 const ROOM_NAME = "focusland-brawl";
-const WIDTH = 700;
-const HEIGHT = 400;
-const FLOOR_Y = 330;
-const PLATFORM_WIDTH = 180;
+const WIDTH = 760;
+const HEIGHT = 430;
+const PLAYER_WIDTH = 28;
+const PLAYER_HEIGHT = 44;
 const PLATFORM_HEIGHT = 12;
-const STAGE_PLATFORMS = [
-  { x: WIDTH / 2, y: 250, width: 180 },
-  { x: WIDTH / 2 - 150, y: 170, width: 120 },
-  { x: WIDTH / 2 + 150, y: 170, width: 120 }
-] as const;
-const PLAYER_WIDTH = 26;
-const PLAYER_HEIGHT = 42;
-const MOVE_SPEED = 4.2;
-const JUMP_VELOCITY = -11;
 const GRAVITY = 0.62;
-const MAX_FALL_SPEED = 11;
-const RESPAWN_Y = 140;
+const MAX_FALL_SPEED = 12;
+const FLOOR_MARGIN = 110;
 const STOCKS = 3;
-const ULTIMATE_CHARGE_MAX = 100;
 const MAX_HEALTH = 100;
+const ULTIMATE_CHARGE_MAX = 100;
+const COYOTE_MS = 110;
+const JUMP_LOCK_MS = 180;
+const NETWORK_RENDER_WINDOW_MS = 90;
+const BRAWL_VERSION = "0.2";
+const DEFAULT_MAP: MapId = "sky-ruins";
+
+const STAGES: Record<MapId, StageConfig> = {
+  "sky-ruins": {
+    id: "sky-ruins",
+    name: "Sky Ruins",
+    subtitle: "Balanced three-platform arena",
+    floorY: 352,
+    respawnY: 136,
+    platforms: [
+      { x: WIDTH / 2, y: 258, width: 190 },
+      { x: WIDTH / 2 - 170, y: 192, width: 126 },
+      { x: WIDTH / 2 + 170, y: 192, width: 126 }
+    ],
+    bgTop: "#153b5c",
+    bgBottom: "#83c5be",
+    floorColor: "#ddc39a",
+    floorEdge: "#b08968",
+    platformColor: "#d8e2dc",
+    accent: "#f1faee"
+  },
+  "ember-yard": {
+    id: "ember-yard",
+    name: "Ember Yard",
+    subtitle: "Hotter pace, lower center perch",
+    floorY: 350,
+    respawnY: 132,
+    platforms: [
+      { x: WIDTH / 2, y: 272, width: 170 },
+      { x: WIDTH / 2 - 180, y: 205, width: 118 },
+      { x: WIDTH / 2 + 180, y: 205, width: 118 }
+    ],
+    bgTop: "#391818",
+    bgBottom: "#d97706",
+    floorColor: "#5b3419",
+    floorEdge: "#f59e0b",
+    platformColor: "#7c2d12",
+    accent: "#fed7aa"
+  },
+  "moon-pier": {
+    id: "moon-pier",
+    name: "Moon Pier",
+    subtitle: "Wide side lanes and a high center platform",
+    floorY: 348,
+    respawnY: 130,
+    platforms: [
+      { x: WIDTH / 2, y: 238, width: 160 },
+      { x: WIDTH / 2 - 190, y: 205, width: 132 },
+      { x: WIDTH / 2 + 190, y: 205, width: 132 }
+    ],
+    bgTop: "#111827",
+    bgBottom: "#4338ca",
+    floorColor: "#1f2937",
+    floorEdge: "#93c5fd",
+    platformColor: "#334155",
+    accent: "#c4b5fd"
+  }
+};
 
 const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
   mage: {
+    id: "mage",
     name: "Mage",
+    title: "Control and burst",
     color: "#8b5cf6",
     accent: "#c4b5fd",
+    trim: "#f97316",
+    moveSpeed: 4.1,
+    jumpVelocity: -11.5,
+    airJumps: 1,
     meleeDamage: 8,
-    meleeRange: 48,
-    meleeKnockbackX: 5.4,
-    meleeKnockbackY: 5.8,
-    projectileDamage: 4,
-    projectileRadius: 10,
-    projectileSpeed: 6,
-    projectileColor: "#fb923c",
-    projectileKnockbackX: 4.8,
-    projectileKnockbackY: 5.2,
+    meleeRange: 52,
+    meleeKnockback: 7.2,
+    meleeLift: 6.8,
+    meleeLunge: 1.2,
+    specialDamage: 4,
+    specialRadius: 10,
+    specialSpeed: 6,
+    specialColor: "#fb923c",
+    specialGravity: 0.03,
+    specialCooldownMs: 460,
+    specialChargeGain: 10,
     ultimateDamage: 25,
     ultimateRadius: 18,
-    ultimateSpeed: 7,
+    ultimateSpeed: 7.2,
     ultimateColor: "#f97316",
-    ultimateKnockbackX: 7.8,
-    ultimateKnockbackY: 8.8
+    ultimateCooldownMs: 900,
+    ultimateChargeGain: 16,
+    ultimateShots: 1
   },
   fighter: {
+    id: "fighter",
     name: "Fighter",
+    title: "Pressure and lunge",
     color: "#ef4444",
     accent: "#fecaca",
+    trim: "#f8fafc",
+    moveSpeed: 4.45,
+    jumpVelocity: -11.1,
+    airJumps: 1,
     meleeDamage: 8,
-    meleeRange: 54,
-    meleeKnockbackX: 6.2,
-    meleeKnockbackY: 5.6,
-    projectileDamage: 4,
-    projectileRadius: 7,
-    projectileSpeed: 8,
-    projectileColor: "#e2e8f0",
-    projectileKnockbackX: 4.6,
-    projectileKnockbackY: 4.8,
+    meleeRange: 58,
+    meleeKnockback: 8.2,
+    meleeLift: 6.1,
+    meleeLunge: 2.4,
+    specialDamage: 4,
+    specialRadius: 7,
+    specialSpeed: 9.2,
+    specialColor: "#e2e8f0",
+    specialGravity: 0,
+    specialCooldownMs: 380,
+    specialChargeGain: 8,
     ultimateDamage: 25,
-    ultimateRadius: 12,
-    ultimateSpeed: 9.5,
+    ultimateRadius: 13,
+    ultimateSpeed: 10.5,
     ultimateColor: "#f8fafc",
-    ultimateKnockbackX: 8.5,
-    ultimateKnockbackY: 7.2
+    ultimateCooldownMs: 820,
+    ultimateChargeGain: 15,
+    ultimateShots: 1
+  },
+  archer: {
+    id: "archer",
+    name: "Archer",
+    title: "Spacing and volley",
+    color: "#10b981",
+    accent: "#a7f3d0",
+    trim: "#fde68a",
+    moveSpeed: 4.65,
+    jumpVelocity: -11.9,
+    airJumps: 2,
+    meleeDamage: 8,
+    meleeRange: 48,
+    meleeKnockback: 6.8,
+    meleeLift: 5.9,
+    meleeLunge: 0.8,
+    specialDamage: 4,
+    specialRadius: 6,
+    specialSpeed: 10.4,
+    specialColor: "#fef08a",
+    specialGravity: 0.008,
+    specialCooldownMs: 320,
+    specialChargeGain: 8,
+    ultimateDamage: 25,
+    ultimateRadius: 9,
+    ultimateSpeed: 11,
+    ultimateColor: "#facc15",
+    ultimateCooldownMs: 900,
+    ultimateChargeGain: 12,
+    ultimateShots: 3
   }
 };
 
@@ -164,11 +313,38 @@ const DEFAULT_INPUT: InputState = {
 
 const DEFAULT_STATE: BrawlState = {
   phase: "waiting",
+  selectedMap: DEFAULT_MAP,
   players: {},
   projectiles: [],
+  effects: [],
   winnerId: null,
   message: "Waiting for two players."
 };
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function approach(current: number, target: number, amount: number) {
+  if (current < target) return Math.min(current + amount, target);
+  if (current > target) return Math.max(current - amount, target);
+  return current;
+}
+
+function lerp(start: number, end: number, alpha: number) {
+  return start + (end - start) * alpha;
+}
+
+function createEffect(x: number, y: number, color: string, radius: number, ttlMs: number): Effect {
+  return {
+    id: `${color}-${x}-${y}-${Date.now()}-${Math.random()}`,
+    x,
+    y,
+    radius,
+    color,
+    ttlMs
+  };
+}
 
 function getPlayersFromPresence(
   rawPresence: Record<string, Array<{ userId: string; username: string; onlineAt: string }>>
@@ -191,14 +367,10 @@ function getPlayersFromPresence(
   return Array.from(deduped.values()).sort((a, b) => a.onlineAt.localeCompare(b.onlineAt));
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function createPlayerState(index: number): FighterPlayer {
+function createPlayerState(index: number, stage: StageConfig): FighterPlayer {
   return {
     x: index === 0 ? WIDTH * 0.3 : WIDTH * 0.7,
-    y: RESPAWN_Y,
+    y: stage.respawnY,
     vx: 0,
     vy: 0,
     facing: index === 0 ? 1 : -1,
@@ -206,7 +378,9 @@ function createPlayerState(index: number): FighterPlayer {
     stocks: STOCKS,
     onGround: false,
     dropThroughMs: 0,
-    jumpCooldownMs: 0,
+    jumpLockMs: 0,
+    coyoteMs: 0,
+    airJumpsRemaining: 1,
     attackCooldownMs: 0,
     specialCooldownMs: 0,
     respawnMs: 0,
@@ -217,44 +391,53 @@ function createPlayerState(index: number): FighterPlayer {
   };
 }
 
-function createSelectState(players: PlayerPresence[]): BrawlState {
+function createSelectState(players: PlayerPresence[], selectedMap: MapId): BrawlState {
+  const stage = STAGES[selectedMap];
   const playerState = players.reduce<Record<string, FighterPlayer>>((acc, player, index) => {
-    acc[player.userId] = createPlayerState(index);
+    acc[player.userId] = createPlayerState(index, stage);
     return acc;
   }, {});
 
   return {
     phase: "select",
+    selectedMap,
     players: playerState,
     projectiles: [],
+    effects: [],
     winnerId: null,
-    message: "Choose your fighters."
+    message: "Choose fighters and a stage."
   };
 }
 
 function startMatchState(players: PlayerPresence[], currentState: BrawlState): BrawlState {
+  const stage = STAGES[currentState.selectedMap];
   const nextPlayers = players.reduce<Record<string, FighterPlayer>>((acc, player, index) => {
     const existing = currentState.players[player.userId];
+    const characterId = existing?.selectedCharacter ?? null;
+    const config = characterId ? CHARACTER_CONFIGS[characterId] : null;
     acc[player.userId] = {
-      ...createPlayerState(index),
-      selectedCharacter: existing?.selectedCharacter ?? null,
-      invulnMs: 800
+      ...createPlayerState(index, stage),
+      selectedCharacter: characterId,
+      airJumpsRemaining: config?.airJumps ?? 1,
+      invulnMs: 900
     };
     return acc;
   }, {});
 
   return {
     phase: "playing",
+    selectedMap: currentState.selectedMap,
     players: nextPlayers,
     projectiles: [],
+    effects: [],
     winnerId: null,
-    message: "Fight."
+    message: `${stage.name}. Fight.`
   };
 }
 
-function getStandingPlatform(player: FighterPlayer) {
+function getStandingPlatform(player: FighterPlayer, stage: StageConfig) {
   return (
-    STAGE_PLATFORMS.find(
+    stage.platforms.find(
       (platform) =>
         Math.abs(player.y + PLAYER_HEIGHT / 2 - platform.y) < 2 &&
         Math.abs(player.x - platform.x) <= platform.width / 2 + PLAYER_WIDTH / 2
@@ -274,8 +457,10 @@ const Brawl: React.FC = () => {
   const tickRef = useRef<number | null>(null);
   const renderRef = useRef<number | null>(null);
   const stateRef = useRef<BrawlState>(DEFAULT_STATE);
+  const previousStateRef = useRef<BrawlState | null>(null);
   const playersRef = useRef<PlayerPresence[]>([]);
   const currentUserIdRef = useRef<string | null>(null);
+  const lastStateAtRef = useRef<number>(performance.now());
   const inputStatesRef = useRef<Record<string, InputState>>({});
 
   const isSeated = currentUserId ? players.some((player) => player.userId === currentUserId) : false;
@@ -297,8 +482,15 @@ const Brawl: React.FC = () => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
 
-  const broadcastState = async (nextState: BrawlState) => {
+  const applyIncomingState = (nextState: BrawlState) => {
+    previousStateRef.current = stateRef.current;
+    lastStateAtRef.current = performance.now();
     setBrawlState(nextState);
+    stateRef.current = nextState;
+  };
+
+  const broadcastState = async (nextState: BrawlState) => {
+    applyIncomingState(nextState);
     if (channelRef.current) {
       await channelRef.current.send({
         type: "broadcast",
@@ -324,13 +516,14 @@ const Brawl: React.FC = () => {
       );
 
       setBrawlState((currentState) => {
+        let nextState = currentState;
         if (nextPlayers.length < 2) {
-          return DEFAULT_STATE;
+          nextState = { ...DEFAULT_STATE, selectedMap: currentState.selectedMap };
+        } else if (currentState.phase === "waiting") {
+          nextState = createSelectState(nextPlayers, currentState.selectedMap);
         }
-        if (currentState.phase === "waiting") {
-          return createSelectState(nextPlayers);
-        }
-        return currentState;
+        stateRef.current = nextState;
+        return nextState;
       });
     };
 
@@ -357,9 +550,7 @@ const Brawl: React.FC = () => {
 
       channel.on("presence", { event: "sync" }, syncPresence);
       channel.on("broadcast", { event: "brawl-state" }, ({ payload }) => {
-        const nextState = payload as BrawlState;
-        setBrawlState(nextState);
-        stateRef.current = nextState;
+        applyIncomingState(payload as BrawlState);
       });
       channel.on("broadcast", { event: "brawl-input" }, ({ payload }) => {
         const nextPayload = payload as { userId: string; input: InputState };
@@ -369,18 +560,31 @@ const Brawl: React.FC = () => {
         };
       });
       channel.on("broadcast", { event: "brawl-select" }, ({ payload }) => {
-        const nextPayload = payload as { userId: string; character: CharacterId };
+        const nextPayload = payload as
+          | { type: "character"; userId: string; character: CharacterId }
+          | { type: "map"; map: MapId };
+
         setBrawlState((currentState) => {
-          const nextState: BrawlState = {
-            ...currentState,
-            players: {
-              ...currentState.players,
-              [nextPayload.userId]: {
-                ...(currentState.players[nextPayload.userId] ?? createPlayerState(0)),
-                selectedCharacter: nextPayload.character
+          let nextState = currentState;
+          if (nextPayload.type === "character") {
+            nextState = {
+              ...currentState,
+              players: {
+                ...currentState.players,
+                [nextPayload.userId]: {
+                  ...(currentState.players[nextPayload.userId] ??
+                    createPlayerState(0, STAGES[currentState.selectedMap])),
+                  selectedCharacter: nextPayload.character
+                }
               }
-            }
-          };
+            };
+          } else if (currentState.phase === "select") {
+            nextState = {
+              ...currentState,
+              selectedMap: nextPayload.map,
+              message: `${STAGES[nextPayload.map].name} selected.`
+            };
+          }
           stateRef.current = nextState;
           return nextState;
         });
@@ -442,6 +646,7 @@ const Brawl: React.FC = () => {
       const currentState = stateRef.current;
       if (currentState.phase !== "playing") return;
 
+      const stage = STAGES[currentState.selectedMap];
       const currentPlayers = playersRef.current;
       const nextPlayers = Object.fromEntries(
         Object.entries(currentState.players).map(([playerId, playerState]) => [
@@ -450,6 +655,9 @@ const Brawl: React.FC = () => {
         ])
       ) as Record<string, FighterPlayer>;
       let nextProjectiles = currentState.projectiles.map((projectile) => ({ ...projectile }));
+      let nextEffects = currentState.effects
+        .map((effect) => ({ ...effect, ttlMs: effect.ttlMs - 33 }))
+        .filter((effect) => effect.ttlMs > 0);
       let nextMessage = currentState.message;
       let winnerId: string | null = null;
 
@@ -470,8 +678,9 @@ const Brawl: React.FC = () => {
         state.health = MAX_HEALTH;
         state.vx = 0;
         state.vy = 0;
-        state.respawnMs = state.stocks > 0 ? 1200 : 0;
+        state.respawnMs = state.stocks > 0 ? 1150 : 0;
         state.invulnMs = 0;
+        nextEffects.push(createEffect(state.x, state.y, "#fca5a5", 28, 240));
         nextMessage =
           state.stocks > 0
             ? `${defeatedPlayer?.username ?? "A fighter"} ${reason}.`
@@ -485,29 +694,39 @@ const Brawl: React.FC = () => {
         targetId: string,
         sourceId: string,
         damage: number,
-        knockbackX: number,
-        knockbackY: number
+        knockback: number,
+        lift: number,
+        hitX: number,
+        hitY: number,
+        effectColor: string
       ) => {
         const target = nextPlayers[targetId];
         const source = nextPlayers[sourceId];
         if (!target || target.respawnMs > 0 || target.invulnMs > 0) return;
-        const deltaX = target.x - (source?.x ?? target.x - 1);
-        const deltaY = target.y - (source?.y ?? target.y);
+
+        const deltaX = target.x - (source?.x ?? hitX - 1);
+        const deltaY = target.y - (source?.y ?? hitY);
         const distance = Math.hypot(deltaX, deltaY) || 1;
-        const horizontalDirection = Math.sign(deltaX) || target.facing;
+        const normalizedX = deltaX / distance;
+        const normalizedY = deltaY / distance;
+
         target.health = clamp(target.health - damage, 0, MAX_HEALTH);
-        target.vx = (deltaX / distance) * Math.abs(knockbackX || 1.5);
-        target.vy = (deltaY / distance) * Math.abs(knockbackY || 1.5);
-        if (target.vy > -2.5) {
-          target.vy = -2.5;
-        }
-        if (horizontalDirection !== 0) {
-          target.facing = horizontalDirection > 0 ? 1 : -1;
+        target.vx = normalizedX * knockback;
+        target.vy = normalizedY * knockback - lift;
+        if (target.vy > -2.4) {
+          target.vy = -2.4;
         }
         target.onGround = false;
-        addCharge(sourceId, 14);
+        target.coyoteMs = 0;
+        if (Math.abs(target.vx) > 0.8) {
+          target.facing = target.vx > 0 ? 1 : -1;
+        }
+
+        nextEffects.push(createEffect(hitX, hitY, effectColor, 18, 180));
+        addCharge(sourceId, 12);
+
         if (target.health <= 0) {
-          loseStock(targetId, "got KO'd");
+          loseStock(targetId, "got knocked out");
         }
       };
 
@@ -517,8 +736,9 @@ const Brawl: React.FC = () => {
 
         state.attackCooldownMs = Math.max(0, state.attackCooldownMs - 33);
         state.specialCooldownMs = Math.max(0, state.specialCooldownMs - 33);
-        state.jumpCooldownMs = Math.max(0, state.jumpCooldownMs - 33);
         state.dropThroughMs = Math.max(0, state.dropThroughMs - 33);
+        state.jumpLockMs = Math.max(0, state.jumpLockMs - 33);
+        state.coyoteMs = Math.max(0, state.coyoteMs - 33);
         state.attackFlashMs = Math.max(0, state.attackFlashMs - 33);
         state.invulnMs = Math.max(0, state.invulnMs - 33);
 
@@ -526,13 +746,16 @@ const Brawl: React.FC = () => {
           state.respawnMs = Math.max(0, state.respawnMs - 33);
           if (state.respawnMs === 0) {
             const index = currentPlayers.findIndex((entry) => entry.userId === player.userId);
-            const reset = createPlayerState(index);
+            const characterId = state.selectedCharacter;
+            const config = characterId ? CHARACTER_CONFIGS[characterId] : null;
+            const reset = createPlayerState(index, stage);
             nextPlayers[player.userId] = {
               ...state,
               ...reset,
-              selectedCharacter: state.selectedCharacter,
+              selectedCharacter: characterId,
               stocks: state.stocks,
               health: MAX_HEALTH,
+              airJumpsRemaining: config?.airJumps ?? 1,
               invulnMs: 1200
             };
           }
@@ -541,27 +764,44 @@ const Brawl: React.FC = () => {
 
         const characterId = state.selectedCharacter;
         if (!characterId) return;
-
         const config = CHARACTER_CONFIGS[characterId];
         const input = inputStatesRef.current[player.userId] ?? DEFAULT_INPUT;
         const horizontal = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+        const standingPlatform = getStandingPlatform(state, stage);
+        const grounded = state.onGround || Boolean(standingPlatform);
+        const targetSpeed = horizontal * config.moveSpeed;
+        const accel = grounded ? 1.25 : 0.62;
+        const friction = grounded ? 0.9 : 0.22;
 
-        state.vx = horizontal * MOVE_SPEED;
         if (horizontal !== 0) {
+          state.vx = approach(state.vx, targetSpeed, accel);
           state.facing = horizontal > 0 ? 1 : -1;
+        } else {
+          state.vx = approach(state.vx, 0, friction);
         }
 
-        const standingPlatform = getStandingPlatform(state);
-        const onPlatform = Boolean(standingPlatform);
-        if (input.drop && onPlatform) {
-          state.dropThroughMs = 250;
-          state.onGround = false;
+        if (grounded) {
+          state.coyoteMs = COYOTE_MS;
         }
 
-        if (input.jump && state.jumpCooldownMs === 0 && (state.onGround || onPlatform)) {
-          state.vy = JUMP_VELOCITY;
+        if (input.drop && grounded && standingPlatform) {
+          state.dropThroughMs = 220;
           state.onGround = false;
-          state.jumpCooldownMs = 220;
+        } else if (input.drop && !grounded) {
+          state.vy = Math.min(MAX_FALL_SPEED, state.vy + 0.72);
+        }
+
+        if (input.jump && state.jumpLockMs === 0) {
+          if (grounded || state.coyoteMs > 0) {
+            state.vy = config.jumpVelocity;
+            state.onGround = false;
+            state.jumpLockMs = JUMP_LOCK_MS;
+            state.coyoteMs = 0;
+          } else if (state.airJumpsRemaining > 0) {
+            state.vy = config.jumpVelocity * 0.96;
+            state.airJumpsRemaining -= 1;
+            state.jumpLockMs = JUMP_LOCK_MS;
+          }
         }
 
         if (input.attack && state.attackCooldownMs === 0) {
@@ -570,7 +810,7 @@ const Brawl: React.FC = () => {
           if (
             target &&
             target.respawnMs === 0 &&
-            Math.abs(target.y - state.y) < 40 &&
+            Math.abs(target.y - state.y) < 48 &&
             Math.abs(target.x - state.x) <= config.meleeRange &&
             Math.sign(target.x - state.x || state.facing) === state.facing
           ) {
@@ -578,65 +818,88 @@ const Brawl: React.FC = () => {
               targetId!,
               player.userId,
               config.meleeDamage,
-              config.meleeKnockbackX * state.facing,
-              config.meleeKnockbackY
+              config.meleeKnockback,
+              config.meleeLift,
+              (state.x + target.x) / 2,
+              state.y - 6,
+              config.trim
             );
-            nextMessage = `${player.username} landed a hit.`;
+            nextMessage = `${player.username} connected a melee hit.`;
           }
-          state.attackCooldownMs = 320;
-          state.attackFlashMs = 120;
+          if (config.meleeLunge > 0) {
+            state.vx += config.meleeLunge * state.facing;
+          }
+          state.attackCooldownMs = 290;
+          state.attackFlashMs = 130;
         }
 
         if (input.special && state.specialCooldownMs === 0) {
           nextProjectiles.push({
             id: `special-${player.userId}-${Date.now()}-${Math.random()}`,
             ownerId: player.userId,
-            x: state.x + state.facing * 24,
+            x: state.x + state.facing * 26,
             y: state.y - 10,
-            vx: config.projectileSpeed * state.facing,
-            vy: 0,
-            radius: config.projectileRadius,
-            damage: config.projectileDamage,
-            knockbackX: config.projectileKnockbackX * state.facing,
-            knockbackY: config.projectileKnockbackY,
-            color: config.projectileColor,
+            vx: config.specialSpeed * state.facing,
+            vy: characterId === "mage" ? -0.35 : characterId === "archer" ? -0.18 : 0,
+            radius: config.specialRadius,
+            damage: config.specialDamage,
+            knockback: 6.4,
+            lift: 4.8,
+            color: config.specialColor,
+            kind:
+              characterId === "mage" ? "fireball" : characterId === "fighter" ? "dagger" : "arrow",
+            gravity: config.specialGravity,
+            ttlMs: 1450,
             isUltimate: false
           });
-          state.specialCooldownMs = 540;
+          state.specialCooldownMs = config.specialCooldownMs;
+          addCharge(player.userId, config.specialChargeGain);
         }
 
-        if (input.ultimate && state.specialCooldownMs === 0 && state.ultimateCharge >= ULTIMATE_CHARGE_MAX) {
-          nextProjectiles.push({
-            id: `ultimate-${player.userId}-${Date.now()}-${Math.random()}`,
-            ownerId: player.userId,
-            x: state.x + state.facing * 24,
-            y: state.y - 12,
-            vx: config.ultimateSpeed * state.facing,
-            vy: 0,
-            radius: config.ultimateRadius,
-            damage: config.ultimateDamage,
-            knockbackX: config.ultimateKnockbackX * state.facing,
-            knockbackY: config.ultimateKnockbackY,
-            color: config.ultimateColor,
-            isUltimate: true
-          });
+        if (
+          input.ultimate &&
+          state.specialCooldownMs === 0 &&
+          state.ultimateCharge >= ULTIMATE_CHARGE_MAX
+        ) {
+          for (let shot = 0; shot < config.ultimateShots; shot += 1) {
+            const spread = config.ultimateShots === 1 ? 0 : (shot - (config.ultimateShots - 1) / 2) * 0.45;
+            nextProjectiles.push({
+              id: `ultimate-${player.userId}-${Date.now()}-${Math.random()}-${shot}`,
+              ownerId: player.userId,
+              x: state.x + state.facing * 28,
+              y: state.y - 12 + shot * 4,
+              vx: config.ultimateSpeed * state.facing,
+              vy: spread,
+              radius: config.ultimateRadius,
+              damage: config.ultimateDamage,
+              knockback: 10.2,
+              lift: 6.8,
+              color: config.ultimateColor,
+              kind: "ultimate",
+              gravity: characterId === "archer" ? 0.01 : 0,
+              ttlMs: 1100,
+              isUltimate: true
+            });
+          }
           state.ultimateCharge = 0;
-          state.specialCooldownMs = 850;
+          state.specialCooldownMs = config.ultimateCooldownMs;
           nextMessage = `${player.username} unleashed an ultimate.`;
+          nextEffects.push(createEffect(state.x, state.y - 10, config.ultimateColor, 24, 220));
         }
 
-        state.vy = Math.min(MAX_FALL_SPEED, state.vy + GRAVITY);
         const previousBottom = state.y + PLAYER_HEIGHT / 2;
-        state.x = clamp(state.x + state.vx, 20, WIDTH - 20);
+        state.vy = Math.min(MAX_FALL_SPEED, state.vy + GRAVITY);
+        state.x = clamp(state.x + state.vx, 16, WIDTH - 16);
         state.y += state.vy;
         state.onGround = false;
 
-        if (state.y + PLAYER_HEIGHT / 2 >= FLOOR_Y) {
-          state.y = FLOOR_Y - PLAYER_HEIGHT / 2;
+        if (state.y + PLAYER_HEIGHT / 2 >= stage.floorY) {
+          state.y = stage.floorY - PLAYER_HEIGHT / 2;
           state.vy = 0;
           state.onGround = true;
+          state.airJumpsRemaining = config.airJumps;
         } else {
-          const landingPlatform = STAGE_PLATFORMS.find(
+          const landingPlatform = stage.platforms.find(
             (platform) =>
               state.dropThroughMs === 0 &&
               previousBottom <= platform.y &&
@@ -648,10 +911,15 @@ const Brawl: React.FC = () => {
             state.y = landingPlatform.y - PLAYER_HEIGHT / 2;
             state.vy = 0;
             state.onGround = true;
+            state.airJumpsRemaining = config.airJumps;
           }
         }
 
-        if (state.y > HEIGHT + 90 || state.x < -90 || state.x > WIDTH + 90) {
+        if (
+          state.y > HEIGHT + FLOOR_MARGIN ||
+          state.x < -FLOOR_MARGIN ||
+          state.x > WIDTH + FLOOR_MARGIN
+        ) {
           loseStock(player.userId, "got launched out");
         }
       });
@@ -660,9 +928,18 @@ const Brawl: React.FC = () => {
         .map((projectile) => ({
           ...projectile,
           x: projectile.x + projectile.vx,
-          y: projectile.y + projectile.vy
+          y: projectile.y + projectile.vy,
+          vy: projectile.vy + projectile.gravity,
+          ttlMs: projectile.ttlMs - 33
         }))
-        .filter((projectile) => projectile.x > -80 && projectile.x < WIDTH + 80);
+        .filter(
+          (projectile) =>
+            projectile.ttlMs > 0 &&
+            projectile.x > -100 &&
+            projectile.x < WIDTH + 100 &&
+            projectile.y > -100 &&
+            projectile.y < HEIGHT + 100
+        );
 
       const survivingProjectiles: Projectile[] = [];
       nextProjectiles.forEach((projectile) => {
@@ -683,21 +960,27 @@ const Brawl: React.FC = () => {
           targetId!,
           projectile.ownerId,
           projectile.damage,
-          projectile.knockbackX,
-          projectile.knockbackY
+          projectile.knockback,
+          projectile.lift,
+          projectile.x,
+          projectile.y,
+          projectile.color
         );
-        addCharge(projectile.ownerId, projectile.isUltimate ? 10 : 6);
+        addCharge(projectile.ownerId, projectile.isUltimate ? 12 : 5);
         nextMessage = projectile.isUltimate ? "Ultimate connected." : "Projectile hit.";
       });
 
       const nextState: BrawlState = {
         phase: winnerId ? "gameOver" : "playing",
+        selectedMap: currentState.selectedMap,
         players: nextPlayers,
         projectiles: survivingProjectiles,
+        effects: nextEffects,
         winnerId,
-        message: winnerId
-          ? `${currentPlayers.find((player) => player.userId === winnerId)?.username ?? "Winner"} wins.`
-          : nextMessage
+        message:
+          winnerId
+            ? `${currentPlayers.find((player) => player.userId === winnerId)?.username ?? "Winner"} wins.`
+            : nextMessage
       };
 
       void broadcastState(nextState);
@@ -728,7 +1011,6 @@ const Brawl: React.FC = () => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const current = inputStatesRef.current[currentUserIdRef.current ?? ""] ?? DEFAULT_INPUT;
       const key = event.key.toLowerCase();
-
       if (key === "a") {
         sendInput({ ...current, left: true });
       } else if (key === "d") {
@@ -749,7 +1031,6 @@ const Brawl: React.FC = () => {
     const handleKeyUp = (event: KeyboardEvent) => {
       const current = inputStatesRef.current[currentUserIdRef.current ?? ""] ?? DEFAULT_INPUT;
       const key = event.key.toLowerCase();
-
       if (key === "a") {
         sendInput({ ...current, left: false });
       } else if (key === "d") {
@@ -781,74 +1062,211 @@ const Brawl: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    const drawStage = (stage: StageConfig) => {
+      const gradient = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+      gradient.addColorStop(0, stage.bgTop);
+      gradient.addColorStop(1, stage.bgBottom);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+      if (stage.id === "sky-ruins") {
+        ctx.fillStyle = "rgba(255,255,255,0.08)";
+        ctx.beginPath();
+        ctx.arc(120, 88, 48, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(620, 126, 36, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (stage.id === "ember-yard") {
+        ctx.fillStyle = "rgba(255,220,120,0.12)";
+        for (let i = 0; i < 6; i += 1) {
+          ctx.beginPath();
+          ctx.arc(80 + i * 118, 100 + (i % 2) * 30, 18, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        ctx.fillStyle = "rgba(255,255,255,0.06)";
+        ctx.beginPath();
+        ctx.arc(610, 84, 42, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(196,181,253,0.18)";
+        ctx.fillRect(0, 310, WIDTH, 3);
+      }
+
+      ctx.fillStyle = stage.floorColor;
+      ctx.fillRect(0, stage.floorY, WIDTH, HEIGHT - stage.floorY);
+      ctx.fillStyle = stage.floorEdge;
+      ctx.fillRect(0, stage.floorY, WIDTH, 8);
+
+      stage.platforms.forEach((platform) => {
+        ctx.fillStyle = "rgba(2, 6, 23, 0.18)";
+        ctx.fillRect(platform.x - platform.width / 2 + 4, platform.y + 6, platform.width, PLATFORM_HEIGHT);
+        ctx.fillStyle = stage.platformColor;
+        ctx.fillRect(platform.x - platform.width / 2, platform.y, platform.width, PLATFORM_HEIGHT);
+      });
+    };
+
+    const drawCharacter = (player: FighterPlayer, username: string) => {
+      if (player.respawnMs > 0 || !player.selectedCharacter) return;
+      const config = CHARACTER_CONFIGS[player.selectedCharacter];
+      const bodyX = player.x - PLAYER_WIDTH / 2;
+      const bodyY = player.y - PLAYER_HEIGHT / 2;
+
+      if (player.invulnMs > 0 && Math.floor(player.invulnMs / 90) % 2 === 0) {
+        ctx.globalAlpha = 0.45;
+      }
+
+      ctx.fillStyle = config.color;
+      ctx.fillRect(bodyX, bodyY, PLAYER_WIDTH, PLAYER_HEIGHT);
+      ctx.fillStyle = config.accent;
+      ctx.fillRect(bodyX + 5, bodyY - 8, PLAYER_WIDTH - 10, 8);
+      ctx.fillStyle = config.trim;
+
+      if (player.selectedCharacter === "mage") {
+        ctx.beginPath();
+        ctx.moveTo(player.x, bodyY - 18);
+        ctx.lineTo(player.x - 10, bodyY - 2);
+        ctx.lineTo(player.x + 10, bodyY - 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillRect(player.x + player.facing * 13, player.y - 10, player.facing * 3, 24);
+      } else if (player.selectedCharacter === "fighter") {
+        ctx.fillRect(player.x + player.facing * 15, player.y - 12, player.facing * 16, 4);
+        ctx.fillRect(player.x + player.facing * 27, player.y - 16, player.facing * 4, 12);
+      } else {
+        ctx.beginPath();
+        ctx.arc(player.x, bodyY + 5, 12, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = config.trim;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(player.x + player.facing * 8, player.y, 11, -0.9, 0.9);
+        ctx.stroke();
+      }
+
+      if (player.attackFlashMs > 0) {
+        ctx.fillStyle = "#fff7ed";
+        ctx.fillRect(player.x + player.facing * 16, player.y - 10, 18 * player.facing, 8);
+      }
+
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#020617";
+      ctx.font = "12px monospace";
+      ctx.fillText(username, player.x - username.length * 3.2, bodyY - 16);
+    };
+
+    const drawHud = (state: BrawlState) => {
+      playersRef.current.forEach((player, index) => {
+        const fighter = state.players[player.userId];
+        if (!fighter || !fighter.selectedCharacter) return;
+        const config = CHARACTER_CONFIGS[fighter.selectedCharacter];
+        const cardWidth = 228;
+        const cardX = index === 0 ? 18 : WIDTH - cardWidth - 18;
+        const cardY = 16;
+
+        ctx.fillStyle = "rgba(2, 6, 23, 0.72)";
+        ctx.fillRect(cardX, cardY, cardWidth, 76);
+        ctx.fillStyle = config.color;
+        ctx.fillRect(cardX, cardY, 10, 76);
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "15px monospace";
+        ctx.fillText(player.username, cardX + 18, cardY + 20);
+        ctx.fillStyle = config.accent;
+        ctx.fillText(config.name, cardX + 18, cardY + 40);
+
+        const healthRatio = fighter.health / MAX_HEALTH;
+        ctx.fillStyle = "#1e293b";
+        ctx.fillRect(cardX + 18, cardY + 48, 150, 10);
+        ctx.fillStyle = healthRatio > 0.55 ? "#22c55e" : healthRatio > 0.28 ? "#f59e0b" : "#ef4444";
+        ctx.fillRect(cardX + 18, cardY + 48, 150 * healthRatio, 10);
+
+        ctx.fillStyle = "#1e293b";
+        ctx.fillRect(cardX + 18, cardY + 63, 150, 6);
+        ctx.fillStyle = config.trim;
+        ctx.fillRect(cardX + 18, cardY + 63, 150 * (fighter.ultimateCharge / ULTIMATE_CHARGE_MAX), 6);
+
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "12px monospace";
+        ctx.fillText(`HP ${fighter.health.toFixed(0)}`, cardX + 176, cardY + 56);
+        ctx.fillText(`x${fighter.stocks}`, cardX + 176, cardY + 72);
+      });
+    };
+
     const draw = () => {
       const currentState = stateRef.current;
-      ctx.clearRect(0, 0, WIDTH, HEIGHT);
-      ctx.fillStyle = "#0f172a";
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      ctx.fillStyle = "#1e293b";
-      ctx.fillRect(0, FLOOR_Y, WIDTH, HEIGHT - FLOOR_Y);
-      ctx.fillStyle = "#64748b";
-      STAGE_PLATFORMS.forEach((platform) => {
-        ctx.fillRect(
-          platform.x - platform.width / 2,
-          platform.y,
-          platform.width,
-          PLATFORM_HEIGHT
-        );
+      const previousState = previousStateRef.current;
+      const stage = STAGES[currentState.selectedMap];
+      const alpha = previousState
+        ? Math.min((performance.now() - lastStateAtRef.current) / NETWORK_RENDER_WINDOW_MS, 1)
+        : 1;
+
+      const interpolatedPlayers = Object.fromEntries(
+        Object.entries(currentState.players).map(([playerId, playerState]) => {
+          const previous = previousState?.players[playerId];
+          return [
+            playerId,
+            previous
+              ? { ...playerState, x: lerp(previous.x, playerState.x, alpha), y: lerp(previous.y, playerState.y, alpha) }
+              : playerState
+          ];
+        })
+      ) as Record<string, FighterPlayer>;
+
+      const interpolatedProjectiles = currentState.projectiles.map((projectile) => {
+        const previous = previousState?.projectiles.find((entry) => entry.id === projectile.id);
+        return previous
+          ? { ...projectile, x: lerp(previous.x, projectile.x, alpha), y: lerp(previous.y, projectile.y, alpha) }
+          : projectile;
       });
 
-      currentState.projectiles.forEach((projectile) => {
-        ctx.fillStyle = projectile.color;
+      ctx.clearRect(0, 0, WIDTH, HEIGHT);
+      drawStage(stage);
+
+      currentState.effects.forEach((effect) => {
+        const effectAlpha = Math.max(effect.ttlMs / 220, 0.12);
+        ctx.globalAlpha = effectAlpha;
+        ctx.fillStyle = effect.color;
         ctx.beginPath();
-        ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
+        ctx.arc(effect.x, effect.y, effect.radius * (1.1 + (1 - effectAlpha)), 0, Math.PI * 2);
         ctx.fill();
+        ctx.globalAlpha = 1;
+      });
+
+      interpolatedProjectiles.forEach((projectile) => {
+        ctx.fillStyle = projectile.color;
+        if (projectile.kind === "dagger") {
+          ctx.fillRect(projectile.x - 8, projectile.y - 2, 16, 4);
+          ctx.fillRect(projectile.x + Math.sign(projectile.vx) * 7, projectile.y - 4, 4, 8);
+        } else if (projectile.kind === "arrow") {
+          ctx.fillRect(projectile.x - 12, projectile.y - 1.5, 18, 3);
+          ctx.beginPath();
+          ctx.moveTo(projectile.x + 10, projectile.y);
+          ctx.lineTo(projectile.x + 4, projectile.y - 5);
+          ctx.lineTo(projectile.x + 4, projectile.y + 5);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
+          ctx.fill();
+          if (projectile.kind === "ultimate") {
+            ctx.globalAlpha = 0.4;
+            ctx.beginPath();
+            ctx.arc(projectile.x, projectile.y, projectile.radius + 7, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+        }
       });
 
       playersRef.current.forEach((player) => {
-        const fighter = currentState.players[player.userId];
-        if (!fighter || fighter.respawnMs > 0) return;
-
-        const config = fighter.selectedCharacter ? CHARACTER_CONFIGS[fighter.selectedCharacter] : null;
-        ctx.fillStyle = config?.color ?? "#94a3b8";
-        if (fighter.invulnMs > 0 && Math.floor(fighter.invulnMs / 100) % 2 === 0) {
-          ctx.globalAlpha = 0.45;
-        }
-        ctx.fillRect(
-          fighter.x - PLAYER_WIDTH / 2,
-          fighter.y - PLAYER_HEIGHT / 2,
-          PLAYER_WIDTH,
-          PLAYER_HEIGHT
-        );
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = config?.accent ?? "#e2e8f0";
-        ctx.fillRect(fighter.x - 8, fighter.y - PLAYER_HEIGHT / 2 - 8, 16, 8);
-        if (fighter.attackFlashMs > 0) {
-          ctx.fillStyle = "#fef3c7";
-          ctx.fillRect(
-            fighter.x + fighter.facing * 16,
-            fighter.y - 10,
-            16 * fighter.facing,
-            8
-          );
+        const fighter = interpolatedPlayers[player.userId];
+        if (fighter) {
+          drawCharacter(fighter, player.username);
         }
       });
 
-      ctx.fillStyle = "#e2e8f0";
-      ctx.font = "16px monospace";
-      currentState.projectiles.forEach(() => {});
-      playersRef.current.forEach((player, index) => {
-        const fighter = currentState.players[player.userId];
-        if (!fighter) return;
-        const lineY = 24 + index * 24;
-        ctx.fillStyle = "#e2e8f0";
-        ctx.fillText(
-          `${player.username} | ${fighter.selectedCharacter ?? "no pick"} | hp ${fighter.health.toFixed(0)} | stocks ${fighter.stocks} | ult ${fighter.ultimateCharge.toFixed(0)}`,
-          18,
-          lineY
-        );
-      });
-
+      drawHud({ ...currentState, players: interpolatedPlayers, projectiles: interpolatedProjectiles });
       renderRef.current = window.requestAnimationFrame(draw);
     };
 
@@ -869,7 +1287,8 @@ const Brawl: React.FC = () => {
       players: {
         ...stateRef.current.players,
         [currentUserId]: {
-          ...(stateRef.current.players[currentUserId] ?? createPlayerState(0)),
+          ...(stateRef.current.players[currentUserId] ??
+            createPlayerState(0, STAGES[stateRef.current.selectedMap])),
           selectedCharacter: character
         }
       }
@@ -880,7 +1299,25 @@ const Brawl: React.FC = () => {
     await channelRef.current.send({
       type: "broadcast",
       event: "brawl-select",
-      payload: { userId: currentUserId, character }
+      payload: { type: "character", userId: currentUserId, character }
+    });
+  };
+
+  const selectMap = async (map: MapId) => {
+    if (!isHost || !channelRef.current || stateRef.current.phase !== "select") return;
+
+    const nextState: BrawlState = {
+      ...stateRef.current,
+      selectedMap: map,
+      message: `${STAGES[map].name} selected.`
+    };
+    setBrawlState(nextState);
+    stateRef.current = nextState;
+
+    await channelRef.current.send({
+      type: "broadcast",
+      event: "brawl-select",
+      payload: { type: "map", map }
     });
   };
 
@@ -900,15 +1337,17 @@ const Brawl: React.FC = () => {
 
   const resetRoom = async () => {
     if (!isHost || players.length !== 2) return;
-    await broadcastState(createSelectState(players));
+    await broadcastState(createSelectState(players, stateRef.current.selectedMap));
   };
+
+  const selectedStage = STAGES[brawlState.selectedMap];
 
   return (
     <div className="page">
       <NavBar />
       <div className="content card">
-        <h2>Focus Brawl v0.1</h2>
-        <p>Two-player platform fighter test build with one arena and simple character select.</p>
+        <h2>Focus Brawl v{BRAWL_VERSION}</h2>
+        <p>Two-player platform fighter with class identity, stage select, stocks, and ult charge.</p>
         <div className="info">
           Seats filled: {Math.min(players.length, 2)}/2
           {connected && !roomFull ? ` | ${currentUsername}` : ""}
@@ -927,19 +1366,53 @@ const Brawl: React.FC = () => {
                 );
               })}
             </div>
-            <div className="button-row">
-              {(["mage", "fighter"] as CharacterId[]).map((character) => (
-                <button
-                  key={character}
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => void selectCharacter(character)}
-                  disabled={players.length !== 2}
-                >
-                  {CHARACTER_CONFIGS[character].name}
-                </button>
-              ))}
-            </div>
+
+            {brawlState.phase === "select" && (
+              <>
+                <div className="button-row">
+                  {(["mage", "fighter", "archer"] as CharacterId[]).map((character) => {
+                    const config = CHARACTER_CONFIGS[character];
+                    return (
+                      <button
+                        key={character}
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => void selectCharacter(character)}
+                        disabled={players.length !== 2}
+                        style={{
+                          borderColor: config.color,
+                          color: "#0f172a",
+                          background: `linear-gradient(135deg, ${config.accent}, #ffffff)`
+                        }}
+                      >
+                        {config.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="button-row">
+                  {(["sky-ruins", "ember-yard", "moon-pier"] as MapId[]).map((mapId) => {
+                    const map = STAGES[mapId];
+                    return (
+                      <button
+                        key={mapId}
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => void selectMap(mapId)}
+                        disabled={!isHost}
+                        style={{
+                          borderColor: map.accent,
+                          background: mapId === brawlState.selectedMap ? map.accent : "#ffffff"
+                        }}
+                      >
+                        {map.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
             <canvas
               ref={canvasRef}
               width={WIDTH}
@@ -949,18 +1422,22 @@ const Brawl: React.FC = () => {
                 maxWidth: WIDTH,
                 display: "block",
                 margin: "1rem auto",
-                borderRadius: "0.75rem",
+                borderRadius: "1rem",
                 border: "1px solid #334155",
-                background: "#020617"
+                background: "#020617",
+                boxShadow: "0 18px 40px rgba(15, 23, 42, 0.35)"
               }}
             />
+
             <p className="info">{brawlState.message}</p>
+            <p>Controls: `WASD` move, jump, fast-fall/drop. `J` melee, `K` special, `L` ultimate.</p>
             <p>
-              Controls: `WASD` move, jump, and drop. `J` melee, `K` special, `L` ultimate once charged.
+              Stage: {selectedStage.name}. {selectedStage.subtitle}
             </p>
             <p>
-              Mage: staff swipe, fireball, bigger fireball. Fighter: sword slash, dagger, bigger dagger.
+              Mage controls space with flame, Fighter pressures with lunges, Archer wins with speed and volleys.
             </p>
+
             {brawlState.phase === "select" && isHost && (
               <button
                 className="primary-button"
@@ -974,11 +1451,13 @@ const Brawl: React.FC = () => {
                 Start match
               </button>
             )}
+
             {brawlState.phase === "gameOver" && isHost && (
               <button className="primary-button" type="button" onClick={() => void resetRoom()}>
                 Back to character select
               </button>
             )}
+
             {opponent && <p>{currentUsername} versus {opponent.username}.</p>}
           </>
         )}
