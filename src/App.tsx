@@ -1,16 +1,15 @@
-// Main application component.
-// Defines the top-level routes and shared layout.
-import { Routes, Route, Navigate } from "react-router-dom";
-import Login from "./pages/Login";
-import Lobby from "./pages/Lobby";
-import Profile from "./pages/Profile";
-import Game from "./pages/Game";
-import CatchGame from "./pages/CatchGame";
-import Casino from "./pages/Casino";
-import Pong from "./pages/Pong";
-import SpaceInvaders from "./pages/SpaceInvaders";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./components/AuthProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import Brawl from "./pages/Brawl";
+import Casino from "./pages/Casino";
+import CatchGame from "./pages/CatchGame";
+import Game from "./pages/Game";
+import Lobby from "./pages/Lobby";
+import Login from "./pages/Login";
+import Pong from "./pages/Pong";
+import Profile from "./pages/Profile";
+import SpaceInvaders from "./pages/SpaceInvaders";
 
 const App = () => {
   return (
@@ -74,6 +73,14 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/brawl"
+          element={
+            <ProtectedRoute>
+              <Brawl />
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </AuthProvider>
@@ -81,4 +88,3 @@ const App = () => {
 };
 
 export default App;
-
