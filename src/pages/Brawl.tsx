@@ -148,21 +148,22 @@ type BrawlState = {
 };
 
 const ROOM_NAME = "focusland-brawl";
-const WIDTH = 760;
-const HEIGHT = 430;
+const WIDTH = 920;
+const HEIGHT = 540;
 const PLAYER_WIDTH = 28;
 const PLAYER_HEIGHT = 44;
 const PLATFORM_HEIGHT = 12;
 const GRAVITY = 0.62;
 const MAX_FALL_SPEED = 12;
 const FLOOR_MARGIN = 110;
+const WALL_MARGIN = 16;
 const STOCKS = 3;
 const MAX_HEALTH = 100;
 const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const NETWORK_RENDER_WINDOW_MS = 60;
-const BRAWL_VERSION = "0.2";
+const BRAWL_VERSION = "0.3";
 const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
 const LAVA_LANES = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72];
@@ -558,9 +559,14 @@ function predictPlayerState(
 
     const previousBottom = next.y + PLAYER_HEIGHT / 2;
     next.vy = Math.min(MAX_FALL_SPEED, next.vy + GRAVITY * scale);
-    next.x = clamp(next.x + next.vx * scale, -BLAST_ZONE_MARGIN, WIDTH + BLAST_ZONE_MARGIN);
+    next.x = clamp(next.x + next.vx * scale, WALL_MARGIN, WIDTH - WALL_MARGIN);
     next.y += next.vy * scale;
     next.onGround = false;
+
+    if (next.y - PLAYER_HEIGHT / 2 < 18) {
+      next.y = 18 + PLAYER_HEIGHT / 2;
+      next.vy = Math.max(0, next.vy);
+    }
 
     if (next.y + PLAYER_HEIGHT / 2 >= stage.floorY) {
       next.y = stage.floorY - PLAYER_HEIGHT / 2;
@@ -1028,7 +1034,8 @@ const Brawl: React.FC = () => {
               nextMessage = `${player.username} landed a heavy strike.`;
               }
             }
-            state.vx += config.meleeLunge * (Math.abs(aimVector.x) > 0.12 ? aimVector.x : state.facing);
+            state.vx += config.meleeLunge * aimVector.x;
+            state.vy += config.meleeLunge * 0.35 * aimVector.y;
             state.attackCooldownMs = 280;
           } else {
             nextProjectiles.push({
@@ -1183,9 +1190,14 @@ const Brawl: React.FC = () => {
 
         const previousBottom = state.y + PLAYER_HEIGHT / 2;
         state.vy = Math.min(MAX_FALL_SPEED, state.vy + GRAVITY);
-        state.x = clamp(state.x + state.vx, -BLAST_ZONE_MARGIN, WIDTH + BLAST_ZONE_MARGIN);
+        state.x = clamp(state.x + state.vx, WALL_MARGIN, WIDTH - WALL_MARGIN);
         state.y += state.vy;
         state.onGround = false;
+
+        if (state.y - PLAYER_HEIGHT / 2 < 18) {
+          state.y = 18 + PLAYER_HEIGHT / 2;
+          state.vy = Math.max(0, state.vy);
+        }
 
         if (state.y + PLAYER_HEIGHT / 2 >= stage.floorY) {
           state.y = stage.floorY - PLAYER_HEIGHT / 2;
@@ -1209,11 +1221,7 @@ const Brawl: React.FC = () => {
           }
         }
 
-        if (
-          state.y > HEIGHT + FLOOR_MARGIN ||
-          state.x < -BLAST_ZONE_MARGIN ||
-          state.x > WIDTH + BLAST_ZONE_MARGIN
-        ) {
+        if (state.y > HEIGHT + FLOOR_MARGIN) {
           loseStock(player.userId, "got launched out");
         }
 
@@ -1568,11 +1576,15 @@ const Brawl: React.FC = () => {
       }
     };
 
-    const drawCharacter = (player: FighterPlayer, username: string) => {
+    const drawCharacter = (playerId: string, player: FighterPlayer, username: string) => {
       if (player.respawnMs > 0 || !player.selectedCharacter) return;
       const config = CHARACTER_CONFIGS[player.selectedCharacter];
       const bodyX = player.x - PLAYER_WIDTH / 2;
       const bodyY = player.y - PLAYER_HEIGHT / 2;
+      const input = inputStatesRef.current[playerId] ?? DEFAULT_INPUT;
+      const rawAimVector = normalizeVector(input.aimX - player.x, input.aimY - player.y);
+      const aimVector =
+        rawAimVector.length < 10 ? { x: player.facing, y: 0, length: 1 } : rawAimVector;
 
       if (player.invulnMs > 0 && Math.floor(player.invulnMs / 90) % 2 === 0) {
         ctx.globalAlpha = 0.45;
@@ -1591,24 +1603,40 @@ const Brawl: React.FC = () => {
         ctx.lineTo(player.x + 10, bodyY - 2);
         ctx.closePath();
         ctx.fill();
-        ctx.fillRect(player.x + player.facing * 13, player.y - 10, player.facing * 3, 24);
+        ctx.save();
+        ctx.translate(player.x + aimVector.x * 12, player.y - 10 + aimVector.y * 8);
+        ctx.rotate(Math.atan2(aimVector.y, aimVector.x));
+        ctx.fillRect(0, -2, 18, 4);
+        ctx.restore();
       } else if (player.selectedCharacter === "fighter") {
-        ctx.fillRect(player.x + player.facing * 15, player.y - 12, player.facing * 16, 4);
-        ctx.fillRect(player.x + player.facing * 27, player.y - 16, player.facing * 4, 12);
+        ctx.save();
+        ctx.translate(player.x + aimVector.x * 14, player.y - 6 + aimVector.y * 10);
+        ctx.rotate(Math.atan2(aimVector.y, aimVector.x));
+        ctx.fillRect(0, -3, 24, 6);
+        ctx.fillRect(20, -7, 6, 14);
+        ctx.restore();
       } else {
         ctx.beginPath();
         ctx.arc(player.x, bodyY + 5, 12, Math.PI, Math.PI * 2);
         ctx.fill();
         ctx.strokeStyle = config.trim;
         ctx.lineWidth = 2;
+        ctx.save();
+        ctx.translate(player.x, player.y - 2);
+        ctx.rotate(Math.atan2(aimVector.y, aimVector.x));
         ctx.beginPath();
-        ctx.arc(player.x + player.facing * 8, player.y, 11, -0.9, 0.9);
+        ctx.arc(8, 0, 11, -0.9, 0.9);
         ctx.stroke();
+        ctx.restore();
       }
 
       if (player.attackFlashMs > 0) {
         ctx.fillStyle = "#fff7ed";
-        ctx.fillRect(player.x + player.facing * 16, player.y - 10, 18 * player.facing, 8);
+        ctx.save();
+        ctx.translate(player.x + aimVector.x * 16, player.y - 8 + aimVector.y * 10);
+        ctx.rotate(Math.atan2(aimVector.y, aimVector.x));
+        ctx.fillRect(0, -4, 18, 8);
+        ctx.restore();
       }
 
       ctx.globalAlpha = 1;
@@ -1710,16 +1738,24 @@ const Brawl: React.FC = () => {
       interpolatedProjectiles.forEach((projectile) => {
         ctx.fillStyle = projectile.color;
         if (projectile.kind === "dagger") {
-          ctx.fillRect(projectile.x - 8, projectile.y - 2, 16, 4);
-          ctx.fillRect(projectile.x + Math.sign(projectile.vx) * 7, projectile.y - 4, 4, 8);
+          ctx.save();
+          ctx.translate(projectile.x, projectile.y);
+          ctx.rotate(Math.atan2(projectile.vy, projectile.vx || 0.001));
+          ctx.fillRect(-8, -2, 16, 4);
+          ctx.fillRect(6, -4, 4, 8);
+          ctx.restore();
         } else if (projectile.kind === "arrow") {
-          ctx.fillRect(projectile.x - 12, projectile.y - 1.5, 18, 3);
+          ctx.save();
+          ctx.translate(projectile.x, projectile.y);
+          ctx.rotate(Math.atan2(projectile.vy, projectile.vx || 0.001));
+          ctx.fillRect(-12, -1.5, 18, 3);
           ctx.beginPath();
-          ctx.moveTo(projectile.x + 10, projectile.y);
-          ctx.lineTo(projectile.x + 4, projectile.y - 5);
-          ctx.lineTo(projectile.x + 4, projectile.y + 5);
+          ctx.moveTo(10, 0);
+          ctx.lineTo(4, -5);
+          ctx.lineTo(4, 5);
           ctx.closePath();
           ctx.fill();
+          ctx.restore();
         } else {
           ctx.beginPath();
           ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
@@ -1737,7 +1773,7 @@ const Brawl: React.FC = () => {
       playersRef.current.forEach((player) => {
         const fighter = interpolatedPlayers[player.userId];
         if (fighter) {
-          drawCharacter(fighter, player.username);
+          drawCharacter(player.userId, fighter, player.username);
         }
       });
 
@@ -1820,7 +1856,7 @@ const Brawl: React.FC = () => {
   return (
     <div className="page">
       <NavBar />
-      <div className="content card">
+      <div className="content card" style={{ maxWidth: 1080 }}>
         <h2>Focus Brawl v{BRAWL_VERSION}</h2>
         <p>Two-player platform fighter with distinct class kits, stage identity, stocks, and ult charge.</p>
         <div className="info">
