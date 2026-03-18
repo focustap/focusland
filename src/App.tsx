@@ -4,6 +4,8 @@ import { AuthProvider } from "./components/AuthProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 const Brawl = lazy(() => import("./pages/Brawl"));
+const BrawlPvE = lazy(() => import("./pages/BrawlPvE"));
+const BrawlPvEWorld = lazy(() => import("./pages/BrawlPvEWorld"));
 const ArcadeRoom = lazy(() => import("./pages/ArcadeRoom"));
 const BrawlRoom = lazy(() => import("./pages/BrawlRoom"));
 const Casino = lazy(() => import("./pages/Casino"));
@@ -121,6 +123,22 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <BrawlRoom />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/arena/pve"
+            element={
+              <ProtectedRoute>
+                <BrawlPvEWorld />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/arena/pve/:bossId"
+            element={
+              <ProtectedRoute>
+                <BrawlPvE />
               </ProtectedRoute>
             }
           />

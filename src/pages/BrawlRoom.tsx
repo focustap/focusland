@@ -90,6 +90,24 @@ const BrawlRoom: React.FC = () => {
             entranceY: 320
           });
 
+          this.add.rectangle(width - 170, 252, 150, 18, 0x1d4ed8);
+          this.add.rectangle(width - 170, 244, 104, 14, 0x93c5fd);
+          this.add.text(width - 170, 208, "PvE Gate", {
+            color: "#eff6ff",
+            fontSize: "22px",
+            fontStyle: "bold"
+          }).setOrigin(0.5);
+
+          this.hotspots.push({
+            route: "/arena/pve",
+            x: width - 170,
+            y: 250,
+            width: 170,
+            height: 90,
+            entranceX: width - 170,
+            entranceY: 320
+          });
+
           this.add.rectangle(110, height - 78, 86, 116, 0x31211a);
           this.add.rectangle(110, height - 90, 58, 78, 0x9a3412);
           this.add.text(110, height - 14, "Hub Door", {
@@ -198,7 +216,7 @@ const BrawlRoom: React.FC = () => {
       <NavBar />
       <div className="content card" style={{ maxWidth: 840 }}>
         <h2>Arena</h2>
-        <p>Walk through the arena gate to enter Brawl, or head back to town through the side door.</p>
+        <p>Walk through the arena gate for PvP, take the new PvE gate into the boss world map, or head back to town through the side door.</p>
         <div ref={containerRef} style={{ width: "100%", maxWidth: 780, margin: "1rem auto" }} />
       </div>
     </div>
