@@ -76,7 +76,8 @@ const Game: React.FC = () => {
 
       // Variables shared with the scene functions.
       let cursors: Phaser.Types.Input.Keyboard.CursorKeys | undefined;
-      let letterKeys: { a: Phaser.Input.Keyboard.Key; d: Phaser.Input.Keyboard.Key } | undefined;
+      let leftLetterKey: Phaser.Input.Keyboard.Key | undefined;
+      let rightLetterKey: Phaser.Input.Keyboard.Key | undefined;
       let playerRect: Phaser.GameObjects.Rectangle | undefined;
       let playerBody: Phaser.Physics.Arcade.Body | undefined;
       let enemies: Phaser.GameObjects.Rectangle[] = [];
@@ -102,10 +103,8 @@ const Game: React.FC = () => {
 
         cursors = this.input.keyboard?.createCursorKeys();
         if (this.input.keyboard) {
-          letterKeys = this.input.keyboard.addKeys("A,D") as {
-            a: Phaser.Input.Keyboard.Key;
-            d: Phaser.Input.Keyboard.Key;
-          };
+          leftLetterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
+          rightLetterKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
         }
 
         scoreText = this.add.text(16, 16, "Score: 0", {
@@ -169,9 +168,9 @@ const Game: React.FC = () => {
         const speed = 250;
         playerBody.setVelocityX(0);
 
-        if (cursors.left?.isDown || letterKeys?.a?.isDown) {
+        if (cursors.left?.isDown || leftLetterKey?.isDown) {
           playerBody.setVelocityX(-speed);
-        } else if (cursors.right?.isDown || letterKeys?.d?.isDown) {
+        } else if (cursors.right?.isDown || rightLetterKey?.isDown) {
           playerBody.setVelocityX(speed);
         }
 
