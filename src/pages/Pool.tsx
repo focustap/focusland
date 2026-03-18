@@ -69,9 +69,9 @@ const MAX_POWER = 16;
 const POWER_BAR_HEIGHT = 300;
 const BALL_REWARD_GOLD = 1;
 const WIN_REWARD_GOLD = 25;
-const BROADCAST_INTERVAL_MS = 50;
+const BROADCAST_INTERVAL_MS = 80;
 const UI_SYNC_INTERVAL_MS = 100;
-const POOL_VERSION = "0.4";
+const POOL_VERSION = "0.5";
 
 const POCKETS = [
   { x: PLAY_X, y: PLAY_Y },
@@ -1166,9 +1166,20 @@ const Pool: React.FC = () => {
                   <div
                     style={{
                       position: "absolute",
+                      left: 18,
+                      top: 12,
+                      bottom: 12,
+                      width: 4,
+                      borderRadius: 999,
+                      background: "rgba(15,23,42,0.18)"
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
                       left: 15,
                       top: 10,
-                      bottom: 26,
+                      bottom: 10,
                       width: 10,
                       borderRadius: 999,
                       background: "linear-gradient(180deg, #f4d8a3 0%, #b88344 38%, #7a4b22 78%, #4a2d15 100%)",
@@ -1191,11 +1202,11 @@ const Pool: React.FC = () => {
                   <div
                     style={{
                       position: "absolute",
-                      left: 8,
-                      bottom: 8,
+                      left: 7,
+                      top: `${8 + power * (POWER_BAR_HEIGHT - 84)}px`,
                       width: 24,
-                      height: `${Math.max(power * 72, 14)}px`,
-                      borderRadius: 999,
+                      height: 64,
+                      borderRadius: 16,
                       background: "linear-gradient(180deg, #1f2937 0%, #0f172a 100%)",
                       border: "1px solid #64748b",
                       boxShadow: "0 3px 8px rgba(15,23,42,0.35)"
@@ -1205,7 +1216,7 @@ const Pool: React.FC = () => {
                     style={{
                       position: "absolute",
                       left: 6,
-                      top: `${POWER_BAR_HEIGHT - 22 - power * 72}px`,
+                      top: `${18 + power * (POWER_BAR_HEIGHT - 84)}px`,
                       width: 28,
                       height: 12,
                       borderRadius: 999,
