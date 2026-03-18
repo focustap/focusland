@@ -15,6 +15,7 @@ const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const Lobby = lazy(() => import("./pages/Lobby"));
 const Login = lazy(() => import("./pages/Login"));
 const Pong = lazy(() => import("./pages/Pong"));
+const Pool = lazy(() => import("./pages/Pool"));
 const Profile = lazy(() => import("./pages/Profile"));
 const RideTheBus = lazy(() => import("./pages/RideTheBus"));
 const Slots = lazy(() => import("./pages/Slots"));
@@ -136,6 +137,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <Pong />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/pool"
+            element={
+              <ProtectedRoute>
+                <Pool />
               </ProtectedRoute>
             }
           />
