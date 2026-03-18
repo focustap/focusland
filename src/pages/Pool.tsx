@@ -485,13 +485,14 @@ const Pool: React.FC = () => {
 
       channel.on("presence", { event: "sync" }, syncPresence);
       channel.on("broadcast", { event: "pool-state" }, ({ payload }) => {
-        commitState(payload as PoolState);
+        commitState(payload as PoolState, true);
       });
       channel.on("broadcast", { event: "pool-shot" }, ({ payload }) => {
-        if (!isHostRef.current) return;
-        const nextState = applyShotToState(stateRef.current, playersRef.current, payload as ShotPayload);
+        const shot = payload as ShotPayload;
+        if (shot.userId === currentUserIdRef.current) return;
+        const nextState = applyShotToState(stateRef.current, playersRef.current, shot);
         if (nextState) {
-          void broadcastState(nextState);
+          commitState(nextState, true);
         }
       });
       channel.on("broadcast", { event: "pool-place-cue" }, ({ payload }) => {
@@ -570,7 +571,7 @@ const Pool: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isHost || poolState.phase !== "playing" || players.length !== 2) {
+    if (poolState.phase !== "playing" || players.length !== 2) {
       if (tickRef.current) {
         window.clearInterval(tickRef.current);
         tickRef.current = null;
@@ -673,7 +674,7 @@ const Pool: React.FC = () => {
         shotScratch
       };
 
-      if (!moving && currentState.shotOwnerId) {
+      if (!moving && currentState.shotOwnerId && isHostRef.current) {
         const shooterId = currentState.shotOwnerId;
         const opponentId = getOpponentId(playersRef.current, shooterId);
         const nextGroups = { ...currentState.groups };
@@ -768,11 +769,10 @@ const Pool: React.FC = () => {
 
       commitState(nextState);
 
-      const now = performance.now();
-      const shotResolved = currentState.shotOwnerId !== null && nextState.shotOwnerId === null;
-      if (shotResolved || now - lastBroadcastAtRef.current >= BROADCAST_INTERVAL_MS) {
-        lastBroadcastAtRef.current = now;
-        if (channelRef.current) {
+      if (isHostRef.current) {
+        const shotResolved = currentState.shotOwnerId !== null && nextState.shotOwnerId === null;
+        if (shotResolved && channelRef.current) {
+          lastBroadcastAtRef.current = performance.now();
           void channelRef.current.send({
             type: "broadcast",
             event: "pool-state",
@@ -788,7 +788,7 @@ const Pool: React.FC = () => {
         tickRef.current = null;
       }
     };
-  }, [isHost, players, poolState.phase]);
+  }, [players, poolState.phase]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1012,18 +1012,17 @@ const Pool: React.FC = () => {
       power
     } satisfies ShotPayload;
 
-    if (isHost) {
-      const nextState = applyShotToState(stateRef.current, playersRef.current, shot);
-      if (nextState) {
-        await broadcastState(nextState);
-      }
-    } else {
-      await channelRef.current.send({
-        type: "broadcast",
-        event: "pool-shot",
-        payload: shot
-      });
+    const nextState = applyShotToState(stateRef.current, playersRef.current, shot);
+    if (!nextState) {
+      return;
     }
+
+    commitState(nextState, true);
+    await channelRef.current.send({
+      type: "broadcast",
+      event: "pool-shot",
+      payload: shot
+    });
 
     setAimLocked(false);
     setLockedAim(null);
