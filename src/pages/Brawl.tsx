@@ -686,11 +686,17 @@ const Brawl: React.FC = () => {
   const renderRef = useRef<number | null>(null);
   const stateRef = useRef<BrawlState>(DEFAULT_STATE);
   const previousStateRef = useRef<BrawlState | null>(null);
+  const frozenStateRef = useRef<BrawlState | null>(null);
   const playersRef = useRef<PlayerPresence[]>([]);
   const currentUserIdRef = useRef<string | null>(null);
   const lastStateAtRef = useRef<number>(performance.now());
   const inputStatesRef = useRef<Record<string, InputState>>({});
   const lastAimBroadcastAtRef = useRef<number>(0);
+  const cameraShakeRef = useRef({ intensity: 0, ttlMs: 0 });
+  const hitStopUntilRef = useRef<number>(0);
+  const introStartedAtRef = useRef<number>(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioUnlockedRef = useRef(false);
 
   const isSeated = currentUserId ? players.some((player) => player.userId === currentUserId) : false;
   const isHost = Boolean(currentUserId && players[0]?.userId === currentUserId);
@@ -715,6 +721,24 @@ const Brawl: React.FC = () => {
   }, [currentUserId]);
 
   useEffect(() => {
+    const unlockAudio = () => {
+      if (audioUnlockedRef.current) return;
+      const AudioCtor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtor) return;
+      audioContextRef.current = audioContextRef.current ?? new AudioCtor();
+      void audioContextRef.current.resume();
+      audioUnlockedRef.current = true;
+    };
+
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+  }, []);
+
+  useEffect(() => {
     if (brawlState.phase !== "playing") {
       previousStateRef.current = null;
       lastStateAtRef.current = performance.now();
@@ -732,6 +756,83 @@ const Brawl: React.FC = () => {
     const currentState = stateRef.current;
     const shouldResetInterpolation =
       currentState.phase !== nextState.phase || currentState.selectedMap !== nextState.selectedMap;
+
+    const triggerCamera = (intensity: number, ttlMs: number) => {
+      cameraShakeRef.current = { intensity, ttlMs };
+    };
+
+    const triggerHitStop = (durationMs: number) => {
+      frozenStateRef.current = currentState;
+      hitStopUntilRef.current = performance.now() + durationMs;
+    };
+
+    const playSfx = (kind: "hit" | "hazard" | "ult" | "ready" | "win") => {
+      const context = audioContextRef.current;
+      if (!context || context.state !== "running") return;
+
+      const now = context.currentTime;
+      const tones =
+        kind === "hit"
+          ? [
+              { frequency: 160, duration: 0.06, type: "square" as OscillatorType, gain: 0.04 },
+              { frequency: 90, duration: 0.09, type: "triangle" as OscillatorType, gain: 0.03 }
+            ]
+          : kind === "hazard"
+            ? [
+                { frequency: 220, duration: 0.12, type: "sawtooth" as OscillatorType, gain: 0.05 },
+                { frequency: 140, duration: 0.16, type: "triangle" as OscillatorType, gain: 0.04 }
+              ]
+            : kind === "ult"
+              ? [
+                  { frequency: 280, duration: 0.1, type: "square" as OscillatorType, gain: 0.05 },
+                  { frequency: 420, duration: 0.15, type: "triangle" as OscillatorType, gain: 0.045 }
+                ]
+              : kind === "ready"
+                ? [{ frequency: 540, duration: 0.08, type: "triangle" as OscillatorType, gain: 0.035 }]
+                : [
+                    { frequency: 420, duration: 0.14, type: "triangle" as OscillatorType, gain: 0.04 },
+                    { frequency: 620, duration: 0.22, type: "sine" as OscillatorType, gain: 0.04 }
+                  ];
+
+      tones.forEach((tone, index) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = tone.type;
+        oscillator.frequency.setValueAtTime(tone.frequency, now + index * 0.02);
+        gain.gain.setValueAtTime(tone.gain, now + index * 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.02 + tone.duration);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(now + index * 0.02);
+        oscillator.stop(now + index * 0.02 + tone.duration);
+      });
+    };
+
+    if (currentState.phase !== nextState.phase && nextState.phase === "playing") {
+      introStartedAtRef.current = performance.now();
+      playSfx("ready");
+    }
+
+    if (nextState.message !== currentState.message) {
+      if (
+        /Projectile hit|got clipped|caught in the moonbeam|landed|carved|disciplined strike|cracked|hooked|knocked out|connected/i.test(
+          nextState.message
+        )
+      ) {
+        triggerHitStop(45);
+        triggerCamera(8, 120);
+        playSfx("hit");
+      } else if (/Lava burst|Moonbeam sweep/i.test(nextState.message)) {
+        triggerCamera(14, 240);
+        playSfx("hazard");
+      } else if (/unleashed|called down|whirlwind|fists of fury|inflicted weakness/i.test(nextState.message)) {
+        triggerCamera(16, 220);
+        playSfx("ult");
+      } else if (/wins\./i.test(nextState.message)) {
+        triggerCamera(12, 260);
+        playSfx("win");
+      }
+    }
 
     previousStateRef.current = shouldResetInterpolation ? null : currentState;
     lastStateAtRef.current = performance.now();
@@ -1946,13 +2047,37 @@ const Brawl: React.FC = () => {
       const rawAimVector = normalizeVector(input.aimX - player.x, input.aimY - player.y);
       const aimVector =
         rawAimVector.length < 10 ? { x: player.facing, y: 0, length: 1 } : rawAimVector;
+      const introAge = performance.now() - introStartedAtRef.current;
+      const introIndex = playersRef.current.findIndex((entry) => entry.userId === playerId);
+      const introProgress = clamp((introAge - introIndex * 110) / 420, 0, 1);
+      const introLift =
+        player.selectedCharacter === "mage"
+          ? (1 - introProgress) * 56
+          : player.selectedCharacter === "fighter"
+            ? (1 - introProgress) * 46
+            : player.selectedCharacter === "archer"
+              ? (1 - introProgress) * 38
+              : player.selectedCharacter === "assassin"
+                ? (1 - introProgress) * -26
+                : (1 - introProgress) * 24;
 
+      ctx.save();
+      ctx.translate(0, -introLift);
+      ctx.globalAlpha *= introProgress < 1 ? 0.28 + introProgress * 0.72 : 1;
       if (player.invulnMs > 0 && Math.floor(player.invulnMs / 90) % 2 === 0) {
         ctx.globalAlpha = 0.45;
       }
 
+      ctx.fillStyle = "rgba(2, 6, 23, 0.22)";
+      ctx.beginPath();
+      ctx.ellipse(player.x, player.y + PLAYER_HEIGHT / 2 + 6, 18, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.lineWidth = 1.5;
       ctx.fillStyle = config.color;
       ctx.fillRect(bodyX, bodyY, PLAYER_WIDTH, PLAYER_HEIGHT);
+      ctx.strokeRect(bodyX, bodyY, PLAYER_WIDTH, PLAYER_HEIGHT);
       ctx.fillStyle = config.accent;
       ctx.fillRect(bodyX + 5, bodyY - 8, PLAYER_WIDTH - 10, 8);
       ctx.fillStyle = config.trim;
@@ -2032,6 +2157,7 @@ const Brawl: React.FC = () => {
       ctx.fillStyle = "#020617";
       ctx.font = "12px monospace";
       ctx.fillText(username, player.x - username.length * 3.2, bodyY - 16);
+      ctx.restore();
     };
 
     const drawHud = (state: BrawlState) => {
@@ -2039,14 +2165,17 @@ const Brawl: React.FC = () => {
         const fighter = state.players[player.userId];
         if (!fighter || !fighter.selectedCharacter) return;
         const config = CHARACTER_CONFIGS[fighter.selectedCharacter];
+        const specialReady = fighter.specialCooldownMs === 0;
+        const ultReady = fighter.ultimateCharge >= ULTIMATE_CHARGE_MAX;
         const cardWidth = 228;
+        const cardHeight = 98;
         const cardX = index === 0 ? 18 : WIDTH - cardWidth - 18;
         const cardY = 16;
 
         ctx.fillStyle = "rgba(2, 6, 23, 0.72)";
-        ctx.fillRect(cardX, cardY, cardWidth, 76);
+        ctx.fillRect(cardX, cardY, cardWidth, cardHeight);
         ctx.fillStyle = config.color;
-        ctx.fillRect(cardX, cardY, 10, 76);
+        ctx.fillRect(cardX, cardY, 10, cardHeight);
         ctx.fillStyle = "#f8fafc";
         ctx.font = "15px monospace";
         ctx.fillText(player.username, cardX + 18, cardY + 20);
@@ -2072,16 +2201,36 @@ const Brawl: React.FC = () => {
           ctx.fillStyle = "#86efac";
           ctx.fillText("WEAK", cardX + 170, cardY + 20);
         }
+        ctx.fillStyle = specialReady ? "#93c5fd" : "#94a3b8";
+        ctx.fillText(
+          specialReady ? "E READY" : `E ${(fighter.specialCooldownMs / 1000).toFixed(1)}s`,
+          cardX + 18,
+          cardY + 91
+        );
+        ctx.fillStyle = ultReady ? "#fcd34d" : "#94a3b8";
+        ctx.fillText(ultReady ? "R READY" : "R CHARGING", cardX + 118, cardY + 91);
       });
     };
 
     const draw = () => {
-      const currentState = stateRef.current;
+      const now = performance.now();
+      const currentState =
+        hitStopUntilRef.current > now && frozenStateRef.current ? frozenStateRef.current : stateRef.current;
       const previousState = previousStateRef.current;
       const stage = STAGES[currentState.selectedMap];
       const alpha = previousState
-        ? Math.min((performance.now() - lastStateAtRef.current) / NETWORK_RENDER_WINDOW_MS, 1)
+        ? Math.min((now - lastStateAtRef.current) / NETWORK_RENDER_WINDOW_MS, 1)
         : 1;
+      const shakeProgress = cameraShakeRef.current.ttlMs > 0 ? cameraShakeRef.current.ttlMs / 260 : 0;
+      const shakeX =
+        cameraShakeRef.current.ttlMs > 0
+          ? (Math.random() - 0.5) * cameraShakeRef.current.intensity * shakeProgress
+          : 0;
+      const shakeY =
+        cameraShakeRef.current.ttlMs > 0
+          ? (Math.random() - 0.5) * cameraShakeRef.current.intensity * 0.7 * shakeProgress
+          : 0;
+      cameraShakeRef.current.ttlMs = Math.max(0, cameraShakeRef.current.ttlMs - 16);
 
       const interpolatedPlayers = Object.fromEntries(
         Object.entries(currentState.players).map(([playerId, playerState]) => {
@@ -2116,7 +2265,33 @@ const Brawl: React.FC = () => {
       });
 
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
+      ctx.save();
+      ctx.translate(shakeX, shakeY);
       drawStage(stage, currentState.lavaHazard, currentState.moonHazard);
+
+      const currentInput = currentUserId ? inputStatesRef.current[currentUserId] : null;
+      const currentFighter = currentUserId ? interpolatedPlayers[currentUserId] : null;
+      if (currentInput && currentFighter && currentState.phase === "playing") {
+        const aimVector = normalizeVector(currentInput.aimX - currentFighter.x, currentInput.aimY - currentFighter.y);
+        ctx.strokeStyle = "rgba(255,255,255,0.12)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(currentFighter.x, currentFighter.y - 6);
+        ctx.lineTo(currentInput.aimX, currentInput.aimY);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.85)";
+        ctx.beginPath();
+        ctx.arc(currentInput.aimX, currentInput.aimY, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.38)";
+        ctx.beginPath();
+        ctx.arc(currentInput.aimX, currentInput.aimY, 9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,255,255,0.18)";
+        ctx.beginPath();
+        ctx.arc(currentFighter.x + aimVector.x * 14, currentFighter.y - 6 + aimVector.y * 10, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       currentState.effects.forEach((effect) => {
         const effectAlpha = Math.max(effect.ttlMs / 220, 0.12);
@@ -2139,6 +2314,7 @@ const Brawl: React.FC = () => {
 
       interpolatedProjectiles.forEach((projectile) => {
         ctx.fillStyle = projectile.color;
+        ctx.globalAlpha = projectile.isUltimate ? 0.95 : 0.88;
         if (projectile.kind === "dagger") {
           ctx.save();
           ctx.translate(projectile.x, projectile.y);
@@ -2159,6 +2335,11 @@ const Brawl: React.FC = () => {
           ctx.fill();
           ctx.restore();
         } else {
+          ctx.globalAlpha = 0.28;
+          ctx.beginPath();
+          ctx.arc(projectile.x, projectile.y, projectile.radius + 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = projectile.isUltimate ? 0.95 : 0.88;
           ctx.beginPath();
           ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
           ctx.fill();
@@ -2170,6 +2351,7 @@ const Brawl: React.FC = () => {
             ctx.globalAlpha = 1;
           }
         }
+        ctx.globalAlpha = 1;
       });
 
       playersRef.current.forEach((player) => {
@@ -2180,6 +2362,12 @@ const Brawl: React.FC = () => {
       });
 
       drawHud({ ...currentState, players: interpolatedPlayers, projectiles: interpolatedProjectiles });
+      const vignette = ctx.createRadialGradient(WIDTH / 2, HEIGHT / 2, HEIGHT * 0.22, WIDTH / 2, HEIGHT / 2, WIDTH * 0.7);
+      vignette.addColorStop(0, "rgba(15,23,42,0)");
+      vignette.addColorStop(1, "rgba(2,6,23,0.32)");
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      ctx.restore();
       renderRef.current = window.requestAnimationFrame(draw);
     };
 
@@ -2258,7 +2446,7 @@ const Brawl: React.FC = () => {
   return (
     <div className="page">
       <NavBar />
-      <div className="content card" style={{ maxWidth: 1080 }}>
+      <div className="content card brawl-shell" style={{ maxWidth: 1080 }}>
         <h2>Focus Brawl v{BRAWL_VERSION}</h2>
         <p>Two-player platform fighter with distinct class kits, stage identity, stocks, and ult charge.</p>
         <div className="info">

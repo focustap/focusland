@@ -1,7 +1,8 @@
 // Profile page.
 // Lets the user set a username and choose a rectangle color.
-import React, { useEffect, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../components/AuthProvider";
 import NavBar from "../components/NavBar";
 import { DEFAULT_PROFILE_COLOR, normalizeProfileColor } from "../lib/profileColor";
 import { supabase } from "../lib/supabase";
@@ -22,6 +23,7 @@ const Profile: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { darkMode, setDarkMode } = useContext(AuthContext);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -36,7 +38,7 @@ const Profile: React.FC = () => {
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("username, color")
+          .select("username, color, dark_mode")
           .eq("id", session.user.id)
           .maybeSingle();
 
@@ -48,6 +50,9 @@ const Profile: React.FC = () => {
         if (data) {
           setUsername(data.username ?? "");
           setRectangleColor(normalizeProfileColor(data.color));
+          if (typeof data.dark_mode === "boolean") {
+            setDarkMode(data.dark_mode);
+          }
         }
       } finally {
         setLoading(false);
@@ -76,7 +81,8 @@ const Profile: React.FC = () => {
         {
           id: session.user.id,
           username,
-          color: normalizeProfileColor(rectangleColor)
+          color: normalizeProfileColor(rectangleColor),
+          dark_mode: darkMode
         },
         { onConflict: "id" }
       );
@@ -145,6 +151,16 @@ const Profile: React.FC = () => {
                 ))}
               </div>
             </div>
+            <label className="field">
+              <span>Theme</span>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setDarkMode((current) => !current)}
+              >
+                {darkMode ? "Dark mode: on" : "Dark mode: off"}
+              </button>
+            </label>
             {message && <div className="info">{message}</div>}
             <button
               className="primary-button"
