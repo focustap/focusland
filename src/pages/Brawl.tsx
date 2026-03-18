@@ -177,7 +177,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const NETWORK_RENDER_WINDOW_MS = 60;
-const BRAWL_VERSION = "0.7";
+const BRAWL_VERSION = "0.8";
 const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
 const LAVA_LANES = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72];
@@ -682,6 +682,12 @@ const Brawl: React.FC = () => {
   const [connected, setConnected] = useState(false);
   const [roomFull, setRoomFull] = useState(false);
   const [brawlState, setBrawlState] = useState<BrawlState>(DEFAULT_STATE);
+  const [vsIntro, setVsIntro] = useState<{
+    leftName: string;
+    leftCharacter: CharacterId;
+    rightName: string;
+    rightCharacter: CharacterId;
+  } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const tickRef = useRef<number | null>(null);
@@ -699,6 +705,7 @@ const Brawl: React.FC = () => {
   const introStartedAtRef = useRef<number>(0);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioUnlockedRef = useRef(false);
+  const vsIntroTimeoutRef = useRef<number | null>(null);
 
   const isSeated = currentUserId ? players.some((player) => player.userId === currentUserId) : false;
   const isHost = Boolean(currentUserId && players[0]?.userId === currentUserId);
@@ -812,6 +819,26 @@ const Brawl: React.FC = () => {
 
     if (currentState.phase !== nextState.phase && nextState.phase === "playing") {
       introStartedAtRef.current = performance.now();
+      const matchupPlayers = playersRef.current.slice(0, 2);
+      const leftPlayer = matchupPlayers[0];
+      const rightPlayer = matchupPlayers[1];
+      const leftCharacter = leftPlayer ? nextState.players[leftPlayer.userId]?.selectedCharacter : null;
+      const rightCharacter = rightPlayer ? nextState.players[rightPlayer.userId]?.selectedCharacter : null;
+      if (leftPlayer && rightPlayer && leftCharacter && rightCharacter) {
+        setVsIntro({
+          leftName: leftPlayer.username,
+          leftCharacter,
+          rightName: rightPlayer.username,
+          rightCharacter
+        });
+        if (vsIntroTimeoutRef.current) {
+          window.clearTimeout(vsIntroTimeoutRef.current);
+        }
+        vsIntroTimeoutRef.current = window.setTimeout(() => {
+          setVsIntro(null);
+          vsIntroTimeoutRef.current = null;
+        }, 1900);
+      }
       playSfx("ready");
     }
 
@@ -977,6 +1004,10 @@ const Brawl: React.FC = () => {
       if (renderRef.current) {
         window.cancelAnimationFrame(renderRef.current);
         renderRef.current = null;
+      }
+      if (vsIntroTimeoutRef.current) {
+        window.clearTimeout(vsIntroTimeoutRef.current);
+        vsIntroTimeoutRef.current = null;
       }
       const channel = channelRef.current;
       if (channel) {
@@ -2553,21 +2584,50 @@ const Brawl: React.FC = () => {
               </>
             )}
 
-            <canvas
-              ref={canvasRef}
-              width={WIDTH}
-              height={HEIGHT}
-              style={{
-                width: "100%",
-                maxWidth: WIDTH,
-                display: "block",
-                margin: "1rem auto",
-                borderRadius: "1rem",
-                border: "1px solid #334155",
-                background: "#020617",
-                boxShadow: "0 18px 40px rgba(15, 23, 42, 0.35)"
-              }}
-            />
+            <div className="brawl-stage-wrap">
+              <canvas
+                ref={canvasRef}
+                width={WIDTH}
+                height={HEIGHT}
+                style={{
+                  width: "100%",
+                  maxWidth: WIDTH,
+                  display: "block",
+                  margin: "1rem auto",
+                  borderRadius: "1rem",
+                  border: "1px solid #334155",
+                  background: "#020617",
+                  boxShadow: "0 18px 40px rgba(15, 23, 42, 0.35)"
+                }}
+              />
+
+              {vsIntro && (
+                <div className="brawl-vs-overlay">
+                  <div
+                    className="brawl-vs-panel brawl-vs-panel--left"
+                    style={{
+                      "--vs-accent": CHARACTER_CONFIGS[vsIntro.leftCharacter].color,
+                      "--vs-accent-soft": CHARACTER_CONFIGS[vsIntro.leftCharacter].accent
+                    } as React.CSSProperties}
+                  >
+                    <span className="brawl-vs-role">{CHARACTER_CONFIGS[vsIntro.leftCharacter].name}</span>
+                    <strong>{vsIntro.leftName}</strong>
+                  </div>
+                  <div className="brawl-vs-slash" />
+                  <div className="brawl-vs-center">VS</div>
+                  <div
+                    className="brawl-vs-panel brawl-vs-panel--right"
+                    style={{
+                      "--vs-accent": CHARACTER_CONFIGS[vsIntro.rightCharacter].color,
+                      "--vs-accent-soft": CHARACTER_CONFIGS[vsIntro.rightCharacter].accent
+                    } as React.CSSProperties}
+                  >
+                    <span className="brawl-vs-role">{CHARACTER_CONFIGS[vsIntro.rightCharacter].name}</span>
+                    <strong>{vsIntro.rightName}</strong>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <p className="info">{brawlState.message}</p>
             <div className="brawl-stage-meta">
