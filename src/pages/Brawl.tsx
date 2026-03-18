@@ -1093,12 +1093,19 @@ const Brawl: React.FC = () => {
               }
             }
           } else if (characterId === "mage") {
-            state.vy = config.jumpVelocity * 1.1;
-            state.vx *= 0.55;
+            const blinkDirection = Math.abs(aimVector.x) > 0.12 ? Math.sign(aimVector.x) : state.facing;
+            const startX = state.x;
+            const targetX = clamp(startX + blinkDirection * 120, WALL_MARGIN + 8, WIDTH - WALL_MARGIN - 8);
+            state.x = targetX;
+            state.vx = 0;
+            state.vy = Math.min(state.vy, 0);
             state.onGround = false;
-            state.invulnMs = Math.max(state.invulnMs, 180);
-            nextEffects.push(createEffect(state.x, state.y + 4, config.specialColor, 22, 200));
-            nextMessage = `${player.username} blinked upward.`;
+            state.dropThroughMs = 0;
+            state.invulnMs = Math.max(state.invulnMs, 220);
+            state.facing = blinkDirection > 0 ? 1 : -1;
+            nextEffects.push(createEffect(startX, state.y + 4, config.specialColor, 24, 180));
+            nextEffects.push(createEffect(targetX, state.y + 4, config.accent, 26, 220));
+            nextMessage = `${player.username} blinked through space.`;
           } else {
             state.vy = config.jumpVelocity * 1.05;
             state.vx = -state.facing * 3.2;
