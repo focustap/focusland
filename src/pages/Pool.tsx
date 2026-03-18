@@ -65,11 +65,12 @@ const BALL_RADIUS = 11;
 const POCKET_RADIUS = 24;
 const FRICTION = 0.985;
 const MIN_SPEED = 0.06;
-const MAX_POWER = 12;
+const MAX_POWER = 16;
 const POWER_BAR_HEIGHT = 300;
 const BALL_REWARD_GOLD = 1;
 const WIN_REWARD_GOLD = 25;
 const BROADCAST_INTERVAL_MS = 33;
+const UI_SYNC_INTERVAL_MS = 100;
 const POOL_VERSION = "0.1";
 
 const POCKETS = [
@@ -233,49 +234,121 @@ function getAimVector(cueBall: Ball, aimX: number, aimY: number) {
   return { x: dx / len, y: dy / len };
 }
 
-function getShotGuide(cueBall: Ball, balls: Ball[], aimX: number, aimY: number) {
-  const aim = getAimVector(cueBall, aimX, aimY);
-  let bestBall: Ball | null = null;
-  let bestProjection = Number.POSITIVE_INFINITY;
-  let bestNormal = aim;
+function stepBalls(balls: Ball[]) {
+  const nextBalls = balls.map((ball) => ({ ...ball }));
 
-  balls.forEach((ball) => {
-    if (ball.pocketed || ball.isCue) return;
-    const toBallX = ball.x - cueBall.x;
-    const toBallY = ball.y - cueBall.y;
-    const projection = toBallX * aim.x + toBallY * aim.y;
-    if (projection <= 0 || projection >= bestProjection) return;
+  nextBalls.forEach((ball) => {
+    if (ball.pocketed) return;
+    ball.x += ball.vx;
+    ball.y += ball.vy;
+    ball.vx *= FRICTION;
+    ball.vy *= FRICTION;
+    if (Math.abs(ball.vx) < MIN_SPEED) ball.vx = 0;
+    if (Math.abs(ball.vy) < MIN_SPEED) ball.vy = 0;
 
-    const perpendicular = Math.abs(toBallX * aim.y - toBallY * aim.x);
-    const collisionDistance = BALL_RADIUS * 2;
-    if (perpendicular >= collisionDistance) return;
-
-    const collisionOffset = Math.sqrt(Math.max(collisionDistance * collisionDistance - perpendicular * perpendicular, 0));
-    const cueImpactDistance = projection - collisionOffset;
-    if (cueImpactDistance <= 0 || cueImpactDistance >= bestProjection) return;
-
-    const cueImpactX = cueBall.x + aim.x * cueImpactDistance;
-    const cueImpactY = cueBall.y + aim.y * cueImpactDistance;
-    const normalX = ball.x - cueImpactX;
-    const normalY = ball.y - cueImpactY;
-    const normalLength = Math.hypot(normalX, normalY);
-
-    bestProjection = cueImpactDistance;
-    bestBall = ball;
-    bestNormal =
-      normalLength > 0.001
-        ? { x: normalX / normalLength, y: normalY / normalLength }
-        : aim;
+    if (ball.x - BALL_RADIUS <= PLAY_X) {
+      ball.x = PLAY_X + BALL_RADIUS;
+      ball.vx *= -1;
+    }
+    if (ball.x + BALL_RADIUS >= PLAY_X + PLAY_WIDTH) {
+      ball.x = PLAY_X + PLAY_WIDTH - BALL_RADIUS;
+      ball.vx *= -1;
+    }
+    if (ball.y - BALL_RADIUS <= PLAY_Y) {
+      ball.y = PLAY_Y + BALL_RADIUS;
+      ball.vy *= -1;
+    }
+    if (ball.y + BALL_RADIUS >= PLAY_Y + PLAY_HEIGHT) {
+      ball.y = PLAY_Y + PLAY_HEIGHT - BALL_RADIUS;
+      ball.vy *= -1;
+    }
   });
 
-  if (!bestBall) {
-    return null;
+  let cueCollision: { targetBall: Ball; objectDirection: { x: number; y: number } } | null = null;
+
+  for (let i = 0; i < nextBalls.length; i += 1) {
+    const a = nextBalls[i];
+    if (a.pocketed) continue;
+    for (let j = i + 1; j < nextBalls.length; j += 1) {
+      const b = nextBalls[j];
+      if (b.pocketed) continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy);
+      const minDist = BALL_RADIUS * 2;
+      if (!dist || dist >= minDist) continue;
+
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const overlap = minDist - dist;
+      a.x -= nx * overlap * 0.5;
+      a.y -= ny * overlap * 0.5;
+      b.x += nx * overlap * 0.5;
+      b.y += ny * overlap * 0.5;
+
+      const tx = -ny;
+      const ty = nx;
+      const dpTanA = a.vx * tx + a.vy * ty;
+      const dpTanB = b.vx * tx + b.vy * ty;
+      const dpNormA = a.vx * nx + a.vy * ny;
+      const dpNormB = b.vx * nx + b.vy * ny;
+      a.vx = tx * dpTanA + nx * dpNormB;
+      a.vy = ty * dpTanA + ny * dpNormB;
+      b.vx = tx * dpTanB + nx * dpNormA;
+      b.vy = ty * dpTanB + ny * dpNormA;
+
+      const cueBall = a.isCue ? a : b.isCue ? b : null;
+      const objectBall = a.isCue ? b : b.isCue ? a : null;
+      if (cueBall && objectBall && !cueCollision) {
+        const velocityLength = Math.hypot(objectBall.vx, objectBall.vy) || 1;
+        cueCollision = {
+          targetBall: { ...objectBall },
+          objectDirection: {
+            x: objectBall.vx / velocityLength,
+            y: objectBall.vy / velocityLength
+          }
+        };
+      }
+    }
   }
 
-  return {
-    ball: bestBall,
-    objectDirection: bestNormal
-  };
+  nextBalls.forEach((ball) => {
+    if (ball.pocketed) return;
+    if (!POCKETS.some((pocket) => distance(ball.x, ball.y, pocket.x, pocket.y) <= POCKET_RADIUS)) {
+      return;
+    }
+    ball.pocketed = true;
+    ball.vx = 0;
+    ball.vy = 0;
+  });
+
+  return { balls: nextBalls, cueCollision };
+}
+
+function getShotGuide(cueBall: Ball, balls: Ball[], aimX: number, aimY: number, power: number) {
+  const previewBalls = balls.map((ball) => ({ ...ball, vx: 0, vy: 0 }));
+  const previewCue = previewBalls.find((ball) => ball.isCue);
+  if (!previewCue) return null;
+
+  const aim = getAimVector(cueBall, aimX, aimY);
+  previewCue.vx = aim.x * power * MAX_POWER;
+  previewCue.vy = aim.y * power * MAX_POWER;
+
+  for (let step = 0; step < 120; step += 1) {
+    const result = stepBalls(previewBalls);
+    previewBalls.splice(0, previewBalls.length, ...result.balls);
+    if (result.cueCollision) {
+      return result.cueCollision;
+    }
+
+    const previewCueBall = previewBalls.find((ball) => ball.isCue);
+    if (!previewCueBall || previewCueBall.pocketed) return null;
+    if (Math.abs(previewCueBall.vx) < MIN_SPEED && Math.abs(previewCueBall.vy) < MIN_SPEED) {
+      break;
+    }
+  }
+
+  return null;
 }
 
 function applyShotToState(currentState: PoolState, players: PlayerPresence[], shot: ShotPayload) {
@@ -350,6 +423,7 @@ const Pool: React.FC = () => {
   const mouseRef = useRef({ x: PLAY_X + 120, y: PLAY_Y + PLAY_HEIGHT / 2, insideTable: false });
   const appliedRewardRef = useRef(0);
   const lastBroadcastAtRef = useRef(0);
+  const lastUiSyncAtRef = useRef(0);
   const powerControlRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -398,13 +472,27 @@ const Pool: React.FC = () => {
     void recordArcadeResult({ goldEarned: delta });
   }, [currentUserId, poolState.rewardTotals]);
 
-  const commitState = (nextState: PoolState) => {
+  const shouldForceUiSync = (nextState: PoolState) =>
+    nextState.phase !== stateRef.current.phase ||
+    nextState.currentTurnId !== stateRef.current.currentTurnId ||
+    nextState.cueBallInHandForId !== stateRef.current.cueBallInHandForId ||
+    nextState.shotOwnerId !== stateRef.current.shotOwnerId ||
+    nextState.message !== stateRef.current.message ||
+    nextState.winnerId !== stateRef.current.winnerId ||
+    JSON.stringify(nextState.groups) !== JSON.stringify(stateRef.current.groups) ||
+    JSON.stringify(nextState.rewardTotals) !== JSON.stringify(stateRef.current.rewardTotals);
+
+  const commitState = (nextState: PoolState, forceUiSync = false) => {
     stateRef.current = nextState;
-    setPoolState(nextState);
+    const now = performance.now();
+    if (forceUiSync || shouldForceUiSync(nextState) || now - lastUiSyncAtRef.current >= UI_SYNC_INTERVAL_MS) {
+      lastUiSyncAtRef.current = now;
+      setPoolState(nextState);
+    }
   };
 
   const broadcastState = async (nextState: PoolState) => {
-    commitState(nextState);
+    commitState(nextState, true);
     lastBroadcastAtRef.current = performance.now();
     if (channelRef.current) {
       await channelRef.current.send({
@@ -836,7 +924,7 @@ const Pool: React.FC = () => {
         context.lineTo(currentCue.x - aim.x * (38 + power * 18), currentCue.y - aim.y * (38 + power * 18));
         context.stroke();
 
-        const shotGuide = getShotGuide(currentCue, currentState.balls, activeAim.x, activeAim.y);
+        const shotGuide = getShotGuide(currentCue, currentState.balls, activeAim.x, activeAim.y, power);
         if (shotGuide) {
           const targetBall = shotGuide.ball;
           const objectDir = shotGuide.objectDirection;
@@ -1057,7 +1145,7 @@ const Pool: React.FC = () => {
       <NavBar />
       <div className="content card" style={{ maxWidth: 980 }}>
         <h2>8 Ball v{POOL_VERSION}</h2>
-        <p>Two-player table. Click once to lock your aim, then drag the power bar and release to shoot. First made ball assigns solids or stripes.</p>
+        <p>Two-player table. Click once to lock your aim, then pull back the cue control and release to shoot. First made ball assigns solids or stripes.</p>
         <div className="info">
           Seats filled: {Math.min(players.length, 2)}/2
           {connected && !roomFull ? ` | ${currentUsername}` : ""}
@@ -1117,40 +1205,58 @@ const Pool: React.FC = () => {
                   onPointerDown={handlePowerPointerDown}
                   style={{
                     position: "relative",
-                    width: 28,
+                    width: 40,
                     height: POWER_BAR_HEIGHT,
-                    borderRadius: 999,
-                    background: "linear-gradient(180deg, #deb887 0%, #8b5a2b 52%, #5a3415 100%)",
-                    border: "2px solid #3b2412",
-                    boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.08)",
+                    borderRadius: 18,
+                    background: "linear-gradient(180deg, rgba(15,23,42,0.28) 0%, rgba(15,23,42,0.1) 100%)",
+                    border: "1px solid rgba(148,163,184,0.35)",
                     cursor: aimLocked && canShoot ? "ns-resize" : "not-allowed"
                   }}
                 >
                   <div
                     style={{
                       position: "absolute",
-                      inset: "4px",
+                      left: 15,
+                      top: 10,
+                      bottom: 26,
+                      width: 10,
                       borderRadius: 999,
-                      background: "linear-gradient(180deg, rgba(15,23,42,0.15) 0%, rgba(15,23,42,0.45) 100%)"
+                      background: "linear-gradient(180deg, #f4d8a3 0%, #b88344 38%, #7a4b22 78%, #4a2d15 100%)",
+                      border: "1px solid #3b2412",
+                      boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.15)"
                     }}
                   />
                   <div
                     style={{
                       position: "absolute",
-                      left: 4,
-                      right: 4,
-                      bottom: 4,
-                      height: `${Math.max(power * (POWER_BAR_HEIGHT - 8), 16)}px`,
+                      left: 14,
+                      top: 2,
+                      width: 12,
+                      height: 18,
                       borderRadius: 999,
-                      background: "linear-gradient(180deg, rgba(251,191,36,0.24) 0%, rgba(239,68,68,0.95) 100%)"
+                      background: "#60a5fa",
+                      border: "1px solid #dbeafe"
                     }}
                   />
                   <div
                     style={{
                       position: "absolute",
-                      top: `${(1 - power) * (POWER_BAR_HEIGHT - 18)}px`,
-                      left: -10,
-                      width: 48,
+                      left: 8,
+                      bottom: 8,
+                      width: 24,
+                      height: `${Math.max(power * 72, 14)}px`,
+                      borderRadius: 999,
+                      background: "linear-gradient(180deg, #1f2937 0%, #0f172a 100%)",
+                      border: "1px solid #64748b",
+                      boxShadow: "0 3px 8px rgba(15,23,42,0.35)"
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 6,
+                      top: `${POWER_BAR_HEIGHT - 22 - power * 72}px`,
+                      width: 28,
                       height: 12,
                       borderRadius: 999,
                       background: "#f8fafc",
@@ -1161,13 +1267,14 @@ const Pool: React.FC = () => {
                 </div>
                 <div
                   style={{
-                    width: 12,
-                    height: 88,
-                    borderRadius: 999,
-                    background: "linear-gradient(180deg, #edd2a4 0%, #9d6937 55%, #5a3415 100%)",
-                    border: "2px solid #3b2412"
+                    fontSize: "0.75rem",
+                    color: "#94a3b8",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em"
                   }}
-                />
+                >
+                  Pull down
+                </div>
               </div>
             </div>
             <p className="info">{poolState.message}</p>
