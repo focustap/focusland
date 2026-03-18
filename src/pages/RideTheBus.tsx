@@ -73,12 +73,24 @@ function drawCard(): Card {
   };
 }
 
+function getCardRank(card: Card) {
+  if (card.value === 11) return "Jack";
+  if (card.value === 12) return "Queen";
+  if (card.value === 13) return "King";
+  if (card.value === 14) return "Ace";
+  return String(card.value);
+}
+
+function getCardColor(card: Card) {
+  return card.suit === "hearts" || card.suit === "diamonds" ? "Red" : "Black";
+}
+
+function getCardTextColor(card: Card) {
+  return getCardColor(card) === "Red" ? "#dc2626" : "#111827";
+}
+
 function formatCard(card: Card) {
-  const label =
-    card.value === 11 ? "J" : card.value === 12 ? "Q" : card.value === 13 ? "K" : card.value === 14 ? "A" : String(card.value);
-  const suitSymbol =
-    card.suit === "spades" ? "♠" : card.suit === "clubs" ? "♣" : card.suit === "diamonds" ? "♦" : "♥";
-  return `${label}${suitSymbol}`;
+  return `${getCardRank(card)} of ${card.suit[0].toUpperCase()}${card.suit.slice(1)} (${getCardColor(card)})`;
 }
 
 function getSeatStyle(index: number, count: number): React.CSSProperties {
@@ -150,17 +162,13 @@ const RideTheBus: React.FC = () => {
   }, []);
 
   const localSeat = currentUserId ? seatStates[currentUserId] : null;
-  const currentMultiplier = localSeat ? localSeat.multiplier : 0;
   const potentialCashout = localSeat ? localSeat.bet * localSeat.multiplier : 0;
 
   const tableSeats = useMemo(() => {
-    return players.map((player) => {
-      const seat = seatStates[player.userId];
-      return {
-        ...player,
-        seat
-      };
-    });
+    return players.map((player) => ({
+      ...player,
+      seat: seatStates[player.userId]
+    }));
   }, [players, seatStates]);
 
   const broadcastSeat = async (seat: SeatState) => {
@@ -389,7 +397,7 @@ const RideTheBus: React.FC = () => {
     const nextCards = [...localSeat.cards, nextCard];
 
     if (localSeat.stage === "color") {
-      const isRed = nextCard.suit === "hearts" || nextCard.suit === "diamonds";
+      const isRed = getCardColor(nextCard) === "Red";
       const correct = (guess === "red" && isRed) || (guess === "black" && !isRed);
       if (!correct) {
         await loseRun({ ...localSeat, cards: nextCards }, `${formatCard(nextCard)}. Wrong color. Bus ride over.`);
@@ -401,7 +409,7 @@ const RideTheBus: React.FC = () => {
         cards: nextCards,
         stage: "higher-lower",
         multiplier: MULTIPLIERS["higher-lower"],
-        status: `${formatCard(nextCard)}. Nice hit. Round 2: higher or lower?`
+        status: `${formatCard(nextCard)}. Round 2: higher or lower?`
       });
       return;
     }
@@ -501,16 +509,14 @@ const RideTheBus: React.FC = () => {
       <NavBar />
       <div className="content card" style={{ maxWidth: 1080 }}>
         <h2>Ride the Bus</h2>
-        <p>Color, higher or lower, inside or outside, then the suit. Cash out anytime after a hit, or risk it all for the 20x finish.</p>
+        <p>Color, higher or lower, inside or outside, then the suit. Cash out after any hit, or push for the full 20x finish.</p>
 
         <div className="info">
           Seats filled: {Math.min(players.length, MAX_PLAYERS)}/{MAX_PLAYERS} | Gold: {currentGold}
           {connected && !roomFull ? ` | ${currentUsername}` : ""}
         </div>
 
-        {roomFull ? (
-          <div className="error">This bus table is full right now.</div>
-        ) : null}
+        {roomFull ? <div className="error">This bus table is full right now.</div> : null}
 
         <div className="ride-bus-table">
           <div className="ride-bus-felt">
@@ -537,8 +543,10 @@ const RideTheBus: React.FC = () => {
               <span>Current x: {player.seat?.multiplier ?? "-"}</span>
               <div className="ride-bus-card-row">
                 {(player.seat?.cards ?? []).map((card, cardIndex) => (
-                  <div key={`${player.userId}-${cardIndex}-${card.suit}`} className="ride-bus-card">
-                    {formatCard(card)}
+                  <div key={`${player.userId}-${cardIndex}-${card.suit}-${card.value}`} className="ride-bus-card">
+                    <div style={{ color: getCardTextColor(card) }}>{getCardRank(card)}</div>
+                    <div style={{ color: getCardTextColor(card) }}>{card.suit}</div>
+                    <div style={{ color: getCardTextColor(card) }}>{getCardColor(card)}</div>
                   </div>
                 ))}
               </div>
@@ -615,9 +623,9 @@ const RideTheBus: React.FC = () => {
         </div>
 
         <div className="button-row">
-          <button className="secondary-button" type="button" onClick={() => void updateEmote("👍")}>👍</button>
-          <button className="secondary-button" type="button" onClick={() => void updateEmote("👎")}>👎</button>
-          <button className="secondary-button" type="button" onClick={() => void updateEmote("🔥")}>🔥</button>
+          <button className="secondary-button" type="button" onClick={() => void updateEmote("UP")}>UP</button>
+          <button className="secondary-button" type="button" onClick={() => void updateEmote("DOWN")}>DOWN</button>
+          <button className="secondary-button" type="button" onClick={() => void updateEmote("HEAT")}>HEAT</button>
         </div>
       </div>
     </div>

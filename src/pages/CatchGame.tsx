@@ -68,6 +68,7 @@ const CatchGame: React.FC = () => {
       };
 
       let cursors: Phaser.Types.Input.Keyboard.CursorKeys | undefined;
+      let letterKeys: { a: Phaser.Input.Keyboard.Key; d: Phaser.Input.Keyboard.Key } | undefined;
       let playerRect: Phaser.GameObjects.Rectangle | undefined;
       let playerBody: Phaser.Physics.Arcade.Body | undefined;
       let fallingBlocks: Phaser.GameObjects.Rectangle[] = [];
@@ -93,6 +94,12 @@ const CatchGame: React.FC = () => {
         playerBody.setImmovable(true);
 
         cursors = this.input.keyboard?.createCursorKeys();
+        if (this.input.keyboard) {
+          letterKeys = this.input.keyboard.addKeys("A,D") as {
+            a: Phaser.Input.Keyboard.Key;
+            d: Phaser.Input.Keyboard.Key;
+          };
+        }
 
         scoreText = this.add.text(16, 16, "Score: 0", {
           fontSize: "18px",
@@ -199,9 +206,9 @@ const CatchGame: React.FC = () => {
         const speed = 320;
         playerBody.setVelocityX(0);
 
-        if (cursors.left?.isDown) {
+        if (cursors.left?.isDown || letterKeys?.a.isDown) {
           playerBody.setVelocityX(-speed);
-        } else if (cursors.right?.isDown) {
+        } else if (cursors.right?.isDown || letterKeys?.d.isDown) {
           playerBody.setVelocityX(speed);
         }
 
@@ -264,7 +271,7 @@ const CatchGame: React.FC = () => {
       <NavBar />
       <div className="content card">
         <h2>Catch Game</h2>
-        <p>Move with the left and right arrow keys. Catch green blocks and avoid red ones.</p>
+        <p>Move with arrow keys or A/D. Catch green blocks and avoid red ones.</p>
         <div
           ref={containerRef}
           style={{ width: "100%", maxWidth: 480, margin: "1rem auto" }}
@@ -281,7 +288,7 @@ const CatchGame: React.FC = () => {
               setRestartCount((count) => count + 1);
               setCanRestart(false);
               setLastScore(null);
-              setStatus("Catch the green blocks and dodge the red ones.");
+              setStatus("Catch the green blocks and dodge the red ones with arrow keys or A/D.");
             }}
           >
             Restart game

@@ -76,6 +76,7 @@ const Game: React.FC = () => {
 
       // Variables shared with the scene functions.
       let cursors: Phaser.Types.Input.Keyboard.CursorKeys | undefined;
+      let letterKeys: { a: Phaser.Input.Keyboard.Key; d: Phaser.Input.Keyboard.Key } | undefined;
       let playerRect: Phaser.GameObjects.Rectangle | undefined;
       let playerBody: Phaser.Physics.Arcade.Body | undefined;
       let enemies: Phaser.GameObjects.Rectangle[] = [];
@@ -100,6 +101,12 @@ const Game: React.FC = () => {
         playerBody.setAllowGravity(false);
 
         cursors = this.input.keyboard?.createCursorKeys();
+        if (this.input.keyboard) {
+          letterKeys = this.input.keyboard.addKeys("A,D") as {
+            a: Phaser.Input.Keyboard.Key;
+            d: Phaser.Input.Keyboard.Key;
+          };
+        }
 
         scoreText = this.add.text(16, 16, "Score: 0", {
           fontSize: "18px",
@@ -162,9 +169,9 @@ const Game: React.FC = () => {
         const speed = 250;
         playerBody.setVelocityX(0);
 
-        if (cursors.left?.isDown) {
+        if (cursors.left?.isDown || letterKeys?.a.isDown) {
           playerBody.setVelocityX(-speed);
-        } else if (cursors.right?.isDown) {
+        } else if (cursors.right?.isDown || letterKeys?.d.isDown) {
           playerBody.setVelocityX(speed);
         }
 
@@ -215,7 +222,7 @@ const Game: React.FC = () => {
       <NavBar />
       <div className="content card">
         <h2>Dodge Game</h2>
-        <p>Move with the left and right arrow keys. Dodge the falling blocks.</p>
+        <p>Move with arrow keys or A/D. Dodge the falling blocks.</p>
         <div
           ref={containerRef}
           style={{ width: "100%", maxWidth: 480, margin: "1rem auto" }}
@@ -234,7 +241,7 @@ const Game: React.FC = () => {
               setRestartCount((count) => count + 1);
               setCanRestart(false);
               setLastScore(null);
-              setStatus("Use arrow keys to dodge!");
+              setStatus("Use arrow keys or A/D to dodge!");
             }}
           >
             Restart game
