@@ -100,7 +100,7 @@ const CasinoRoom: React.FC = () => {
 
         addTable(width / 2, 166, "21 Table", "/casino/21", 0x0f766e);
         addTable(width / 2 - 210, 320, "Slots", "/casino/slots", 0x7c3aed);
-        addTable(width / 2 + 210, 320, "High Rollers", "/casino/21", 0x0f766e);
+        addTable(width / 2 + 210, 320, "Ride the Bus", "/casino/bus", 0x0ea5e9);
 
         const doorY = height - 72;
         this.add.rectangle(width / 2, doorY, 92, 120, 0x3f2a1d);
