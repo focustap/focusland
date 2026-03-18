@@ -11,7 +11,7 @@ type PlayerPresence = {
 type CasinoPhase = "waiting" | "betting" | "playing" | "roundOver" | "gameOver";
 
 type RoundSummary = {
-  winnerId: string | null;
+  winnerIds: string[];
   message: string;
 };
 
@@ -25,6 +25,8 @@ type CasinoState = {
 };
 
 const ROOM_NAME = "focusland-casino";
+const MIN_PLAYERS = 2;
+const MAX_PLAYERS = 5;
 const STARTING_CHIPS = 100;
 const DEFAULT_STATE: CasinoState = {
   phase: "waiting",
@@ -86,7 +88,7 @@ const Casino: React.FC = () => {
   const [currentUsername, setCurrentUsername] = useState("Player");
   const [gameState, setGameState] = useState<CasinoState>(DEFAULT_STATE);
   const [selectedBet, setSelectedBet] = useState(10);
-  const [status, setStatus] = useState("Join the room and wait for a second player.");
+  const [status, setStatus] = useState("Join the room and wait for at least one more player.");
   const [roomFull, setRoomFull] = useState(false);
   const [connected, setConnected] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -107,18 +109,35 @@ const Casino: React.FC = () => {
   const isSeated = currentUserId ? players.some((player) => player.userId === currentUserId) : false;
   const hostId = players[0]?.userId ?? null;
   const isHost = Boolean(currentUserId && currentUserId === hostId);
-  const playerCountLabel = `${Math.min(players.length, 2)}/2`;
+  const playerCountLabel = `${Math.min(players.length, MAX_PLAYERS)}/${MAX_PLAYERS}`;
   const myChips = currentUserId ? gameState.chips[currentUserId] ?? STARTING_CHIPS : STARTING_CHIPS;
   const myBet = currentUserId ? gameState.bets[currentUserId] ?? null : null;
   const myHand = currentUserId ? gameState.hands[currentUserId] ?? [] : [];
   const myTotal = getHandTotal(myHand);
+  const playerPanels = useMemo(() => {
+    return players.map((player) => {
+      const hand = gameState.hands[player.userId] ?? [];
+      const total = getHandTotal(hand);
+      const chips = gameState.chips[player.userId] ?? STARTING_CHIPS;
+      const bet = gameState.bets[player.userId] ?? null;
+      const isCurrentPlayer = player.userId === currentUserId;
+      const stood = Boolean(gameState.stood[player.userId]);
+      const busted = hand.length > 0 && total > 21;
+      const wonLastRound = Boolean(gameState.lastRound?.winnerIds.includes(player.userId));
 
-  const opponent = useMemo(() => {
-    return players.find((player) => player.userId !== currentUserId) ?? null;
-  }, [players, currentUserId]);
-
-  const opponentHand = opponent ? gameState.hands[opponent.userId] ?? [] : [];
-  const opponentTotal = getHandTotal(opponentHand);
+      return {
+        ...player,
+        bet,
+        busted,
+        chips,
+        hand,
+        isCurrentPlayer,
+        stood,
+        total,
+        wonLastRound
+      };
+    });
+  }, [currentUserId, gameState.bets, gameState.chips, gameState.hands, gameState.lastRound, gameState.stood, players]);
 
   useEffect(() => {
     playersRef.current = players;
@@ -145,7 +164,7 @@ const Casino: React.FC = () => {
 
   const maybeDealOpeningCards = async (stateToCheck: CasinoState) => {
     const currentPlayers = playersRef.current;
-    if (!isHostRef.current || currentPlayers.length !== 2 || stateToCheck.phase !== "betting") {
+    if (!isHostRef.current || currentPlayers.length < MIN_PLAYERS || stateToCheck.phase !== "betting") {
       return;
     }
 
@@ -171,44 +190,51 @@ const Casino: React.FC = () => {
 
   const settleRound = async (stateToResolve: CasinoState) => {
     const currentPlayers = playersRef.current;
-    if (currentPlayers.length !== 2) {
+    if (currentPlayers.length < MIN_PLAYERS) {
       return;
     }
 
-    const [playerOne, playerTwo] = currentPlayers;
-    const playerOneTotal = getHandTotal(stateToResolve.hands[playerOne.userId] ?? []);
-    const playerTwoTotal = getHandTotal(stateToResolve.hands[playerTwo.userId] ?? []);
-    const playerOneBust = playerOneTotal > 21;
-    const playerTwoBust = playerTwoTotal > 21;
     const chips = { ...stateToResolve.chips };
-    const wagerOne = stateToResolve.bets[playerOne.userId] ?? 0;
-    const wagerTwo = stateToResolve.bets[playerTwo.userId] ?? 0;
+    const results = currentPlayers.map((player) => {
+      const hand = stateToResolve.hands[player.userId] ?? [];
+      const total = getHandTotal(hand);
+      const bet = stateToResolve.bets[player.userId] ?? 0;
+      chips[player.userId] = (chips[player.userId] ?? STARTING_CHIPS) - bet;
 
-    chips[playerOne.userId] -= wagerOne;
-    chips[playerTwo.userId] -= wagerTwo;
+      return {
+        bet,
+        player,
+        total
+      };
+    });
 
-    let winnerId: string | null = null;
-    let message = "Push. Bets returned.";
+    const pot = results.reduce((sum, result) => sum + result.bet, 0);
+    const eligible = results.filter((result) => result.total <= 21);
+    let winnerIds: string[] = [];
+    let message = "Everyone busted. The house takes the pot.";
 
-    if (playerOneBust && !playerTwoBust) {
-      winnerId = playerTwo.userId;
-      chips[playerTwo.userId] += wagerOne + wagerTwo;
-      message = `${playerOne.username} busted. ${playerTwo.username} wins.`;
-    } else if (playerTwoBust && !playerOneBust) {
-      winnerId = playerOne.userId;
-      chips[playerOne.userId] += wagerOne + wagerTwo;
-      message = `${playerTwo.username} busted. ${playerOne.username} wins.`;
-    } else if (!playerOneBust && !playerTwoBust && playerOneTotal > playerTwoTotal) {
-      winnerId = playerOne.userId;
-      chips[playerOne.userId] += wagerOne + wagerTwo;
-      message = `${playerOne.username} wins ${playerOneTotal} to ${playerTwoTotal}.`;
-    } else if (!playerOneBust && !playerTwoBust && playerTwoTotal > playerOneTotal) {
-      winnerId = playerTwo.userId;
-      chips[playerTwo.userId] += wagerOne + wagerTwo;
-      message = `${playerTwo.username} wins ${playerTwoTotal} to ${playerOneTotal}.`;
-    } else {
-      chips[playerOne.userId] += wagerOne;
-      chips[playerTwo.userId] += wagerTwo;
+    if (eligible.length > 0) {
+      const bestTotal = Math.max(...eligible.map((result) => result.total));
+      const winners = eligible.filter((result) => result.total === bestTotal);
+      winnerIds = winners.map((winner) => winner.player.userId);
+
+      const share = Math.floor(pot / winners.length);
+      let remainder = pot % winners.length;
+
+      winners.forEach((winner) => {
+        chips[winner.player.userId] += share;
+        if (remainder > 0) {
+          chips[winner.player.userId] += 1;
+          remainder -= 1;
+        }
+      });
+
+      if (winners.length === 1) {
+        message = `${winners[0].player.username} wins with ${bestTotal}.`;
+      } else {
+        const names = winners.map((winner) => winner.player.username).join(", ");
+        message = `${names} split the pot with ${bestTotal}.`;
+      }
     }
 
     const bustedBankroll = currentPlayers.find((player) => (chips[player.userId] ?? 0) <= 0);
@@ -217,12 +243,12 @@ const Casino: React.FC = () => {
       chips,
       bets: {},
       hands: stateToResolve.hands,
-      stood: {
-        [playerOne.userId]: true,
-        [playerTwo.userId]: true
-      },
+      stood: currentPlayers.reduce<Record<string, boolean>>((acc, player) => {
+        acc[player.userId] = true;
+        return acc;
+      }, {}),
       lastRound: {
-        winnerId,
+        winnerIds,
         message: bustedBankroll
           ? `${message} ${bustedBankroll.username} is out of chips.`
           : message
@@ -237,21 +263,19 @@ const Casino: React.FC = () => {
     if (
       resolvingRef.current ||
       !isHostRef.current ||
-      currentPlayers.length !== 2 ||
+      currentPlayers.length < MIN_PLAYERS ||
       stateToCheck.phase !== "playing"
     ) {
       return;
     }
 
-    const [playerOne, playerTwo] = currentPlayers;
-    const handOne = stateToCheck.hands[playerOne.userId] ?? [];
-    const handTwo = stateToCheck.hands[playerTwo.userId] ?? [];
-    const totalOne = getHandTotal(handOne);
-    const totalTwo = getHandTotal(handTwo);
-    const playerOneDone = totalOne > 21 || Boolean(stateToCheck.stood[playerOne.userId]);
-    const playerTwoDone = totalTwo > 21 || Boolean(stateToCheck.stood[playerTwo.userId]);
+    const everyoneDone = currentPlayers.every((player) => {
+      const hand = stateToCheck.hands[player.userId] ?? [];
+      const total = getHandTotal(hand);
+      return total > 21 || Boolean(stateToCheck.stood[player.userId]);
+    });
 
-    if (totalOne > 21 || totalTwo > 21 || (playerOneDone && playerTwoDone)) {
+    if (everyoneDone) {
       resolvingRef.current = true;
       try {
         await settleRound(stateToCheck);
@@ -272,23 +296,23 @@ const Casino: React.FC = () => {
         string,
         Array<{ userId: string; username: string; onlineAt: string }>
       >;
-      const nextPlayers = getPlayersFromPresence(presenceState).slice(0, 2);
+      const nextPlayers = getPlayersFromPresence(presenceState).slice(0, MAX_PLAYERS);
 
       setPlayers(nextPlayers);
       setRoomFull(
-        nextPlayers.length >= 2 &&
+        nextPlayers.length >= MAX_PLAYERS &&
           !nextPlayers.some((player) => player.userId === currentUserIdRef.current)
       );
 
-      if (nextPlayers.length < 2) {
+      if (nextPlayers.length < MIN_PLAYERS) {
         setGameState(DEFAULT_STATE);
         setStatus(
           nextPlayers.length === 1
             ? "Waiting for one more player."
-            : "Join the room and wait for a second player."
+            : "Join the room and wait for at least one more player."
         );
       } else if (phaseRef.current === "waiting") {
-        setStatus("2/2 players. Host can start.");
+        setStatus(`${nextPlayers.length}/${MAX_PLAYERS} seated. Host can start.`);
       }
     };
 
@@ -343,7 +367,7 @@ const Casino: React.FC = () => {
           channel.presenceState() as Record<string, Array<{ userId: string; username: string; onlineAt: string }>>
         );
 
-        if (present.length >= 2) {
+        if (present.length >= MAX_PLAYERS) {
           setRoomFull(true);
           setStatus("This room is full right now.");
           return;
@@ -375,7 +399,7 @@ const Casino: React.FC = () => {
   }, []);
 
   const startGame = async () => {
-    if (!isHost || players.length !== 2) {
+    if (!isHost || players.length < MIN_PLAYERS) {
       return;
     }
 
@@ -463,7 +487,7 @@ const Casino: React.FC = () => {
   };
 
   const nextHand = async () => {
-    if (!isHost || players.length !== 2) {
+    if (!isHost || players.length < MIN_PLAYERS) {
       return;
     }
 
@@ -475,7 +499,7 @@ const Casino: React.FC = () => {
       <NavBar />
       <div className="content card">
         <h2>Casino 21</h2>
-        <p>Two players join. At 2/2, the host starts. Bet, then hit or stand to get closer to 21.</p>
+        <p>Two to five players can join. Once at least two are seated, the host starts. Bet, then hit or stand to get closer to 21.</p>
 
         <div className="info">
           Seats filled: {playerCountLabel}
@@ -483,7 +507,7 @@ const Casino: React.FC = () => {
         </div>
 
         {roomFull && !isSeated ? (
-          <div className="error">Two players are already at this table. Wait for someone to leave.</div>
+          <div className="error">Five players are already at this table. Wait for someone to leave.</div>
         ) : (
           <>
             <div className="button-row">
@@ -495,20 +519,29 @@ const Casino: React.FC = () => {
             </div>
 
             <div className="casino-board">
-              <div className="casino-panel">
-                <strong>{currentUsername}</strong>
-                <span>Chips: {myChips}</span>
-                <span>Bet: {myBet ?? "-"}</span>
-                <span>Cards: {formatCards(myHand)}</span>
-                <span>Total: {myHand.length ? myTotal : "-"}</span>
-              </div>
-              <div className="casino-panel">
-                <strong>{opponent?.username ?? "Opponent"}</strong>
-                <span>Chips: {opponent ? gameState.chips[opponent.userId] ?? STARTING_CHIPS : "-"}</span>
-                <span>Bet: {opponent ? gameState.bets[opponent.userId] ?? "-" : "-"}</span>
-                <span>Cards: {formatCards(opponentHand)}</span>
-                <span>Total: {opponentHand.length ? opponentTotal : "-"}</span>
-              </div>
+              {playerPanels.map((player) => (
+                <div key={player.userId} className="casino-panel">
+                  <strong>
+                    {player.username}
+                    {player.isCurrentPlayer ? " (You)" : ""}
+                  </strong>
+                  <span>Chips: {player.chips}</span>
+                  <span>Bet: {player.bet ?? "-"}</span>
+                  <span>Cards: {formatCards(player.hand)}</span>
+                  <span>Total: {player.hand.length ? player.total : "-"}</span>
+                  <span>
+                    {player.busted
+                      ? "Busted"
+                      : player.stood
+                        ? "Stood"
+                        : gameState.phase === "roundOver" || gameState.phase === "gameOver"
+                          ? player.wonLastRound
+                            ? "Winner"
+                            : "Lost"
+                          : "Active"}
+                  </span>
+                </div>
+              ))}
             </div>
 
             <p className="info">{status}</p>
@@ -518,7 +551,7 @@ const Casino: React.FC = () => {
                 className="primary-button"
                 type="button"
                 onClick={() => void startGame()}
-                disabled={players.length !== 2}
+                disabled={players.length < MIN_PLAYERS}
               >
                 Start game
               </button>
