@@ -1,6 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
-import { applyGoldDelta, recordArcadeResult } from "../lib/progression";
+import { recordArcadeResult } from "../lib/progression";
+import { supabase } from "../lib/supabase";
+
+type PlayerPresence = {
+  userId: string;
+  username: string;
+  onlineAt: string;
+};
+
+type BallGroup = "solids" | "stripes";
 
 type Ball = {
   id: string;
@@ -17,12 +26,23 @@ type Ball = {
   pocketed: boolean;
 };
 
-type MouseState = {
-  x: number;
-  y: number;
-  insideTable: boolean;
+type PoolState = {
+  phase: "waiting" | "playing" | "gameOver";
+  balls: Ball[];
+  currentTurnId: string | null;
+  groups: Record<string, BallGroup | null>;
+  winnerId: string | null;
+  message: string;
 };
 
+type ShotPayload = {
+  userId: string;
+  aimX: number;
+  aimY: number;
+  power: number;
+};
+
+const ROOM_NAME = "focusland-pool";
 const TABLE_WIDTH = 920;
 const TABLE_HEIGHT = 520;
 const RAIL = 36;
@@ -39,7 +59,7 @@ const POWER_BAR_X = TABLE_WIDTH - 54;
 const POWER_BAR_Y = 80;
 const POWER_BAR_HEIGHT = 300;
 const POWER_BAR_WIDTH = 18;
-const POOL_REWARD_GOLD = 14;
+const POOL_WIN_GOLD = 18;
 
 const POCKETS = [
   { x: PLAY_X, y: PLAY_Y },
@@ -49,6 +69,44 @@ const POCKETS = [
   { x: PLAY_X + PLAY_WIDTH / 2, y: PLAY_Y + PLAY_HEIGHT + 4 },
   { x: PLAY_X + PLAY_WIDTH, y: PLAY_Y + PLAY_HEIGHT }
 ];
+
+const DEFAULT_STATE: PoolState = {
+  phase: "waiting",
+  balls: [],
+  currentTurnId: null,
+  groups: {},
+  winnerId: null,
+  message: "Waiting for two players."
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function distance(ax: number, ay: number, bx: number, by: number) {
+  return Math.hypot(ax - bx, ay - by);
+}
+
+function getPlayersFromPresence(
+  rawPresence: Record<string, Array<{ userId: string; username: string; onlineAt: string }>>
+) {
+  const players = Object.values(rawPresence)
+    .flat()
+    .map((entry) => ({
+      userId: entry.userId,
+      username: entry.username,
+      onlineAt: entry.onlineAt
+    }));
+
+  const deduped = new Map<string, PlayerPresence>();
+  players.forEach((player) => {
+    if (!deduped.has(player.userId)) {
+      deduped.set(player.userId, player);
+    }
+  });
+
+  return Array.from(deduped.values()).sort((a, b) => a.onlineAt.localeCompare(b.onlineAt));
+}
 
 function createRack() {
   const cueX = PLAY_X + PLAY_WIDTH * 0.24;
@@ -121,77 +179,264 @@ function createRack() {
   return balls;
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
+function createInitialState(players: PlayerPresence[]): PoolState {
+  return {
+    phase: "playing",
+    balls: createRack(),
+    currentTurnId: players[0]?.userId ?? null,
+    groups: players.reduce<Record<string, BallGroup | null>>((acc, player) => {
+      acc[player.userId] = null;
+      return acc;
+    }, {}),
+    winnerId: null,
+    message: `${players[0]?.username ?? "Host"} breaks. First made ball decides solids or stripes.`
+  };
 }
 
-function distance(ax: number, ay: number, bx: number, by: number) {
-  return Math.hypot(ax - bx, ay - by);
+function getCardinalGuide(cueBall: Ball, aimX: number, aimY: number) {
+  const dx = aimX - cueBall.x;
+  const dy = aimY - cueBall.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return {
+    x: dx / length,
+    y: dy / length
+  };
+}
+
+function getGroupForBall(ball: Ball): BallGroup | null {
+  if (ball.isCue || ball.isEight) return null;
+  return ball.isStripe ? "stripes" : "solids";
+}
+
+function getOpponentId(players: PlayerPresence[], userId: string) {
+  return players.find((player) => player.userId !== userId)?.userId ?? null;
 }
 
 const Pool: React.FC = () => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const frameRef = useRef<number | null>(null);
-  const ballsRef = useRef<Ball[]>(createRack());
-  const mouseRef = useRef<MouseState>({ x: PLAY_X + 120, y: PLAY_Y + PLAY_HEIGHT / 2, insideTable: false });
-  const draggingPowerRef = useRef(false);
-  const [balls, setBalls] = useState<Ball[]>(() => createRack());
-  const [assignedGroup, setAssignedGroup] = useState<"solids" | "stripes" | null>(null);
+  const [players, setPlayers] = useState<PlayerPresence[]>([]);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUsername, setCurrentUsername] = useState("Player");
+  const [connected, setConnected] = useState(false);
+  const [roomFull, setRoomFull] = useState(false);
+  const [poolState, setPoolState] = useState<PoolState>(DEFAULT_STATE);
   const [power, setPower] = useState(0.35);
-  const [message, setMessage] = useState("Aim with the mouse. Drag the power bar down and release to shoot.");
-  const [won, setWon] = useState(false);
-  const [lost, setLost] = useState(false);
-  const [awarded, setAwarded] = useState(false);
+  const [aimLocked, setAimLocked] = useState(false);
+  const [lockedAim, setLockedAim] = useState<{ x: number; y: number } | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const stateRef = useRef<PoolState>(DEFAULT_STATE);
+  const playersRef = useRef<PlayerPresence[]>([]);
+  const currentUserIdRef = useRef<string | null>(null);
+  const isHostRef = useRef(false);
+  const tickRef = useRef<number | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const draggingPowerRef = useRef(false);
+  const mouseRef = useRef({ x: PLAY_X + 120, y: PLAY_Y + PLAY_HEIGHT / 2, insideTable: false });
+  const rewardClaimedRef = useRef(false);
 
   useEffect(() => {
-    ballsRef.current = balls;
-  }, [balls]);
+    stateRef.current = poolState;
+  }, [poolState]);
 
-  const cueBall = useMemo(() => balls.find((ball) => ball.isCue) ?? null, [balls]);
+  useEffect(() => {
+    playersRef.current = players;
+    isHostRef.current = Boolean(currentUserId && players[0]?.userId === currentUserId);
+  }, [currentUserId, players]);
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
+
+  const isSeated = currentUserId ? players.some((player) => player.userId === currentUserId) : false;
+  const isHost = Boolean(currentUserId && players[0]?.userId === currentUserId);
+  const cueBall = useMemo(() => poolState.balls.find((ball) => ball.isCue) ?? null, [poolState.balls]);
   const allStopped = useMemo(
-    () => balls.every((ball) => ball.pocketed || (Math.abs(ball.vx) < MIN_SPEED && Math.abs(ball.vy) < MIN_SPEED)),
-    [balls]
+    () => poolState.balls.every((ball) => ball.pocketed || (Math.abs(ball.vx) < MIN_SPEED && Math.abs(ball.vy) < MIN_SPEED)),
+    [poolState.balls]
   );
+  const canShoot = Boolean(
+    currentUserId &&
+      poolState.phase === "playing" &&
+      poolState.currentTurnId === currentUserId &&
+      cueBall &&
+      !cueBall.pocketed &&
+      allStopped
+  );
+  const activeAim = aimLocked && lockedAim ? lockedAim : mouseRef.current;
 
   useEffect(() => {
-    if (!won || awarded) {
-      return;
-    }
-
-    setAwarded(true);
-    void (async () => {
-      try {
-        await applyGoldDelta(POOL_REWARD_GOLD);
-        await recordArcadeResult({
-          goldEarned: 0
-        });
-      } catch {
-        // Ignore reward sync failures.
+    if (poolState.phase !== "gameOver" || rewardClaimedRef.current || !currentUserId) {
+      if (poolState.phase === "playing") {
+        rewardClaimedRef.current = false;
       }
-    })();
-  }, [awarded, won]);
+      return;
+    }
+
+    rewardClaimedRef.current = true;
+    if (poolState.winnerId !== currentUserId) {
+      return;
+    }
+
+    void recordArcadeResult({ goldEarned: POOL_WIN_GOLD });
+  }, [currentUserId, poolState.phase, poolState.winnerId]);
+
+  const broadcastState = async (nextState: PoolState) => {
+    setPoolState(nextState);
+    if (channelRef.current) {
+      await channelRef.current.send({
+        type: "broadcast",
+        event: "pool-state",
+        payload: nextState
+      });
+    }
+  };
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      return;
-    }
-    const context = canvas.getContext("2d");
-    if (!context) {
-      return;
-    }
+    let isUnmounted = false;
 
-    const updatePhysics = () => {
-      const nextBalls = ballsRef.current.map((ball) => ({ ...ball }));
-      let cueScratch = false;
-      let assigned = assignedGroup;
-      let pocketedThisTurn: Ball[] = [];
+    const syncPresence = () => {
+      const channel = channelRef.current;
+      if (!channel) return;
 
-      nextBalls.forEach((ball) => {
-        if (ball.pocketed) {
+      const nextPlayers = getPlayersFromPresence(
+        channel.presenceState() as Record<string, Array<{ userId: string; username: string; onlineAt: string }>>
+      ).slice(0, 2);
+      setPlayers(nextPlayers);
+      setRoomFull(
+        nextPlayers.length >= 2 &&
+          !nextPlayers.some((player) => player.userId === currentUserIdRef.current)
+      );
+
+      if (nextPlayers.length < 2) {
+        setPoolState(DEFAULT_STATE);
+      } else if (stateRef.current.phase === "waiting" && isHostRef.current) {
+        void broadcastState(createInitialState(nextPlayers));
+      }
+    };
+
+    const setup = async () => {
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
+      if (!session || isUnmounted) return;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      const username = (profile?.username as string | null) ?? session.user.email ?? "Player";
+      setCurrentUserId(session.user.id);
+      setCurrentUsername(username);
+
+      const channel = supabase.channel(ROOM_NAME, {
+        config: { presence: { key: session.user.id } }
+      });
+      channelRef.current = channel;
+
+      channel.on("presence", { event: "sync" }, syncPresence);
+      channel.on("broadcast", { event: "pool-state" }, ({ payload }) => {
+        const nextState = payload as PoolState;
+        setPoolState(nextState);
+      });
+      channel.on("broadcast", { event: "pool-shot" }, ({ payload }) => {
+        if (!isHostRef.current) return;
+        const shot = payload as ShotPayload;
+        const currentState = stateRef.current;
+        const cue = currentState.balls.find((ball) => ball.isCue);
+        if (
+          currentState.phase !== "playing" ||
+          !cue ||
+          cue.pocketed ||
+          currentState.currentTurnId !== shot.userId ||
+          currentState.balls.some(
+            (ball) => !ball.pocketed && (Math.abs(ball.vx) >= MIN_SPEED || Math.abs(ball.vy) >= MIN_SPEED)
+          )
+        ) {
           return;
         }
 
+        const guide = getCardinalGuide(cue, shot.aimX, shot.aimY);
+        const nextState: PoolState = {
+          ...currentState,
+          balls: currentState.balls.map((ball) =>
+            ball.isCue
+              ? {
+                  ...ball,
+                  vx: guide.x * shot.power * MAX_POWER,
+                  vy: guide.y * shot.power * MAX_POWER
+                }
+              : ball
+          ),
+          message: `${playersRef.current.find((player) => player.userId === shot.userId)?.username ?? "Player"} shoots.`
+        };
+
+        void broadcastState(nextState);
+      });
+
+      channel.subscribe(async (subscriptionStatus) => {
+        if (subscriptionStatus !== "SUBSCRIBED" || isUnmounted) return;
+
+        const present = getPlayersFromPresence(
+          channel.presenceState() as Record<string, Array<{ userId: string; username: string; onlineAt: string }>>
+        );
+        if (present.length >= 2) {
+          setRoomFull(true);
+          return;
+        }
+
+        const trackStatus = await channel.track({
+          userId: session.user.id,
+          username,
+          onlineAt: new Date().toISOString()
+        });
+
+        if (trackStatus === "ok") {
+          setConnected(true);
+        }
+      });
+    };
+
+    void setup();
+
+    return () => {
+      isUnmounted = true;
+      if (tickRef.current) {
+        window.clearInterval(tickRef.current);
+        tickRef.current = null;
+      }
+      if (frameRef.current) {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+      const channel = channelRef.current;
+      if (channel) {
+        void supabase.removeChannel(channel);
+        channelRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isHost || poolState.phase !== "playing" || players.length !== 2) {
+      if (tickRef.current) {
+        window.clearInterval(tickRef.current);
+        tickRef.current = null;
+      }
+      return;
+    }
+
+    tickRef.current = window.setInterval(() => {
+      const currentState = stateRef.current;
+      if (currentState.phase !== "playing") return;
+
+      const nextBalls = currentState.balls.map((ball) => ({ ...ball }));
+      let cueScratch = false;
+      const pocketedThisTick: Ball[] = [];
+
+      nextBalls.forEach((ball) => {
+        if (ball.pocketed) return;
         ball.x += ball.vx;
         ball.y += ball.vy;
         ball.vx *= FRICTION;
@@ -254,64 +499,107 @@ const Pool: React.FC = () => {
 
       nextBalls.forEach((ball) => {
         if (ball.pocketed) return;
-        const inPocket = POCKETS.some((pocket) => distance(ball.x, ball.y, pocket.x, pocket.y) <= POCKET_RADIUS);
-        if (!inPocket) return;
-
+        if (!POCKETS.some((pocket) => distance(ball.x, ball.y, pocket.x, pocket.y) <= POCKET_RADIUS)) {
+          return;
+        }
         ball.pocketed = true;
         ball.vx = 0;
         ball.vy = 0;
-        pocketedThisTurn.push(ball);
-
+        pocketedThisTick.push(ball);
         if (ball.isCue) {
           cueScratch = true;
         }
       });
 
-      const moving = nextBalls.some((ball) => !ball.pocketed && (Math.abs(ball.vx) >= MIN_SPEED || Math.abs(ball.vy) >= MIN_SPEED));
+      const moving = nextBalls.some(
+        (ball) => !ball.pocketed && (Math.abs(ball.vx) >= MIN_SPEED || Math.abs(ball.vy) >= MIN_SPEED)
+      );
 
-      if (!moving && pocketedThisTurn.length > 0) {
-        const firstObjectBall = pocketedThisTurn.find((ball) => !ball.isCue && !ball.isEight);
-        if (!assigned && firstObjectBall) {
-          assigned = firstObjectBall.isStripe ? "stripes" : "solids";
-          setAssignedGroup(assigned);
-          setMessage(`You are on ${assigned}.`);
+      let nextState: PoolState = {
+        ...currentState,
+        balls: nextBalls
+      };
+
+      if (!moving && pocketedThisTick.length > 0) {
+        const shooterId = currentState.currentTurnId;
+        const opponentId = shooterId ? getOpponentId(playersRef.current, shooterId) : null;
+        const firstObjectBall = pocketedThisTick.find((ball) => !ball.isCue && !ball.isEight) ?? null;
+        const nextGroups = { ...currentState.groups };
+
+        if (shooterId && opponentId && !nextGroups[shooterId] && firstObjectBall) {
+          const shooterGroup = getGroupForBall(firstObjectBall);
+          nextGroups[shooterId] = shooterGroup;
+          nextGroups[opponentId] = shooterGroup === "stripes" ? "solids" : "stripes";
         }
 
-        const remainingGroupBalls = nextBalls.filter((ball) => {
-          if (ball.pocketed || ball.isCue || ball.isEight) return false;
-          if (!assigned) return true;
-          return assigned === "stripes" ? ball.isStripe : !ball.isStripe;
+        const eightBallPocketed = pocketedThisTick.some((ball) => ball.isEight);
+        const shooterGroup = shooterId ? nextGroups[shooterId] : null;
+        const shooterClearedGroup = nextBalls.every((ball) => {
+          if (ball.pocketed || ball.isCue || ball.isEight) return true;
+          if (!shooterGroup) return false;
+          return shooterGroup === "stripes" ? !ball.isStripe : ball.isStripe;
         });
 
-        const eightBallPocketed = pocketedThisTurn.some((ball) => ball.isEight);
         if (eightBallPocketed) {
-          if (remainingGroupBalls.length === 0) {
-            setWon(true);
-            setMessage(`Eight ball down. You cleared the table and won ${POOL_REWARD_GOLD} gold.`);
-          } else {
-            setLost(true);
-            setMessage("You sunk the eight ball early. Table lost.");
+          const legalWin = Boolean(shooterId && shooterGroup && shooterClearedGroup && !cueScratch);
+          nextState = {
+            ...nextState,
+            phase: "gameOver",
+            groups: nextGroups,
+            winnerId: legalWin ? shooterId : opponentId,
+            message: legalWin
+              ? `${playersRef.current.find((player) => player.userId === shooterId)?.username ?? "Player"} sinks the eight ball and wins.`
+              : `${playersRef.current.find((player) => player.userId === opponentId)?.username ?? "Player"} wins after an early eight ball.`
+          };
+        } else {
+          if (cueScratch) {
+            const cue = nextBalls.find((ball) => ball.isCue);
+            if (cue) {
+              cue.pocketed = false;
+              cue.x = PLAY_X + PLAY_WIDTH * 0.24;
+              cue.y = PLAY_Y + PLAY_HEIGHT / 2;
+            }
           }
-        } else if (cueScratch) {
-          const cue = nextBalls.find((ball) => ball.isCue);
-          if (cue) {
-            cue.pocketed = false;
-            cue.x = PLAY_X + PLAY_WIDTH * 0.24;
-            cue.y = PLAY_Y + PLAY_HEIGHT / 2;
-          }
-          setMessage("Scratch. Cue ball reset.");
-        } else if (pocketedThisTurn.some((ball) => !ball.isCue)) {
-          setMessage("Nice shot. Line up the next one.");
+
+          const pocketedOwnGroup = Boolean(
+            shooterId &&
+              shooterGroup &&
+              pocketedThisTick.some((ball) => getGroupForBall(ball) === shooterGroup)
+          );
+          const keepTurn = !cueScratch && pocketedOwnGroup;
+
+          nextState = {
+            ...nextState,
+            groups: nextGroups,
+            currentTurnId: keepTurn ? shooterId : opponentId,
+            message: cueScratch
+              ? "Scratch. Turn passes."
+              : keepTurn
+                ? "Ball down. Shoot again."
+                : "Turn passes."
+          };
         }
       }
 
-      setBalls(nextBalls);
+      void broadcastState(nextState);
+    }, 16);
+
+    return () => {
+      if (tickRef.current) {
+        window.clearInterval(tickRef.current);
+        tickRef.current = null;
+      }
     };
+  }, [isHost, players, poolState.phase]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
 
     const draw = () => {
-      updatePhysics();
-      const currentBalls = ballsRef.current;
-
+      const currentState = stateRef.current;
       context.clearRect(0, 0, TABLE_WIDTH, TABLE_HEIGHT);
       context.fillStyle = "#4b2e19";
       context.fillRect(0, 0, TABLE_WIDTH, TABLE_HEIGHT);
@@ -328,7 +616,7 @@ const Pool: React.FC = () => {
         context.fill();
       });
 
-      currentBalls.forEach((ball) => {
+      currentState.balls.forEach((ball) => {
         if (ball.pocketed) return;
         context.fillStyle = ball.color;
         context.beginPath();
@@ -352,26 +640,31 @@ const Pool: React.FC = () => {
         }
       });
 
-      if (cueBall && allStopped && !won && !lost) {
-        const dx = mouseRef.current.x - cueBall.x;
-        const dy = mouseRef.current.y - cueBall.y;
-        const length = Math.hypot(dx, dy) || 1;
-        const aimX = dx / length;
-        const aimY = dy / length;
-        const guideLength = 92;
+      const currentCue = currentState.balls.find((ball) => ball.isCue);
+      const canDrawGuide =
+        currentCue &&
+        !currentCue.pocketed &&
+        currentState.phase === "playing" &&
+        currentState.currentTurnId === currentUserIdRef.current &&
+        currentState.balls.every(
+          (ball) => ball.pocketed || (Math.abs(ball.vx) < MIN_SPEED && Math.abs(ball.vy) < MIN_SPEED)
+        );
 
+      if (currentCue && canDrawGuide) {
+        const guide = getCardinalGuide(currentCue, activeAim.x, activeAim.y);
+        const guideLength = 92;
         context.strokeStyle = "rgba(255,255,255,0.6)";
         context.lineWidth = 2;
         context.beginPath();
-        context.moveTo(cueBall.x, cueBall.y);
-        context.lineTo(cueBall.x + aimX * guideLength, cueBall.y + aimY * guideLength);
+        context.moveTo(currentCue.x, currentCue.y);
+        context.lineTo(currentCue.x + guide.x * guideLength, currentCue.y + guide.y * guideLength);
         context.stroke();
 
-        context.strokeStyle = "rgba(255,255,255,0.18)";
+        context.strokeStyle = aimLocked ? "rgba(251,191,36,0.72)" : "rgba(255,255,255,0.18)";
         context.lineWidth = 6;
         context.beginPath();
-        context.moveTo(cueBall.x - aimX * 24, cueBall.y - aimY * 24);
-        context.lineTo(cueBall.x - aimX * (38 + power * 18), cueBall.y - aimY * (38 + power * 18));
+        context.moveTo(currentCue.x - guide.x * 24, currentCue.y - guide.y * 24);
+        context.lineTo(currentCue.x - guide.x * (38 + power * 18), currentCue.y - guide.y * (38 + power * 18));
         context.stroke();
       }
 
@@ -397,31 +690,26 @@ const Pool: React.FC = () => {
         frameRef.current = null;
       }
     };
-  }, [allStopped, assignedGroup, cueBall, lost, power, won]);
+  }, [activeAim.x, activeAim.y, aimLocked, power]);
 
-  const shoot = () => {
-    const currentCue = ballsRef.current.find((ball) => ball.isCue);
-    if (!currentCue || currentCue.pocketed || !allStopped || won || lost) {
+  const sendShot = async () => {
+    if (!currentUserId || !canShoot || !channelRef.current) {
       return;
     }
 
-    const dx = mouseRef.current.x - currentCue.x;
-    const dy = mouseRef.current.y - currentCue.y;
-    const len = Math.hypot(dx, dy) || 1;
-    const vx = (dx / len) * power * MAX_POWER;
-    const vy = (dy / len) * power * MAX_POWER;
-
-    setBalls((current) =>
-      current.map((ball) =>
-        ball.isCue
-          ? {
-              ...ball,
-              vx,
-              vy
-            }
-          : ball
-      )
-    );
+    const target = aimLocked && lockedAim ? lockedAim : mouseRef.current;
+    await channelRef.current.send({
+      type: "broadcast",
+      event: "pool-shot",
+      payload: {
+        userId: currentUserId,
+        aimX: target.x,
+        aimY: target.y,
+        power
+      } satisfies ShotPayload
+    });
+    setAimLocked(false);
+    setLockedAim(null);
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -440,8 +728,22 @@ const Pool: React.FC = () => {
       y >= POWER_BAR_Y &&
       y <= POWER_BAR_Y + POWER_BAR_HEIGHT
     ) {
+      if (!aimLocked) {
+        return;
+      }
       draggingPowerRef.current = true;
       setPower(clamp(1 - (y - POWER_BAR_Y) / POWER_BAR_HEIGHT, 0.12, 1));
+      return;
+    }
+
+    if (canShoot && mouseRef.current.insideTable) {
+      if (aimLocked) {
+        setAimLocked(false);
+        setLockedAim(null);
+      } else {
+        setAimLocked(true);
+        setLockedAim({ x, y });
+      }
     }
   };
 
@@ -449,11 +751,13 @@ const Pool: React.FC = () => {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * TABLE_WIDTH;
     const y = ((event.clientY - rect.top) / rect.height) * TABLE_HEIGHT;
-    mouseRef.current = {
-      x,
-      y,
-      insideTable: x >= PLAY_X && x <= PLAY_X + PLAY_WIDTH && y >= PLAY_Y && y <= PLAY_Y + PLAY_HEIGHT
-    };
+    if (!aimLocked) {
+      mouseRef.current = {
+        x,
+        y,
+        insideTable: x >= PLAY_X && x <= PLAY_X + PLAY_WIDTH && y >= PLAY_Y && y <= PLAY_Y + PLAY_HEIGHT
+      };
+    }
 
     if (draggingPowerRef.current) {
       setPower(clamp(1 - (y - POWER_BAR_Y) / POWER_BAR_HEIGHT, 0.12, 1));
@@ -461,63 +765,81 @@ const Pool: React.FC = () => {
   };
 
   const handlePointerUp = () => {
-    if (!draggingPowerRef.current) {
-      return;
-    }
+    if (!draggingPowerRef.current) return;
     draggingPowerRef.current = false;
-    shoot();
+    void sendShot();
   };
 
-  const restart = () => {
-    const nextRack = createRack();
-    ballsRef.current = nextRack;
-    setBalls(nextRack);
-    setAssignedGroup(null);
-    setPower(0.35);
-    setWon(false);
-    setLost(false);
-    setAwarded(false);
-    setMessage("Aim with the mouse. Drag the power bar down and release to shoot.");
+  const startMatch = async () => {
+    if (!isHost || players.length !== 2) return;
+    await broadcastState(createInitialState(players));
+    setAimLocked(false);
+    setLockedAim(null);
   };
 
-  const pocketedSolids = balls.filter((ball) => !ball.pocketed ? false : !ball.isCue && !ball.isEight && !ball.isStripe).length;
-  const pocketedStripes = balls.filter((ball) => !ball.pocketed ? false : !ball.isCue && !ball.isEight && ball.isStripe).length;
+  const myGroup = currentUserId ? poolState.groups[currentUserId] : null;
+  const opponent = players.find((player) => player.userId !== currentUserId) ?? null;
+  const opponentGroup = opponent ? poolState.groups[opponent.userId] : null;
+  const myName = players.find((player) => player.userId === currentUserId)?.username ?? currentUsername;
 
   return (
     <div className="page">
       <NavBar />
       <div className="content card" style={{ maxWidth: 980 }}>
         <h2>8 Ball</h2>
-        <p>Original-style solo table. Aim with the mouse, use the short guide line, then drag the power bar and release to strike the cue ball.</p>
-        <canvas
-          ref={canvasRef}
-          width={TABLE_WIDTH}
-          height={TABLE_HEIGHT}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerLeave={handlePointerUp}
-          style={{
-            width: "100%",
-            maxWidth: TABLE_WIDTH,
-            display: "block",
-            margin: "1rem auto",
-            borderRadius: "1rem",
-            border: "1px solid #334155",
-            background: "#4b2e19",
-            touchAction: "none",
-            cursor: allStopped ? "crosshair" : "default"
-          }}
-        />
-        <p className="info">{message}</p>
-        <p className="score-display">
-          Group: {assignedGroup ?? "open table"} | Solids pocketed: {pocketedSolids}/7 | Stripes pocketed: {pocketedStripes}/7
-        </p>
-        <div className="button-row">
-          <button className="primary-button" type="button" onClick={restart}>
-            Rack again
-          </button>
+        <p>Two-player table. Click once to lock your aim, then drag the power bar and release to shoot. First made ball assigns solids or stripes.</p>
+        <div className="info">
+          Seats filled: {Math.min(players.length, 2)}/2
+          {connected && !roomFull ? ` | ${myName}` : ""}
+          {poolState.currentTurnId ? ` | Turn: ${players.find((player) => player.userId === poolState.currentTurnId)?.username ?? "Player"}` : ""}
         </div>
+        {roomFull && !isSeated ? (
+          <div className="error">Two players are already at this table. Wait for someone to leave.</div>
+        ) : (
+          <>
+            <div className="button-row">
+              {players.map((player) => (
+                <span key={player.userId} className="secondary-button">
+                  {player.username} {poolState.groups[player.userId] ? `(${poolState.groups[player.userId]})` : ""}
+                </span>
+              ))}
+            </div>
+            <canvas
+              ref={canvasRef}
+              width={TABLE_WIDTH}
+              height={TABLE_HEIGHT}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={handlePointerUp}
+              style={{
+                width: "100%",
+                maxWidth: TABLE_WIDTH,
+                display: "block",
+                margin: "1rem auto",
+                borderRadius: "1rem",
+                border: "1px solid #334155",
+                background: "#4b2e19",
+                touchAction: "none",
+                cursor: canShoot ? "crosshair" : "default"
+              }}
+            />
+            <p className="info">{poolState.message}</p>
+            <p className="score-display">
+              You: {myGroup ?? "open"} | Opponent: {opponentGroup ?? "open"} | Aim: {aimLocked ? "locked" : "free"}
+            </p>
+            {poolState.phase === "waiting" && isHost && (
+              <button className="primary-button" type="button" onClick={() => void startMatch()} disabled={players.length !== 2}>
+                Start rack
+              </button>
+            )}
+            {poolState.phase === "gameOver" && isHost && (
+              <button className="primary-button" type="button" onClick={() => void startMatch()}>
+                Rack again
+              </button>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
