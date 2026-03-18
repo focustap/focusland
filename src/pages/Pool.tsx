@@ -71,7 +71,7 @@ const BALL_REWARD_GOLD = 1;
 const WIN_REWARD_GOLD = 25;
 const BROADCAST_INTERVAL_MS = 33;
 const UI_SYNC_INTERVAL_MS = 100;
-const POOL_VERSION = "0.1";
+const POOL_VERSION = "0.2";
 
 const POCKETS = [
   { x: PLAY_X, y: PLAY_Y },
