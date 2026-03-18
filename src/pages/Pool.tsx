@@ -69,9 +69,9 @@ const MAX_POWER = 16;
 const POWER_BAR_HEIGHT = 300;
 const BALL_REWARD_GOLD = 1;
 const WIN_REWARD_GOLD = 25;
-const BROADCAST_INTERVAL_MS = 33;
+const BROADCAST_INTERVAL_MS = 50;
 const UI_SYNC_INTERVAL_MS = 100;
-const POOL_VERSION = "0.3";
+const POOL_VERSION = "0.4";
 
 const POCKETS = [
   { x: PLAY_X, y: PLAY_Y },
@@ -276,7 +276,9 @@ function getShotGuide(cueBall: Ball, balls: Ball[], aimX: number, aimY: number, 
   return {
     ball: bestBall,
     objectDirection: bestObjectDirection,
-    guideLength: guideScale
+    guideLength: guideScale,
+    ghostCueX: cueBall.x + aim.x * bestImpactDistance,
+    ghostCueY: cueBall.y + aim.y * bestImpactDistance
   };
 }
 
@@ -401,20 +403,30 @@ const Pool: React.FC = () => {
     void recordArcadeResult({ goldEarned: delta });
   }, [currentUserId, poolState.rewardTotals]);
 
-  const shouldForceUiSync = (nextState: PoolState) =>
-    nextState.phase !== stateRef.current.phase ||
-    nextState.currentTurnId !== stateRef.current.currentTurnId ||
-    nextState.cueBallInHandForId !== stateRef.current.cueBallInHandForId ||
-    nextState.shotOwnerId !== stateRef.current.shotOwnerId ||
-    nextState.message !== stateRef.current.message ||
-    nextState.winnerId !== stateRef.current.winnerId ||
-    JSON.stringify(nextState.groups) !== JSON.stringify(stateRef.current.groups) ||
-    JSON.stringify(nextState.rewardTotals) !== JSON.stringify(stateRef.current.rewardTotals);
+  const shouldForceUiSync = (previousState: PoolState, nextState: PoolState) =>
+    nextState.phase !== previousState.phase ||
+    nextState.currentTurnId !== previousState.currentTurnId ||
+    nextState.cueBallInHandForId !== previousState.cueBallInHandForId ||
+    nextState.shotOwnerId !== previousState.shotOwnerId ||
+    nextState.message !== previousState.message ||
+    nextState.winnerId !== previousState.winnerId ||
+    JSON.stringify(nextState.groups) !== JSON.stringify(previousState.groups) ||
+    JSON.stringify(nextState.rewardTotals) !== JSON.stringify(previousState.rewardTotals);
 
   const commitState = (nextState: PoolState, forceUiSync = false) => {
+    const previousState = stateRef.current;
     stateRef.current = nextState;
     const now = performance.now();
-    if (forceUiSync || shouldForceUiSync(nextState) || now - lastUiSyncAtRef.current >= UI_SYNC_INTERVAL_MS) {
+    const isLiveShotFrame =
+      nextState.phase === "playing" &&
+      nextState.shotOwnerId !== null &&
+      nextState.cueBallInHandForId === null;
+
+    if (
+      forceUiSync ||
+      shouldForceUiSync(previousState, nextState) ||
+      (!isLiveShotFrame && now - lastUiSyncAtRef.current >= UI_SYNC_INTERVAL_MS)
+    ) {
       lastUiSyncAtRef.current = now;
       setPoolState(nextState);
     }
@@ -871,8 +883,15 @@ const Pool: React.FC = () => {
           context.strokeStyle = "rgba(255,255,255,0.28)";
           context.beginPath();
           context.moveTo(currentCue.x, currentCue.y);
-          context.lineTo(targetBall.x - targetDir.x * BALL_RADIUS * 2, targetBall.y - targetDir.y * BALL_RADIUS * 2);
+          context.lineTo(shotGuide.ghostCueX, shotGuide.ghostCueY);
           context.stroke();
+
+          context.strokeStyle = "rgba(255,255,255,0.65)";
+          context.setLineDash([6, 5]);
+          context.beginPath();
+          context.arc(shotGuide.ghostCueX, shotGuide.ghostCueY, BALL_RADIUS, 0, Math.PI * 2);
+          context.stroke();
+          context.setLineDash([]);
 
           context.fillStyle = "rgba(96,165,250,0.75)";
           context.beginPath();
@@ -921,7 +940,7 @@ const Pool: React.FC = () => {
     const updatePowerFromPointer = (clientY: number) => {
       if (!powerControlRef.current) return;
       const rect = powerControlRef.current.getBoundingClientRect();
-      setPower(clamp(1 - (clientY - rect.top) / rect.height, 0.12, 1));
+      setPower(clamp((clientY - rect.top) / rect.height, 0.12, 1));
     };
 
     const handleMove = (event: PointerEvent) => {
@@ -1055,9 +1074,8 @@ const Pool: React.FC = () => {
   const handlePowerPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!aimLocked || !canShoot) return;
     draggingPowerRef.current = true;
-    event.currentTarget.setPointerCapture(event.pointerId);
     const rect = event.currentTarget.getBoundingClientRect();
-    setPower(clamp(1 - (event.clientY - rect.top) / rect.height, 0.12, 1));
+    setPower(clamp((event.clientY - rect.top) / rect.height, 0.12, 1));
   };
 
   const startMatch = async () => {
