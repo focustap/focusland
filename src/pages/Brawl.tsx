@@ -99,6 +99,7 @@ type FighterPlayer = {
   ultimateCharge: number;
   attackFlashMs: number;
   dashReleased: boolean;
+  specialReleased: boolean;
   assassinKnifeId: string | null;
   selectedCharacter: CharacterId | null;
 };
@@ -493,6 +494,7 @@ function createPlayerState(index: number, stage: StageConfig): FighterPlayer {
     ultimateCharge: 0,
     attackFlashMs: 0,
     dashReleased: true,
+    specialReleased: true,
     assassinKnifeId: null,
     selectedCharacter: null
   };
@@ -1184,6 +1186,10 @@ const Brawl: React.FC = () => {
           nextEffects.push(createEffect(state.x, state.y + 8, config.accent, 14, 140));
         }
 
+        if (!input.special) {
+          state.specialReleased = true;
+        }
+
         if (grounded) {
           state.coyoteMs = COYOTE_MS;
         }
@@ -1271,7 +1277,12 @@ const Brawl: React.FC = () => {
           state.attackFlashMs = 130;
         }
 
-        if (input.special && state.specialCooldownMs === 0) {
+        if (
+          input.special &&
+          state.specialReleased &&
+          (state.specialCooldownMs === 0 || (characterId === "assassin" && Boolean(state.assassinKnifeId)))
+        ) {
+          state.specialReleased = false;
           if (characterId === "fighter") {
             const targetId = getOtherPlayerId(player.userId);
             const target = targetId ? nextPlayers[targetId] : null;
@@ -1394,6 +1405,7 @@ const Brawl: React.FC = () => {
               nextEffects.push(createEffect(existingKnife.x, existingKnife.y, config.specialColor, 24, 180));
               removeProjectileById(existingKnife.id);
               state.assassinKnifeId = null;
+              state.specialCooldownMs = config.specialCooldownMs;
               nextMessage = `${player.username} blinked to their knife.`;
             } else {
               const knifeId = `knife-${player.userId}-${Date.now()}-${Math.random()}`;
@@ -1411,19 +1423,21 @@ const Brawl: React.FC = () => {
                 color: config.specialColor,
                 kind: "dagger",
                 gravity: config.specialGravity,
-                ttlMs: 1600,
+                ttlMs: 1000,
                 isUltimate: false
               });
               state.assassinKnifeId = knifeId;
+              state.specialCooldownMs = 0;
               nextMessage = `${player.username} threw a shadow knife.`;
             }
           }
-          state.specialCooldownMs = config.specialCooldownMs;
+          if (characterId !== "assassin") {
+            state.specialCooldownMs = config.specialCooldownMs;
+          }
         }
 
         if (
           input.ultimate &&
-          state.specialCooldownMs === 0 &&
           state.ultimateCharge >= ULTIMATE_CHARGE_MAX
         ) {
           if (characterId === "fighter") {
@@ -1557,7 +1571,6 @@ const Brawl: React.FC = () => {
                 : `${player.username} unleashed an inferno orb.`;
           }
           state.ultimateCharge = 0;
-          state.specialCooldownMs = config.ultimateCooldownMs;
           nextEffects.push(createEffect(state.x, state.y - 10, config.ultimateColor, 24, 220));
         }
 
@@ -1707,6 +1720,9 @@ const Brawl: React.FC = () => {
           playerState.assassinKnifeId &&
           !nextProjectiles.some((projectile) => projectile.id === playerState.assassinKnifeId)
         ) {
+          if (playerState.selectedCharacter === "assassin" && playerState.specialCooldownMs === 0) {
+            playerState.specialCooldownMs = CHARACTER_CONFIGS.assassin.specialCooldownMs;
+          }
           playerState.assassinKnifeId = null;
         }
       });
@@ -1715,6 +1731,9 @@ const Brawl: React.FC = () => {
       nextProjectiles.forEach((projectile) => {
         const targetId = currentPlayers.find((player) => player.userId !== projectile.ownerId)?.userId;
         const target = targetId ? nextPlayers[targetId] : null;
+        const owner = nextPlayers[projectile.ownerId];
+        const isAssassinKnife =
+          owner?.selectedCharacter === "assassin" && owner.assassinKnifeId === projectile.id;
         if (
           !target ||
           target.respawnMs > 0 ||
@@ -1738,9 +1757,18 @@ const Brawl: React.FC = () => {
           0,
           projectile.isUltimate ? 0 : projectile.kind === "arrow" ? 7 : 8
         );
-        const owner = nextPlayers[projectile.ownerId];
-        if (owner?.selectedCharacter === "assassin" && owner.assassinKnifeId === projectile.id) {
-          owner.assassinKnifeId = null;
+        if (isAssassinKnife) {
+          survivingProjectiles.push({
+            ...projectile,
+            x: target.x,
+            y: target.y,
+            vx: 0,
+            vy: 0,
+            gravity: 0,
+            ttlMs: Math.min(projectile.ttlMs, 1000)
+          });
+          nextMessage = "Shadow knife stuck. Recast now.";
+          return;
         }
         nextMessage = projectile.isUltimate ? "Ultimate connected." : "Projectile hit.";
       });
