@@ -97,10 +97,45 @@ const CatchGame: React.FC = () => {
       let timeLeft = 28;
       let elapsedSeconds = 0;
 
+      const playTone = (
+        scene: Phaser.Scene,
+        frequency: number,
+        durationMs: number,
+        type: OscillatorType,
+        volume: number,
+        sweepTo?: number
+      ) => {
+        const audioContext = scene.sound.context as AudioContext | undefined;
+        if (!audioContext) return;
+
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+        if (typeof sweepTo === "number") {
+          oscillator.frequency.exponentialRampToValueAtTime(
+            Math.max(20, sweepTo),
+            audioContext.currentTime + durationMs / 1000
+          );
+        }
+
+        gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(
+          0.0001,
+          audioContext.currentTime + durationMs / 1000
+        );
+
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + durationMs / 1000);
+      };
+
       const endRound = (scene: Phaser.Scene, message: string) => {
         if (gameOver) return;
         gameOver = true;
         scene.physics.pause();
+        playTone(scene, 220, 320, "sawtooth", 0.07, 90);
         playerRect?.setFillStyle(0xf87171);
         scene.cameras.main.shake(180, 0.008);
         scene.add
@@ -246,11 +281,14 @@ const CatchGame: React.FC = () => {
                   }
 
                   if (hitTime) {
+                    playTone(this, 660, 120, "triangle", 0.05, 920);
+                    playTone(this, 920, 140, "triangle", 0.035, 1180);
                     timeLeft += 4;
                     score += 6;
                     timerText?.setText(`Time: ${timeLeft}`);
                     this.cameras.main.flash(120, 96, 165, 250, false);
                   } else {
+                    playTone(this, 520 + combo * 24, 90, "square", 0.04, 700 + combo * 18);
                     combo = Math.min(combo + 1, 8);
                     comboTimeoutAt = this.time.now + 2200;
                     score += 8 + combo * 2;
@@ -323,6 +361,7 @@ const CatchGame: React.FC = () => {
               const beam = this.add.rectangle(targetX, height / 2, 42, height - 120, 0xf97316, 0.28);
               beam.setStrokeStyle(2, 0xfde68a, 0.65);
               strikeBeams.push(beam);
+              playTone(this, 180, 180, "sawtooth", 0.045, 120);
               this.cameras.main.shake(80, 0.003);
 
               if (playerRect && Math.abs(playerRect.x - targetX) < 44) {
@@ -347,6 +386,9 @@ const CatchGame: React.FC = () => {
             timeLeft -= 1;
             timerText?.setText(`Time: ${timeLeft}`);
             phaseText?.setText(phaseLabel());
+            if (!gameOver && timeLeft <= 5) {
+              playTone(this, 440, 70, "triangle", 0.028, 520);
+            }
 
             if (timeLeft <= 0) {
               endRound(this, "Time!");
