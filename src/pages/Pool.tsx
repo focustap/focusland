@@ -66,12 +66,10 @@ const POCKET_RADIUS = 24;
 const FRICTION = 0.985;
 const MIN_SPEED = 0.06;
 const MAX_POWER = 12;
-const POWER_BAR_X = TABLE_WIDTH - 54;
-const POWER_BAR_Y = 80;
 const POWER_BAR_HEIGHT = 300;
-const POWER_BAR_WIDTH = 18;
 const BALL_REWARD_GOLD = 1;
 const WIN_REWARD_GOLD = 25;
+const BROADCAST_INTERVAL_MS = 33;
 
 const POCKETS = [
   { x: PLAY_X, y: PLAY_Y },
@@ -234,10 +232,11 @@ function getAimVector(cueBall: Ball, aimX: number, aimY: number) {
   return { x: dx / len, y: dy / len };
 }
 
-function getFirstTargetBall(cueBall: Ball, balls: Ball[], aimX: number, aimY: number) {
+function getShotGuide(cueBall: Ball, balls: Ball[], aimX: number, aimY: number) {
   const aim = getAimVector(cueBall, aimX, aimY);
   let bestBall: Ball | null = null;
   let bestProjection = Number.POSITIVE_INFINITY;
+  let bestNormal = aim;
 
   balls.forEach((ball) => {
     if (ball.pocketed || ball.isCue) return;
@@ -249,11 +248,28 @@ function getFirstTargetBall(cueBall: Ball, balls: Ball[], aimX: number, aimY: nu
     const perpendicular = Math.abs(toBallX * aim.y - toBallY * aim.x);
     if (perpendicular > BALL_RADIUS * 2.2) return;
 
+    const closestX = cueBall.x + aim.x * projection;
+    const closestY = cueBall.y + aim.y * projection;
+    const normalX = ball.x - closestX;
+    const normalY = ball.y - closestY;
+    const normalLength = Math.hypot(normalX, normalY);
+
     bestProjection = projection;
     bestBall = ball;
+    bestNormal =
+      normalLength > 0.001
+        ? { x: normalX / normalLength, y: normalY / normalLength }
+        : aim;
   });
 
-  return bestBall;
+  if (!bestBall) {
+    return null;
+  }
+
+  return {
+    ball: bestBall,
+    objectDirection: bestNormal
+  };
 }
 
 function applyShotToState(currentState: PoolState, players: PlayerPresence[], shot: ShotPayload) {
@@ -327,6 +343,8 @@ const Pool: React.FC = () => {
   const draggingPowerRef = useRef(false);
   const mouseRef = useRef({ x: PLAY_X + 120, y: PLAY_Y + PLAY_HEIGHT / 2, insideTable: false });
   const appliedRewardRef = useRef(0);
+  const lastBroadcastAtRef = useRef(0);
+  const powerControlRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     stateRef.current = poolState;
@@ -374,8 +392,14 @@ const Pool: React.FC = () => {
     void recordArcadeResult({ goldEarned: delta });
   }, [currentUserId, poolState.rewardTotals]);
 
-  const broadcastState = async (nextState: PoolState) => {
+  const commitState = (nextState: PoolState) => {
+    stateRef.current = nextState;
     setPoolState(nextState);
+  };
+
+  const broadcastState = async (nextState: PoolState) => {
+    commitState(nextState);
+    lastBroadcastAtRef.current = performance.now();
     if (channelRef.current) {
       await channelRef.current.send({
         type: "broadcast",
@@ -426,7 +450,7 @@ const Pool: React.FC = () => {
 
       channel.on("presence", { event: "sync" }, syncPresence);
       channel.on("broadcast", { event: "pool-state" }, ({ payload }) => {
-        setPoolState(payload as PoolState);
+        commitState(payload as PoolState);
       });
       channel.on("broadcast", { event: "pool-shot" }, ({ payload }) => {
         if (!isHostRef.current) return;
@@ -707,7 +731,20 @@ const Pool: React.FC = () => {
         }
       }
 
-      void broadcastState(nextState);
+      commitState(nextState);
+
+      const now = performance.now();
+      const shotResolved = currentState.shotOwnerId !== null && nextState.shotOwnerId === null;
+      if (shotResolved || now - lastBroadcastAtRef.current >= BROADCAST_INTERVAL_MS) {
+        lastBroadcastAtRef.current = now;
+        if (channelRef.current) {
+          void channelRef.current.send({
+            type: "broadcast",
+            event: "pool-state",
+            payload: nextState
+          });
+        }
+      }
     }, 16);
 
     return () => {
@@ -793,14 +830,22 @@ const Pool: React.FC = () => {
         context.lineTo(currentCue.x - aim.x * (38 + power * 18), currentCue.y - aim.y * (38 + power * 18));
         context.stroke();
 
-        const targetBall = getFirstTargetBall(currentCue, currentState.balls, activeAim.x, activeAim.y);
-        if (targetBall) {
+        const shotGuide = getShotGuide(currentCue, currentState.balls, activeAim.x, activeAim.y);
+        if (shotGuide) {
+          const targetBall = shotGuide.ball;
+          const objectDir = shotGuide.objectDirection;
           const targetDir = getAimVector(currentCue, targetBall.x, targetBall.y);
           context.strokeStyle = "rgba(96,165,250,0.55)";
           context.lineWidth = 2;
           context.beginPath();
           context.moveTo(targetBall.x, targetBall.y);
-          context.lineTo(targetBall.x + targetDir.x * 54, targetBall.y + targetDir.y * 54);
+          context.lineTo(targetBall.x + objectDir.x * 72, targetBall.y + objectDir.y * 72);
+          context.stroke();
+
+          context.strokeStyle = "rgba(255,255,255,0.28)";
+          context.beginPath();
+          context.moveTo(currentCue.x, currentCue.y);
+          context.lineTo(targetBall.x - targetDir.x * BALL_RADIUS * 2, targetBall.y - targetDir.y * BALL_RADIUS * 2);
           context.stroke();
 
           context.fillStyle = "rgba(96,165,250,0.75)";
@@ -834,18 +879,6 @@ const Pool: React.FC = () => {
         context.strokeRect(PLAY_X + BALL_RADIUS, PLAY_Y + BALL_RADIUS, PLAY_WIDTH - BALL_RADIUS * 2, PLAY_HEIGHT - BALL_RADIUS * 2);
       }
 
-      context.fillStyle = "#111827";
-      context.fillRect(POWER_BAR_X, POWER_BAR_Y, POWER_BAR_WIDTH, POWER_BAR_HEIGHT);
-      context.fillStyle = "#ef4444";
-      context.fillRect(
-        POWER_BAR_X,
-        POWER_BAR_Y + POWER_BAR_HEIGHT * (1 - power),
-        POWER_BAR_WIDTH,
-        POWER_BAR_HEIGHT * power
-      );
-      context.strokeStyle = "#f8fafc";
-      context.strokeRect(POWER_BAR_X, POWER_BAR_Y, POWER_BAR_WIDTH, POWER_BAR_HEIGHT);
-
       frameRef.current = window.requestAnimationFrame(draw);
     };
 
@@ -857,6 +890,32 @@ const Pool: React.FC = () => {
       }
     };
   }, [activeAim.x, activeAim.y, aimLocked, power]);
+
+  useEffect(() => {
+    const updatePowerFromPointer = (clientY: number) => {
+      if (!powerControlRef.current) return;
+      const rect = powerControlRef.current.getBoundingClientRect();
+      setPower(clamp(1 - (clientY - rect.top) / rect.height, 0.12, 1));
+    };
+
+    const handleMove = (event: PointerEvent) => {
+      if (!draggingPowerRef.current) return;
+      updatePowerFromPointer(event.clientY);
+    };
+
+    const handleUp = () => {
+      if (!draggingPowerRef.current) return;
+      draggingPowerRef.current = false;
+      void sendShot();
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+  }, [aimLocked, canShoot, currentUserId, isHost, lockedAim, power]);
 
   const placeCueBall = async (x: number, y: number) => {
     if (!canPlaceCue || !currentUserId || !channelRef.current) return;
@@ -941,18 +1000,6 @@ const Pool: React.FC = () => {
       insideTable: x >= PLAY_X && x <= PLAY_X + PLAY_WIDTH && y >= PLAY_Y && y <= PLAY_Y + PLAY_HEIGHT
     };
 
-    if (
-      x >= POWER_BAR_X - 10 &&
-      x <= POWER_BAR_X + POWER_BAR_WIDTH + 10 &&
-      y >= POWER_BAR_Y &&
-      y <= POWER_BAR_Y + POWER_BAR_HEIGHT
-    ) {
-      if (!aimLocked) return;
-      draggingPowerRef.current = true;
-      setPower(clamp(1 - (y - POWER_BAR_Y) / POWER_BAR_HEIGHT, 0.12, 1));
-      return;
-    }
-
     if (canShoot && mouseRef.current.insideTable) {
       if (aimLocked) {
         setAimLocked(false);
@@ -977,15 +1024,14 @@ const Pool: React.FC = () => {
       };
     }
 
-    if (draggingPowerRef.current) {
-      setPower(clamp(1 - (y - POWER_BAR_Y) / POWER_BAR_HEIGHT, 0.12, 1));
-    }
   };
 
-  const handlePointerUp = () => {
-    if (!draggingPowerRef.current) return;
-    draggingPowerRef.current = false;
-    void sendShot();
+  const handlePowerPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!aimLocked || !canShoot) return;
+    draggingPowerRef.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const rect = event.currentTarget.getBoundingClientRect();
+    setPower(clamp(1 - (event.clientY - rect.top) / rect.height, 0.12, 1));
   };
 
   const startMatch = async () => {
@@ -1022,26 +1068,102 @@ const Pool: React.FC = () => {
                 </span>
               ))}
             </div>
-            <canvas
-              ref={canvasRef}
-              width={TABLE_WIDTH}
-              height={TABLE_HEIGHT}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerLeave={handlePointerUp}
+            <div
               style={{
-                width: "100%",
-                maxWidth: TABLE_WIDTH,
-                display: "block",
-                margin: "1rem auto",
-                borderRadius: "1rem",
-                border: "1px solid #334155",
-                background: "#4b2e19",
-                touchAction: "none",
-                cursor: canPlaceCue ? "copy" : canShoot ? "crosshair" : "default"
+                display: "flex",
+                gap: "1rem",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "1rem auto"
               }}
-            />
+            >
+              <canvas
+                ref={canvasRef}
+                width={TABLE_WIDTH}
+                height={TABLE_HEIGHT}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                style={{
+                  width: "100%",
+                  maxWidth: TABLE_WIDTH,
+                  display: "block",
+                  borderRadius: "1rem",
+                  border: "1px solid #334155",
+                  background: "#4b2e19",
+                  touchAction: "none",
+                  cursor: canPlaceCue ? "copy" : canShoot ? "crosshair" : "default"
+                }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                  minWidth: 84
+                }}
+              >
+                <div className="info" style={{ margin: 0 }}>
+                  Cue Power
+                </div>
+                <div
+                  ref={powerControlRef}
+                  onPointerDown={handlePowerPointerDown}
+                  style={{
+                    position: "relative",
+                    width: 28,
+                    height: POWER_BAR_HEIGHT,
+                    borderRadius: 999,
+                    background: "linear-gradient(180deg, #deb887 0%, #8b5a2b 52%, #5a3415 100%)",
+                    border: "2px solid #3b2412",
+                    boxShadow: "inset 0 0 0 2px rgba(255,255,255,0.08)",
+                    cursor: aimLocked && canShoot ? "ns-resize" : "not-allowed"
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: "4px",
+                      borderRadius: 999,
+                      background: "linear-gradient(180deg, rgba(15,23,42,0.15) 0%, rgba(15,23,42,0.45) 100%)"
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: 4,
+                      right: 4,
+                      bottom: 4,
+                      height: `${Math.max(power * (POWER_BAR_HEIGHT - 8), 16)}px`,
+                      borderRadius: 999,
+                      background: "linear-gradient(180deg, rgba(251,191,36,0.24) 0%, rgba(239,68,68,0.95) 100%)"
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: `${(1 - power) * (POWER_BAR_HEIGHT - 18)}px`,
+                      left: -10,
+                      width: 48,
+                      height: 12,
+                      borderRadius: 999,
+                      background: "#f8fafc",
+                      border: "2px solid #94a3b8",
+                      boxShadow: "0 2px 8px rgba(15,23,42,0.35)"
+                    }}
+                  />
+                </div>
+                <div
+                  style={{
+                    width: 12,
+                    height: 88,
+                    borderRadius: 999,
+                    background: "linear-gradient(180deg, #edd2a4 0%, #9d6937 55%, #5a3415 100%)",
+                    border: "2px solid #3b2412"
+                  }}
+                />
+              </div>
+            </div>
             <p className="info">{poolState.message}</p>
             <p className="score-display">
               You: {myGroup ?? "open"} | Opponent: {opponentGroup ?? "open"} | Aim: {aimLocked ? "locked" : "free"}
