@@ -167,7 +167,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const NETWORK_RENDER_WINDOW_MS = 60;
-const BRAWL_VERSION = "0.5";
+const BRAWL_VERSION = "0.6";
 const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
 const LAVA_LANES = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72];
@@ -1147,7 +1147,21 @@ const Brawl: React.FC = () => {
           if (characterId === "fighter") {
             const targetId = getOtherPlayerId(player.userId);
             const target = targetId ? nextPlayers[targetId] : null;
+            const chainStartX = state.x + aimVector.x * 18;
+            const chainStartY = state.y - 4 + aimVector.y * 10;
+            const chainEndX = clamp(chainStartX + aimVector.x * 132, WALL_MARGIN, WIDTH - WALL_MARGIN);
+            const chainEndY = clamp(chainStartY + aimVector.y * 132, 18, stage.floorY - 12);
             state.vx += aimVector.x * 1.4;
+            nextEffects.push({
+              id: `chain-cast-${player.userId}-${Date.now()}-${Math.random()}`,
+              x: chainStartX,
+              y: chainStartY,
+              x2: chainEndX,
+              y2: chainEndY,
+              radius: 3,
+              color: config.specialColor,
+              ttlMs: 120
+            });
             if (
               target &&
               target.respawnMs === 0 &&
@@ -1176,13 +1190,13 @@ const Brawl: React.FC = () => {
                 nextEffects.push(createEffect((state.x + target.x) / 2, (state.y + target.y) / 2, config.specialColor, 20, 180));
                 nextEffects.push({
                   id: `chain-${player.userId}-${Date.now()}-${Math.random()}`,
-                  x: state.x + aimVector.x * 18,
-                  y: state.y - 4 + aimVector.y * 10,
+                  x: chainStartX,
+                  y: chainStartY,
                   x2: target.x,
                   y2: target.y,
-                  radius: 3,
+                  radius: 4,
                   color: config.specialColor,
-                  ttlMs: 150
+                  ttlMs: 180
                 });
                 nextMessage = `${player.username} hooked them in with a chain.`;
               }
@@ -1213,6 +1227,8 @@ const Brawl: React.FC = () => {
             const target = targetId ? nextPlayers[targetId] : null;
             state.vx += aimVector.x * 2.2;
             state.vy += aimVector.y * 1.2;
+            nextEffects.push(createEffect(state.x + aimVector.x * 28, state.y + aimVector.y * 14, config.specialColor, 26, 220));
+            nextEffects.push(createEffect(state.x + aimVector.x * 40, state.y + aimVector.y * 18, config.trim, 14, 160));
             if (
               target &&
               target.respawnMs === 0 &&
@@ -1235,7 +1251,6 @@ const Brawl: React.FC = () => {
                 nextMessage = `${player.username} cracked them with a kick.`;
               }
             }
-            nextEffects.push(createEffect(state.x + aimVector.x * 22, state.y + aimVector.y * 10, config.specialColor, 18, 170));
           } else {
             const existingKnife = nextProjectiles.find(
               (projectile) => projectile.id === state.assassinKnifeId && projectile.ownerId === player.userId
@@ -1309,14 +1324,16 @@ const Brawl: React.FC = () => {
           } else if (characterId === "monk") {
             const targetId = getOtherPlayerId(player.userId);
             const target = targetId ? nextPlayers[targetId] : null;
-            for (let punch = 0; punch < 4; punch += 1) {
+            nextEffects.push(createEffect(state.x, state.y, config.ultimateColor, 34, 240));
+            nextEffects.push(createEffect(state.x + aimVector.x * 26, state.y + aimVector.y * 12, "#fff7ed", 20, 180));
+            for (let punch = 0; punch < 6; punch += 1) {
               nextEffects.push(
                 createEffect(
-                  state.x + aimVector.x * (22 + punch * 10),
-                  state.y + aimVector.y * (8 + punch * 5),
-                  punch % 2 === 0 ? config.ultimateColor : config.trim,
-                  16 + punch * 2,
-                  180 + punch * 35
+                  state.x + aimVector.x * (24 + punch * 12) + (punch % 2 === 0 ? -aimVector.y : aimVector.y) * 12,
+                  state.y + aimVector.y * (8 + punch * 7) + (punch % 2 === 0 ? aimVector.x : -aimVector.x) * 8,
+                  punch % 2 === 0 ? config.ultimateColor : "#fff7ed",
+                  18 + punch * 3,
+                  180 + punch * 40
                 )
               );
             }
