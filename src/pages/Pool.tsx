@@ -212,6 +212,36 @@ function getOpponentId(players: PlayerPresence[], userId: string) {
   return players.find((player) => player.userId !== userId)?.userId ?? null;
 }
 
+function applyShotToState(currentState: PoolState, players: PlayerPresence[], shot: ShotPayload) {
+  const cue = currentState.balls.find((ball) => ball.isCue);
+  if (
+    currentState.phase !== "playing" ||
+    !cue ||
+    cue.pocketed ||
+    currentState.currentTurnId !== shot.userId ||
+    currentState.balls.some(
+      (ball) => !ball.pocketed && (Math.abs(ball.vx) >= MIN_SPEED || Math.abs(ball.vy) >= MIN_SPEED)
+    )
+  ) {
+    return null;
+  }
+
+  const guide = getCardinalGuide(cue, shot.aimX, shot.aimY);
+  return {
+    ...currentState,
+    balls: currentState.balls.map((ball) =>
+      ball.isCue
+        ? {
+            ...ball,
+            vx: guide.x * shot.power * MAX_POWER,
+            vy: guide.y * shot.power * MAX_POWER
+          }
+        : ball
+    ),
+    message: `${players.find((player) => player.userId === shot.userId)?.username ?? "Player"} shoots.`
+  } satisfies PoolState;
+}
+
 const Pool: React.FC = () => {
   const [players, setPlayers] = useState<PlayerPresence[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -343,35 +373,8 @@ const Pool: React.FC = () => {
       channel.on("broadcast", { event: "pool-shot" }, ({ payload }) => {
         if (!isHostRef.current) return;
         const shot = payload as ShotPayload;
-        const currentState = stateRef.current;
-        const cue = currentState.balls.find((ball) => ball.isCue);
-        if (
-          currentState.phase !== "playing" ||
-          !cue ||
-          cue.pocketed ||
-          currentState.currentTurnId !== shot.userId ||
-          currentState.balls.some(
-            (ball) => !ball.pocketed && (Math.abs(ball.vx) >= MIN_SPEED || Math.abs(ball.vy) >= MIN_SPEED)
-          )
-        ) {
-          return;
-        }
-
-        const guide = getCardinalGuide(cue, shot.aimX, shot.aimY);
-        const nextState: PoolState = {
-          ...currentState,
-          balls: currentState.balls.map((ball) =>
-            ball.isCue
-              ? {
-                  ...ball,
-                  vx: guide.x * shot.power * MAX_POWER,
-                  vy: guide.y * shot.power * MAX_POWER
-                }
-              : ball
-          ),
-          message: `${playersRef.current.find((player) => player.userId === shot.userId)?.username ?? "Player"} shoots.`
-        };
-
+        const nextState = applyShotToState(stateRef.current, playersRef.current, shot);
+        if (!nextState) return;
         void broadcastState(nextState);
       });
 
@@ -698,16 +701,25 @@ const Pool: React.FC = () => {
     }
 
     const target = aimLocked && lockedAim ? lockedAim : mouseRef.current;
-    await channelRef.current.send({
-      type: "broadcast",
-      event: "pool-shot",
-      payload: {
-        userId: currentUserId,
-        aimX: target.x,
-        aimY: target.y,
-        power
-      } satisfies ShotPayload
-    });
+    const shot = {
+      userId: currentUserId,
+      aimX: target.x,
+      aimY: target.y,
+      power
+    } satisfies ShotPayload;
+
+    if (isHost) {
+      const nextState = applyShotToState(stateRef.current, playersRef.current, shot);
+      if (nextState) {
+        await broadcastState(nextState);
+      }
+    } else {
+      await channelRef.current.send({
+        type: "broadcast",
+        event: "pool-shot",
+        payload: shot
+      });
+    }
     setAimLocked(false);
     setLockedAim(null);
   };
