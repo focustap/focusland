@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 import NavBar from "../components/NavBar";
 import { profileColorToNumber } from "../lib/profileColor";
-import { saveScoreToSupabase } from "../lib/scores";
+import { recordArcadeResult } from "../lib/progression";
 import { supabase } from "../lib/supabase";
 
 const CatchGame: React.FC = () => {
@@ -51,8 +51,16 @@ const CatchGame: React.FC = () => {
 
         void (async () => {
           try {
-            await saveScoreToSupabase("catch", finalScore);
-            setStatus("Round over. Score saved.");
+            const goldEarned = Math.max(1, Math.min(10, Math.floor(finalScore / 10)));
+            await recordArcadeResult({
+              scoreGameName: "catch",
+              score: finalScore,
+              goldEarned,
+              stats: {
+                catch_best_score: finalScore
+              }
+            });
+            setStatus(`Round over. Score saved. +${goldEarned} gold.`);
           } catch {
             setStatus("Round over. Score could not be saved locally.");
           }

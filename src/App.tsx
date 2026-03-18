@@ -9,10 +9,12 @@ const Casino = lazy(() => import("./pages/Casino"));
 const CasinoRoom = lazy(() => import("./pages/CasinoRoom"));
 const CatchGame = lazy(() => import("./pages/CatchGame"));
 const Game = lazy(() => import("./pages/Game"));
+const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const Lobby = lazy(() => import("./pages/Lobby"));
 const Login = lazy(() => import("./pages/Login"));
 const Pong = lazy(() => import("./pages/Pong"));
 const Profile = lazy(() => import("./pages/Profile"));
+const Slots = lazy(() => import("./pages/Slots"));
 const SpaceInvaders = lazy(() => import("./pages/SpaceInvaders"));
 
 const RouteFallback = () => (
@@ -47,6 +49,14 @@ const App = () => {
             }
           />
           <Route
+            path="/leaderboard"
+            element={
+              <ProtectedRoute>
+                <Leaderboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/game"
             element={
               <ProtectedRoute>
@@ -75,6 +85,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <Casino />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/casino/slots"
+            element={
+              <ProtectedRoute>
+                <Slots />
               </ProtectedRoute>
             }
           />

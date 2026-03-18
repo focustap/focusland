@@ -285,6 +285,20 @@ const Lobby: React.FC = () => {
             roofOffsetX: 60
           },
           {
+            name: "Records House",
+            color: 0x22c55e,
+            body: null,
+            entranceX: width / 2,
+            entranceY: height - 80,
+            route: "/leaderboard",
+            x: width / 2,
+            y: height - 62,
+            width: 128,
+            height: 74,
+            labelColor: "#052e16",
+            roofOffsetX: 70
+          },
+          {
             name: "Arcade",
             color: 0x8b5cf6,
             body: null,

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
+import { recordArcadeResult } from "../lib/progression";
 import { supabase } from "../lib/supabase";
 
 type PlayerPresence = {
@@ -706,6 +707,7 @@ const Brawl: React.FC = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioUnlockedRef = useRef(false);
   const vsIntroTimeoutRef = useRef<number | null>(null);
+  const rewardClaimedRef = useRef(false);
 
   const isSeated = currentUserId ? players.some((player) => player.userId === currentUserId) : false;
   const isHost = Boolean(currentUserId && players[0]?.userId === currentUserId);
@@ -728,6 +730,35 @@ const Brawl: React.FC = () => {
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
   }, [currentUserId]);
+
+  useEffect(() => {
+    if (brawlState.phase === "playing" || brawlState.phase === "select") {
+      rewardClaimedRef.current = false;
+      return;
+    }
+
+    if (
+      rewardClaimedRef.current ||
+      brawlState.phase !== "gameOver" ||
+      !currentUserId ||
+      !players.some((player) => player.userId === currentUserId)
+    ) {
+      return;
+    }
+
+    rewardClaimedRef.current = true;
+    const isWinner = brawlState.winnerId === currentUserId;
+    void (async () => {
+      try {
+        await recordArcadeResult({
+          goldEarned: isWinner ? 20 : 5,
+          stats: isWinner ? { brawl_wins: 1 } : undefined
+        });
+      } catch {
+        // Ignore progression failures so the match result still lands.
+      }
+    })();
+  }, [brawlState.phase, brawlState.winnerId, currentUserId, players]);
 
   useEffect(() => {
     const unlockAudio = () => {

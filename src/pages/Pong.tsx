@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
+import { recordArcadeResult } from "../lib/progression";
 import { supabase } from "../lib/supabase";
 
 type PlayerPresence = {
@@ -117,6 +118,7 @@ const Pong: React.FC = () => {
   const paddleTargetsRef = useRef<Record<string, number>>({});
   const stateRef = useRef<PongState>(DEFAULT_STATE);
   const tickRef = useRef<number | null>(null);
+  const rewardClaimedRef = useRef(false);
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
@@ -125,6 +127,34 @@ const Pong: React.FC = () => {
   useEffect(() => {
     stateRef.current = pongState;
   }, [pongState]);
+
+  useEffect(() => {
+    if (pongState.phase === "playing") {
+      rewardClaimedRef.current = false;
+      return;
+    }
+
+    if (
+      rewardClaimedRef.current ||
+      pongState.phase !== "gameOver" ||
+      !currentUserId ||
+      !players.some((player) => player.userId === currentUserId)
+    ) {
+      return;
+    }
+
+    rewardClaimedRef.current = true;
+    const isWinner = pongState.winnerId === currentUserId;
+    void (async () => {
+      try {
+        await recordArcadeResult({
+          goldEarned: isWinner ? 12 : 4
+        });
+      } catch {
+        // Ignore reward sync failures so the match still ends cleanly.
+      }
+    })();
+  }, [currentUserId, players, pongState.phase, pongState.winnerId]);
 
   const isSeated = currentUserId ? players.some((player) => player.userId === currentUserId) : false;
   const hostId = players[0]?.userId ?? null;

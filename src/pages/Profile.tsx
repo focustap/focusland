@@ -19,6 +19,7 @@ const PROFILE_COLORS = [
 const Profile: React.FC = () => {
   const [username, setUsername] = useState("");
   const [rectangleColor, setRectangleColor] = useState(DEFAULT_PROFILE_COLOR);
+  const [gold, setGold] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -38,7 +39,7 @@ const Profile: React.FC = () => {
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("username, color, dark_mode")
+          .select("username, color, dark_mode, gold")
           .eq("id", session.user.id)
           .maybeSingle();
 
@@ -50,6 +51,7 @@ const Profile: React.FC = () => {
         if (data) {
           setUsername(data.username ?? "");
           setRectangleColor(normalizeProfileColor(data.color));
+          setGold(Number((data as { gold?: number | null }).gold ?? 0));
           if (typeof data.dark_mode === "boolean") {
             setDarkMode(data.dark_mode);
           }
@@ -161,6 +163,7 @@ const Profile: React.FC = () => {
                 {darkMode ? "Dark mode: on" : "Dark mode: off"}
               </button>
             </label>
+            <div className="info">Gold: {gold}</div>
             {message && <div className="info">{message}</div>}
             <button
               className="primary-button"

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
+import { recordArcadeResult } from "../lib/progression";
 import { supabase } from "../lib/supabase";
 
 type PlayerPresence = {
@@ -433,6 +434,7 @@ const SpaceInvaders: React.FC = () => {
   const previousStateRef = useRef<GameState>(DEFAULT_STATE);
   const previousNetworkStateRef = useRef<GameState | null>(null);
   const lastNetworkStateAtRef = useRef<number>(performance.now());
+  const rewardClaimedRef = useRef(false);
 
   const isSeated = currentUserId
     ? players.some((player) => player.userId === currentUserId)
@@ -486,6 +488,42 @@ const SpaceInvaders: React.FC = () => {
 
     previousStateRef.current = gameState;
   }, [gameState, players]);
+
+  useEffect(() => {
+    if (gameState.phase === "playing") {
+      rewardClaimedRef.current = false;
+      return;
+    }
+
+    if (
+      rewardClaimedRef.current ||
+      gameState.phase !== "gameOver" ||
+      !currentUserId ||
+      !players.some((player) => player.userId === currentUserId)
+    ) {
+      return;
+    }
+
+    rewardClaimedRef.current = true;
+    const waveReached = Math.max(1, gameState.wave);
+    const goldEarned =
+      Math.max(4, Math.floor(waveReached * 2 + gameState.score / 220)) +
+      (waveReached >= 8 ? 12 : 0) +
+      (waveReached >= 12 ? 10 : 0);
+
+    void (async () => {
+      try {
+        await recordArcadeResult({
+          goldEarned,
+          stats: {
+            invaders_best_wave: waveReached
+          }
+        });
+      } catch {
+        // Ignore progression failures so the run result still shows.
+      }
+    })();
+  }, [currentUserId, gameState.phase, gameState.score, gameState.wave, players]);
 
   const ensureAudio = () => {
     if (!audioContextRef.current) {

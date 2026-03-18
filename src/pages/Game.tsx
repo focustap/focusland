@@ -6,7 +6,7 @@ import React, { useEffect, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
 import Phaser from "phaser";
 import { profileColorToNumber } from "../lib/profileColor";
-import { saveScoreToSupabase } from "../lib/scores";
+import { recordArcadeResult } from "../lib/progression";
 import { supabase } from "../lib/supabase";
 
 const Game: React.FC = () => {
@@ -58,8 +58,16 @@ const Game: React.FC = () => {
         // during local development or if something goes wrong.
         void (async () => {
           try {
-            await saveScoreToSupabase("dodge", finalScore);
-            setStatus("Game over! Score saved.");
+            const goldEarned = Math.max(1, Math.min(12, Math.floor(finalScore / 8)));
+            await recordArcadeResult({
+              scoreGameName: "dodge",
+              score: finalScore,
+              goldEarned,
+              stats: {
+                dodge_best_score: finalScore
+              }
+            });
+            setStatus(`Game over! Score saved. +${goldEarned} gold.`);
           } catch {
             setStatus("Game over! Score could not be saved locally.");
           }

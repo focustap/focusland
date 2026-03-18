@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
+import { applyGoldDelta } from "../lib/progression";
 import { supabase } from "../lib/supabase";
 
 type PlayerPresence = {
@@ -12,6 +13,7 @@ type CasinoPhase = "waiting" | "betting" | "playing" | "roundOver" | "gameOver";
 
 type RoundSummary = {
   winnerIds: string[];
+  goldChanges: Record<string, number>;
   message: string;
 };
 
@@ -27,7 +29,6 @@ type CasinoState = {
 const ROOM_NAME = "focusland-casino";
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 5;
-const STARTING_CHIPS = 100;
 const DEFAULT_STATE: CasinoState = {
   phase: "waiting",
   chips: {},
@@ -82,10 +83,40 @@ function formatCards(cards: number[] = []) {
   return cards.join(", ");
 }
 
+function getSeatStyle(index: number, count: number): React.CSSProperties {
+  const layouts: Record<number, Array<React.CSSProperties>> = {
+    2: [
+      { left: "14%", top: "64%" },
+      { right: "14%", top: "18%" }
+    ],
+    3: [
+      { left: "12%", top: "56%" },
+      { left: "50%", top: "74%", transform: "translateX(-50%)" },
+      { right: "12%", top: "22%" }
+    ],
+    4: [
+      { left: "10%", top: "58%" },
+      { left: "33%", top: "14%", transform: "translateX(-50%)" },
+      { right: "33%", top: "14%", transform: "translateX(50%)" },
+      { right: "10%", top: "58%" }
+    ],
+    5: [
+      { left: "8%", top: "56%" },
+      { left: "25%", top: "16%", transform: "translateX(-50%)" },
+      { left: "50%", top: "8%", transform: "translateX(-50%)" },
+      { right: "25%", top: "16%", transform: "translateX(50%)" },
+      { right: "8%", top: "56%" }
+    ]
+  };
+
+  return layouts[count]?.[index] ?? { left: "50%", top: "50%", transform: "translate(-50%, -50%)" };
+}
+
 const Casino: React.FC = () => {
   const [players, setPlayers] = useState<PlayerPresence[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUsername, setCurrentUsername] = useState("Player");
+  const [currentGold, setCurrentGold] = useState(0);
   const [gameState, setGameState] = useState<CasinoState>(DEFAULT_STATE);
   const [selectedBet, setSelectedBet] = useState(10);
   const [status, setStatus] = useState("Join the room and wait for at least one more player.");
@@ -97,6 +128,7 @@ const Casino: React.FC = () => {
   const isHostRef = useRef(false);
   const phaseRef = useRef<CasinoPhase>("waiting");
   const resolvingRef = useRef(false);
+  const appliedRoundKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
@@ -110,15 +142,24 @@ const Casino: React.FC = () => {
   const hostId = players[0]?.userId ?? null;
   const isHost = Boolean(currentUserId && currentUserId === hostId);
   const playerCountLabel = `${Math.min(players.length, MAX_PLAYERS)}/${MAX_PLAYERS}`;
-  const myChips = currentUserId ? gameState.chips[currentUserId] ?? STARTING_CHIPS : STARTING_CHIPS;
+  const myChips =
+    currentUserId && gameState.phase !== "waiting"
+      ? gameState.chips[currentUserId] ?? currentGold
+      : currentGold;
   const myBet = currentUserId ? gameState.bets[currentUserId] ?? null : null;
   const myHand = currentUserId ? gameState.hands[currentUserId] ?? [] : [];
-  const myTotal = getHandTotal(myHand);
+  const potSize = Object.values(gameState.bets).reduce((sum, bet) => sum + bet, 0);
+
   const playerPanels = useMemo(() => {
     return players.map((player) => {
       const hand = gameState.hands[player.userId] ?? [];
       const total = getHandTotal(hand);
-      const chips = gameState.chips[player.userId] ?? STARTING_CHIPS;
+      const chips =
+        gameState.phase === "waiting"
+          ? player.userId === currentUserId
+            ? currentGold
+            : gameState.chips[player.userId] ?? 0
+          : gameState.chips[player.userId] ?? 0;
       const bet = gameState.bets[player.userId] ?? null;
       const isCurrentPlayer = player.userId === currentUserId;
       const stood = Boolean(gameState.stood[player.userId]);
@@ -137,12 +178,42 @@ const Casino: React.FC = () => {
         wonLastRound
       };
     });
-  }, [currentUserId, gameState.bets, gameState.chips, gameState.hands, gameState.lastRound, gameState.stood, players]);
+  }, [currentGold, currentUserId, gameState, players]);
 
   useEffect(() => {
     playersRef.current = players;
     isHostRef.current = isHost;
   }, [players, isHost]);
+
+  useEffect(() => {
+    if (
+      !currentUserId ||
+      !gameState.lastRound ||
+      (gameState.phase !== "roundOver" && gameState.phase !== "gameOver")
+    ) {
+      return;
+    }
+
+    const roundKey = `${gameState.phase}-${gameState.lastRound.message}`;
+    if (appliedRoundKeyRef.current === roundKey) {
+      return;
+    }
+
+    appliedRoundKeyRef.current = roundKey;
+    const delta = gameState.lastRound.goldChanges[currentUserId] ?? 0;
+    if (!delta) {
+      return;
+    }
+
+    void (async () => {
+      try {
+        const nextGold = await applyGoldDelta(delta);
+        setCurrentGold(nextGold);
+      } catch {
+        // Keep the table responsive even if profile sync fails.
+      }
+    })();
+  }, [currentUserId, gameState.lastRound, gameState.phase]);
 
   const broadcastState = async (nextState: CasinoState, nextStatus?: string) => {
     setGameState(nextState);
@@ -160,6 +231,23 @@ const Casino: React.FC = () => {
         }
       });
     }
+  };
+
+  const fetchGoldBalances = async (playerIds: string[]) => {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, gold")
+      .in("id", playerIds);
+
+    if (error) {
+      throw error;
+    }
+
+    const goldById = new Map((data ?? []).map((row) => [row.id as string, Number(row.gold ?? 0)]));
+    return playerIds.reduce<Record<string, number>>((acc, playerId) => {
+      acc[playerId] = goldById.get(playerId) ?? 0;
+      return acc;
+    }, {});
   };
 
   const maybeDealOpeningCards = async (stateToCheck: CasinoState) => {
@@ -185,7 +273,7 @@ const Casino: React.FC = () => {
       lastRound: null
     };
 
-    await broadcastState(dealtState, "Cards dealt. Hit or stand.");
+    await broadcastState(dealtState, "Cards out. Hit or stand.");
   };
 
   const settleRound = async (stateToResolve: CasinoState) => {
@@ -195,11 +283,12 @@ const Casino: React.FC = () => {
     }
 
     const chips = { ...stateToResolve.chips };
+    const previousChips = { ...stateToResolve.chips };
     const results = currentPlayers.map((player) => {
       const hand = stateToResolve.hands[player.userId] ?? [];
       const total = getHandTotal(hand);
       const bet = stateToResolve.bets[player.userId] ?? 0;
-      chips[player.userId] = (chips[player.userId] ?? STARTING_CHIPS) - bet;
+      chips[player.userId] = Math.max(0, (chips[player.userId] ?? 0) - bet);
 
       return {
         bet,
@@ -230,7 +319,7 @@ const Casino: React.FC = () => {
       });
 
       if (winners.length === 1) {
-        message = `${winners[0].player.username} wins with ${bestTotal}.`;
+        message = `${winners[0].player.username} wins the hand with ${bestTotal}.`;
       } else {
         const names = winners.map((winner) => winner.player.username).join(", ");
         message = `${names} split the pot with ${bestTotal}.`;
@@ -249,9 +338,14 @@ const Casino: React.FC = () => {
       }, {}),
       lastRound: {
         winnerIds,
-        message: bustedBankroll
-          ? `${message} ${bustedBankroll.username} is out of chips.`
-          : message
+        goldChanges: currentPlayers.reduce<Record<string, number>>((acc, player) => {
+          acc[player.userId] = (chips[player.userId] ?? 0) - (previousChips[player.userId] ?? 0);
+          return acc;
+        }, {}),
+        message:
+          bustedBankroll
+            ? `${message} ${bustedBankroll.username} is out of gold.`
+            : message
       }
     };
 
@@ -312,7 +406,7 @@ const Casino: React.FC = () => {
             : "Join the room and wait for at least one more player."
         );
       } else if (phaseRef.current === "waiting") {
-        setStatus(`${nextPlayers.length}/${MAX_PLAYERS} seated. Host can start.`);
+        setStatus(`${nextPlayers.length}/${MAX_PLAYERS} seated. Host can start the table.`);
       }
     };
 
@@ -327,12 +421,12 @@ const Casino: React.FC = () => {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("username")
+        .select("username, gold")
         .eq("id", session.user.id)
         .maybeSingle();
 
       const username = (profile?.username as string | null) ?? session.user.email ?? "Player";
-
+      setCurrentGold(Number((profile as { gold?: number | null } | null)?.gold ?? 0));
       setCurrentUserId(session.user.id);
       setCurrentUsername(username);
 
@@ -345,15 +439,11 @@ const Casino: React.FC = () => {
       });
 
       channelRef.current = channel;
-
-      channel.on("presence", { event: "sync" }, () => {
-        syncPresence();
-      });
-
+      channel.on("presence", { event: "sync" }, syncPresence);
       channel.on("broadcast", { event: "casino-state" }, ({ payload }) => {
         const nextPayload = payload as { state: CasinoState; status: string | null };
         setGameState(nextPayload.state);
-        setStatus(nextPayload.status ?? "Game updated.");
+        setStatus(nextPayload.status ?? "Table updated.");
         void maybeDealOpeningCards(nextPayload.state);
         void maybeSettleRound(nextPayload.state);
       });
@@ -369,7 +459,7 @@ const Casino: React.FC = () => {
 
         if (present.length >= MAX_PLAYERS) {
           setRoomFull(true);
-          setStatus("This room is full right now.");
+          setStatus("This table is full right now.");
           return;
         }
 
@@ -403,10 +493,13 @@ const Casino: React.FC = () => {
       return;
     }
 
-    const chips = players.reduce<Record<string, number>>((acc, player) => {
-      acc[player.userId] = gameState.chips[player.userId] ?? STARTING_CHIPS;
-      return acc;
-    }, {});
+    const chips =
+      Object.keys(gameState.chips).length > 0
+        ? players.reduce<Record<string, number>>((acc, player) => {
+            acc[player.userId] = gameState.chips[player.userId] ?? 0;
+            return acc;
+          }, {})
+        : await fetchGoldBalances(players.map((player) => player.userId));
 
     await broadcastState(
       {
@@ -417,7 +510,7 @@ const Casino: React.FC = () => {
         stood: {},
         lastRound: null
       },
-      "Place your bet to start the hand."
+      "Place your gold wager to start the hand."
     );
   };
 
@@ -427,7 +520,7 @@ const Casino: React.FC = () => {
     }
 
     if (selectedBet > myChips) {
-      setStatus("You do not have enough chips for that bet.");
+      setStatus("You do not have enough gold for that wager.");
       return;
     }
 
@@ -439,16 +532,12 @@ const Casino: React.FC = () => {
       }
     };
 
-    await broadcastState(nextState, `Bet locked at ${selectedBet}.`);
+    await broadcastState(nextState, `Bet locked at ${selectedBet} gold.`);
     await maybeDealOpeningCards(nextState);
   };
 
   const hit = async () => {
-    if (!currentUserId || gameState.phase !== "playing") {
-      return;
-    }
-
-    if (gameState.stood[currentUserId]) {
+    if (!currentUserId || gameState.phase !== "playing" || gameState.stood[currentUserId]) {
       return;
     }
 
@@ -462,10 +551,7 @@ const Casino: React.FC = () => {
     };
 
     const total = getHandTotal(nextHand);
-    await broadcastState(
-      nextState,
-      total > 21 ? `${currentUsername} busted.` : `${currentUsername} hits.`
-    );
+    await broadcastState(nextState, total > 21 ? `${currentUsername} busted.` : `${currentUsername} hits.`);
     await maybeSettleRound(nextState);
   };
 
@@ -497,13 +583,13 @@ const Casino: React.FC = () => {
   return (
     <div className="page">
       <NavBar />
-      <div className="content card">
+      <div className="content card" style={{ maxWidth: 980 }}>
         <h2>Casino 21</h2>
-        <p>Two to five players can join. Once at least two are seated, the host starts. Bet, then hit or stand to get closer to 21.</p>
+        <p>Two to five players gather around one live felt table. Every bet comes out of your real gold balance.</p>
 
         <div className="info">
-          Seats filled: {playerCountLabel}
-          {connected && !roomFull ? ` | ${isHost ? "You are the host." : "Waiting for the host."}` : ""}
+          Seats filled: {playerCountLabel} | Your gold: {currentGold}
+          {connected && !roomFull ? ` | ${isHost ? "You are the dealer host." : "Waiting for the host."}` : ""}
         </div>
 
         {roomFull && !isSeated ? (
@@ -518,14 +604,24 @@ const Casino: React.FC = () => {
               ))}
             </div>
 
-            <div className="casino-board">
-              {playerPanels.map((player) => (
-                <div key={player.userId} className="casino-panel">
+            <div className="casino-table-wrap">
+              <div className="casino-table-felt">
+                <div className="casino-pot-display">
+                  <span>Pot</span>
+                  <strong>{potSize}</strong>
+                </div>
+              </div>
+              {playerPanels.map((player, index) => (
+                <div
+                  key={player.userId}
+                  className="casino-panel casino-seat"
+                  style={getSeatStyle(index, playerPanels.length)}
+                >
                   <strong>
                     {player.username}
                     {player.isCurrentPlayer ? " (You)" : ""}
                   </strong>
-                  <span>Chips: {player.chips}</span>
+                  <span>Gold: {player.chips}</span>
                   <span>Bet: {player.bet ?? "-"}</span>
                   <span>Cards: {formatCards(player.hand)}</span>
                   <span>Total: {player.hand.length ? player.total : "-"}</span>
@@ -553,14 +649,14 @@ const Casino: React.FC = () => {
                 onClick={() => void startGame()}
                 disabled={players.length < MIN_PLAYERS}
               >
-                Start game
+                Open betting
               </button>
             )}
 
             {gameState.phase === "betting" && (
               <>
                 <div className="button-row">
-                  {[10, 25, 50].map((amount) => (
+                  {[10, 25, 50, 100].map((amount) => (
                     <button
                       key={amount}
                       type="button"
@@ -578,7 +674,7 @@ const Casino: React.FC = () => {
                   onClick={() => void lockBet()}
                   disabled={Boolean(myBet)}
                 >
-                  {myBet ? "Bet locked" : "Lock bet"}
+                  {myBet ? "Bet locked" : "Lock wager"}
                 </button>
               </>
             )}
