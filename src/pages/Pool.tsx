@@ -63,8 +63,8 @@ const PLAY_WIDTH = TABLE_WIDTH - RAIL * 2;
 const PLAY_HEIGHT = TABLE_HEIGHT - RAIL * 2;
 const BALL_RADIUS = 11;
 const POCKET_RADIUS = 24;
-const FRICTION = 0.992;
-const MIN_SPEED = 0.03;
+const FRICTION = 0.985;
+const MIN_SPEED = 0.06;
 const MAX_POWER = 12;
 const POWER_BAR_X = TABLE_WIDTH - 54;
 const POWER_BAR_Y = 80;
@@ -234,6 +234,28 @@ function getAimVector(cueBall: Ball, aimX: number, aimY: number) {
   return { x: dx / len, y: dy / len };
 }
 
+function getFirstTargetBall(cueBall: Ball, balls: Ball[], aimX: number, aimY: number) {
+  const aim = getAimVector(cueBall, aimX, aimY);
+  let bestBall: Ball | null = null;
+  let bestProjection = Number.POSITIVE_INFINITY;
+
+  balls.forEach((ball) => {
+    if (ball.pocketed || ball.isCue) return;
+    const toBallX = ball.x - cueBall.x;
+    const toBallY = ball.y - cueBall.y;
+    const projection = toBallX * aim.x + toBallY * aim.y;
+    if (projection <= 0 || projection >= bestProjection) return;
+
+    const perpendicular = Math.abs(toBallX * aim.y - toBallY * aim.x);
+    if (perpendicular > BALL_RADIUS * 2.2) return;
+
+    bestProjection = projection;
+    bestBall = ball;
+  });
+
+  return bestBall;
+}
+
 function applyShotToState(currentState: PoolState, players: PlayerPresence[], shot: ShotPayload) {
   const cue = currentState.balls.find((ball) => ball.isCue);
   if (
@@ -379,9 +401,6 @@ const Pool: React.FC = () => {
           !nextPlayers.some((player) => player.userId === currentUserIdRef.current)
       );
 
-      if (nextPlayers.length < 2) {
-        setPoolState(DEFAULT_STATE);
-      }
     };
 
     const setup = async () => {
@@ -669,7 +688,7 @@ const Pool: React.FC = () => {
             }
           }
 
-          const nextTurnId = opponentId;
+          const nextTurnId = shotScratch || !shooterPocketedOwnGroup ? opponentId : shooterId;
           nextState = {
             ...nextState,
             groups: nextGroups,
@@ -681,7 +700,9 @@ const Pool: React.FC = () => {
             shotScratch: false,
             message: shotScratch
               ? "Scratch. Opponent has ball in hand."
-              : "Turn passes."
+              : shooterPocketedOwnGroup
+                ? "Ball down. Same shooter."
+                : "Turn passes."
           };
         }
       }
@@ -771,6 +792,40 @@ const Pool: React.FC = () => {
         context.moveTo(currentCue.x - aim.x * 24, currentCue.y - aim.y * 24);
         context.lineTo(currentCue.x - aim.x * (38 + power * 18), currentCue.y - aim.y * (38 + power * 18));
         context.stroke();
+
+        const targetBall = getFirstTargetBall(currentCue, currentState.balls, activeAim.x, activeAim.y);
+        if (targetBall) {
+          const targetDir = getAimVector(currentCue, targetBall.x, targetBall.y);
+          context.strokeStyle = "rgba(96,165,250,0.55)";
+          context.lineWidth = 2;
+          context.beginPath();
+          context.moveTo(targetBall.x, targetBall.y);
+          context.lineTo(targetBall.x + targetDir.x * 54, targetBall.y + targetDir.y * 54);
+          context.stroke();
+
+          context.fillStyle = "rgba(96,165,250,0.75)";
+          context.beginPath();
+          context.arc(targetBall.x, targetBall.y, BALL_RADIUS + 3, 0, Math.PI * 2);
+          context.fill();
+          context.fillStyle = targetBall.color;
+          context.beginPath();
+          context.arc(targetBall.x, targetBall.y, BALL_RADIUS, 0, Math.PI * 2);
+          context.fill();
+
+          if (targetBall.isStripe && !targetBall.isCue) {
+            context.fillStyle = "#f8fafc";
+            context.beginPath();
+            context.arc(targetBall.x, targetBall.y, BALL_RADIUS - 4, 0, Math.PI * 2);
+            context.fill();
+            context.fillStyle = targetBall.color;
+            context.fillRect(targetBall.x - BALL_RADIUS + 3, targetBall.y - 4, BALL_RADIUS * 2 - 6, 8);
+          }
+
+          context.fillStyle = targetBall.isEight ? "#f8fafc" : "#111827";
+          context.font = "10px monospace";
+          context.textAlign = "center";
+          context.fillText(targetBall.label, targetBall.x, targetBall.y + 3);
+        }
       }
 
       if (currentState.cueBallInHandForId === currentUserIdRef.current) {
