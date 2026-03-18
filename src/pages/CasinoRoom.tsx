@@ -2,6 +2,8 @@ import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import Phaser from "phaser";
+import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } from "../lib/profileColor";
+import { supabase } from "../lib/supabase";
 
 type Hotspot = {
   label: string;
@@ -25,29 +27,54 @@ const CasinoRoom: React.FC = () => {
       return;
     }
 
-    const width = 760;
-    const height = 500;
+    let isUnmounted = false;
     let cleanup: (() => void) | undefined;
 
-    class CasinoScene extends Phaser.Scene {
-      player!: Phaser.GameObjects.Ellipse;
-      targetX: number | null = null;
-      targetY: number | null = null;
-      pendingRoute: string | null = null;
-      hotspots: Hotspot[] = [];
+    const setup = async () => {
+      const width = 760;
+      const height = 500;
+      let playerColor = profileColorToNumber(DEFAULT_PROFILE_COLOR);
 
-      create() {
-        this.cameras.main.setBackgroundColor("#14060a");
-        this.add.rectangle(width / 2, height / 2, width, height, 0x2a0b14);
-        this.add.rectangle(width / 2, height / 2, width - 36, height - 36, 0x4a1021);
-        this.add.rectangle(width / 2, height / 2, width - 86, height - 86, 0x1f8a70, 0.85);
-        this.add.rectangle(width / 2, height / 2, width - 140, height - 140, 0x0f6b58, 0.9);
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
 
-        this.add.text(width / 2, 34, "Focusland Casino", {
-          color: "#fde68a",
-          fontSize: "28px",
-          fontStyle: "bold"
-        }).setOrigin(0.5);
+      if (session) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("color")
+          .eq("id", session.user.id)
+          .maybeSingle();
+
+        playerColor = profileColorToNumber(
+          normalizeProfileColor((profile?.color as string | null) ?? DEFAULT_PROFILE_COLOR)
+        );
+      }
+
+      if (isUnmounted || !containerRef.current) {
+        return;
+      }
+
+      class CasinoScene extends Phaser.Scene {
+        player!: Phaser.GameObjects.Rectangle;
+        playerShadow!: Phaser.GameObjects.Ellipse;
+        targetX: number | null = null;
+        targetY: number | null = null;
+        pendingRoute: string | null = null;
+        hotspots: Hotspot[] = [];
+
+        create() {
+          this.cameras.main.setBackgroundColor("#14060a");
+          this.add.rectangle(width / 2, height / 2, width, height, 0x2a0b14);
+          this.add.rectangle(width / 2, height / 2, width - 36, height - 36, 0x4a1021);
+          this.add.rectangle(width / 2, height / 2, width - 86, height - 86, 0x1f8a70, 0.85);
+          this.add.rectangle(width / 2, height / 2, width - 140, height - 140, 0x0f6b58, 0.9);
+
+          this.add.text(width / 2, 34, "Focusland Casino", {
+            color: "#fde68a",
+            fontSize: "28px",
+            fontStyle: "bold"
+          }).setOrigin(0.5);
 
         const addTable = (x: number, y: number, label: string, route: string, color: number) => {
           this.add.ellipse(x, y, 180, 88, color);
@@ -96,82 +123,87 @@ const CasinoRoom: React.FC = () => {
           color: 0x8b5a2b
         });
 
-        this.player = this.add.ellipse(width / 2, height - 120, 24, 30, 0xf8fafc);
-        this.add.circle(this.player.x, this.player.y + 20, 16, 0x020617, 0.25);
+          this.playerShadow = this.add.ellipse(width / 2, height - 102, 28, 12, 0x020617, 0.25);
+          this.player = this.add.rectangle(width / 2, height - 120, 24, 32, playerColor);
 
-        this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-          this.targetX = pointer.x;
-          this.targetY = Phaser.Math.Clamp(pointer.y, 54, height - 32);
-          this.pendingRoute = null;
+          this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+            this.targetX = pointer.x;
+            this.targetY = Phaser.Math.Clamp(pointer.y, 54, height - 32);
+            this.pendingRoute = null;
 
-          for (const hotspot of this.hotspots) {
-            const bounds = new Phaser.Geom.Rectangle(
-              hotspot.x - hotspot.width / 2,
-              hotspot.y - hotspot.height / 2,
-              hotspot.width,
-              hotspot.height
-            );
-            if (bounds.contains(pointer.x, pointer.y)) {
-              this.targetX = hotspot.entranceX;
-              this.targetY = hotspot.entranceY;
-              this.pendingRoute = hotspot.route;
-              break;
+            for (const hotspot of this.hotspots) {
+              const bounds = new Phaser.Geom.Rectangle(
+                hotspot.x - hotspot.width / 2,
+                hotspot.y - hotspot.height / 2,
+                hotspot.width,
+                hotspot.height
+              );
+              if (bounds.contains(pointer.x, pointer.y)) {
+                this.targetX = hotspot.entranceX;
+                this.targetY = hotspot.entranceY;
+                this.pendingRoute = hotspot.route;
+                break;
+              }
             }
+          });
+        }
+
+        update(_time: number, delta: number) {
+          if (this.targetX == null || this.targetY == null) {
+            return;
           }
-        });
+
+          const dx = this.targetX - this.player.x;
+          const dy = this.targetY - this.player.y;
+          const distance = Math.hypot(dx, dy);
+          const step = (220 * delta) / 1000;
+
+          if (distance <= step) {
+            this.player.setPosition(this.targetX, this.targetY);
+            this.playerShadow.setPosition(this.targetX, this.targetY + 18);
+            const route = this.pendingRoute;
+            this.targetX = null;
+            this.targetY = null;
+            this.pendingRoute = null;
+            if (route) {
+              navigate(route);
+            }
+            return;
+          }
+
+          const nextX = Phaser.Math.Clamp(this.player.x + (dx / distance) * step, 20, width - 20);
+          const nextY = Phaser.Math.Clamp(this.player.y + (dy / distance) * step, 54, height - 24);
+          this.player.setPosition(nextX, nextY);
+          this.playerShadow.setPosition(nextX, nextY + 18);
+        }
       }
 
-      update(_time: number, delta: number) {
-        if (this.targetX == null || this.targetY == null) {
-          return;
-        }
-
-        const dx = this.targetX - this.player.x;
-        const dy = this.targetY - this.player.y;
-        const distance = Math.hypot(dx, dy);
-        const step = (220 * delta) / 1000;
-
-        if (distance <= step) {
-          this.player.setPosition(this.targetX, this.targetY);
-          const route = this.pendingRoute;
-          this.targetX = null;
-          this.targetY = null;
-          this.pendingRoute = null;
-          if (route) {
-            navigate(route);
+      const game = new Phaser.Game({
+        type: Phaser.AUTO,
+        width,
+        height,
+        parent: containerRef.current,
+        physics: {
+          default: "arcade",
+          arcade: {
+            gravity: { x: 0, y: 0 },
+            debug: false
           }
-          return;
-        }
+        },
+        scene: CasinoScene
+      });
 
-        this.player.setPosition(
-          Phaser.Math.Clamp(this.player.x + (dx / distance) * step, 20, width - 20),
-          Phaser.Math.Clamp(this.player.y + (dy / distance) * step, 54, height - 24)
-        );
-      }
-    }
-
-    const game = new Phaser.Game({
-      type: Phaser.AUTO,
-      width,
-      height,
-      parent: containerRef.current,
-      physics: {
-        default: "arcade",
-        arcade: {
-          gravity: { x: 0, y: 0 },
-          debug: false
-        }
-      },
-      scene: CasinoScene
-    });
-
-    gameRef.current = game;
-    cleanup = () => {
-      game.destroy(true);
-      gameRef.current = null;
+      gameRef.current = game;
+      cleanup = () => {
+        game.destroy(true);
+        gameRef.current = null;
+      };
     };
 
+    void setup();
+
     return () => {
+      isUnmounted = true;
       cleanup?.();
     };
   }, [navigate]);
