@@ -169,9 +169,9 @@ const Game: React.FC = () => {
         const speed = 250;
         playerBody.setVelocityX(0);
 
-        if (cursors.left?.isDown || letterKeys?.a.isDown) {
+        if (cursors.left?.isDown || letterKeys?.a?.isDown) {
           playerBody.setVelocityX(-speed);
-        } else if (cursors.right?.isDown || letterKeys?.d.isDown) {
+        } else if (cursors.right?.isDown || letterKeys?.d?.isDown) {
           playerBody.setVelocityX(speed);
         }
 
