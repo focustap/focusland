@@ -1,0 +1,191 @@
+import React, { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import NavBar from "../components/NavBar";
+import Phaser from "phaser";
+
+type Hotspot = {
+  label: string;
+  route: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  entranceX: number;
+  entranceY: number;
+  color: number;
+};
+
+const CasinoRoom: React.FC = () => {
+  const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const gameRef = useRef<Phaser.Game | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || gameRef.current) {
+      return;
+    }
+
+    const width = 760;
+    const height = 500;
+    let cleanup: (() => void) | undefined;
+
+    class CasinoScene extends Phaser.Scene {
+      player!: Phaser.GameObjects.Ellipse;
+      targetX: number | null = null;
+      targetY: number | null = null;
+      pendingRoute: string | null = null;
+      hotspots: Hotspot[] = [];
+
+      create() {
+        this.cameras.main.setBackgroundColor("#14060a");
+        this.add.rectangle(width / 2, height / 2, width, height, 0x2a0b14);
+        this.add.rectangle(width / 2, height / 2, width - 36, height - 36, 0x4a1021);
+        this.add.rectangle(width / 2, height / 2, width - 86, height - 86, 0x1f8a70, 0.85);
+        this.add.rectangle(width / 2, height / 2, width - 140, height - 140, 0x0f6b58, 0.9);
+
+        this.add.text(width / 2, 34, "Focusland Casino", {
+          color: "#fde68a",
+          fontSize: "28px",
+          fontStyle: "bold"
+        }).setOrigin(0.5);
+
+        const addTable = (x: number, y: number, label: string, route: string, color: number) => {
+          this.add.ellipse(x, y, 180, 88, color);
+          this.add.ellipse(x, y - 6, 152, 58, 0x083344, 0.55);
+          this.add.rectangle(x, y + 54, 18, 54, 0x4b2e19);
+          this.add.text(x, y - 2, label, {
+            color: "#f8fafc",
+            fontSize: "18px",
+            fontStyle: "bold"
+          }).setOrigin(0.5);
+          this.hotspots.push({
+            label,
+            route,
+            x,
+            y,
+            width: 180,
+            height: 88,
+            entranceX: x,
+            entranceY: y + 86,
+            color
+          });
+        };
+
+        addTable(width / 2, 172, "21 Table", "/casino/21", 0x0f766e);
+        addTable(width / 2 - 210, 320, "High Rollers", "/casino/21", 0x0f766e);
+        addTable(width / 2 + 210, 320, "Side Table", "/casino/21", 0x0f766e);
+
+        const doorY = height - 72;
+        this.add.rectangle(width / 2, doorY, 92, 120, 0x3f2a1d);
+        this.add.rectangle(width / 2, doorY - 10, 64, 82, 0x8b5a2b);
+        this.add.text(width / 2, doorY + 58, "Back to Hub", {
+          color: "#fef3c7",
+          fontSize: "16px",
+          fontStyle: "bold"
+        }).setOrigin(0.5);
+
+        this.hotspots.push({
+          label: "Back to Hub",
+          route: "/lobby",
+          x: width / 2,
+          y: doorY,
+          width: 92,
+          height: 120,
+          entranceX: width / 2,
+          entranceY: height - 92,
+          color: 0x8b5a2b
+        });
+
+        this.player = this.add.ellipse(width / 2, height - 120, 24, 30, 0xf8fafc);
+        this.add.circle(this.player.x, this.player.y + 20, 16, 0x020617, 0.25);
+
+        this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+          this.targetX = pointer.x;
+          this.targetY = Phaser.Math.Clamp(pointer.y, 54, height - 32);
+          this.pendingRoute = null;
+
+          for (const hotspot of this.hotspots) {
+            const bounds = new Phaser.Geom.Rectangle(
+              hotspot.x - hotspot.width / 2,
+              hotspot.y - hotspot.height / 2,
+              hotspot.width,
+              hotspot.height
+            );
+            if (bounds.contains(pointer.x, pointer.y)) {
+              this.targetX = hotspot.entranceX;
+              this.targetY = hotspot.entranceY;
+              this.pendingRoute = hotspot.route;
+              break;
+            }
+          }
+        });
+      }
+
+      update(_time: number, delta: number) {
+        if (this.targetX == null || this.targetY == null) {
+          return;
+        }
+
+        const dx = this.targetX - this.player.x;
+        const dy = this.targetY - this.player.y;
+        const distance = Math.hypot(dx, dy);
+        const step = (220 * delta) / 1000;
+
+        if (distance <= step) {
+          this.player.setPosition(this.targetX, this.targetY);
+          const route = this.pendingRoute;
+          this.targetX = null;
+          this.targetY = null;
+          this.pendingRoute = null;
+          if (route) {
+            navigate(route);
+          }
+          return;
+        }
+
+        this.player.setPosition(
+          Phaser.Math.Clamp(this.player.x + (dx / distance) * step, 20, width - 20),
+          Phaser.Math.Clamp(this.player.y + (dy / distance) * step, 54, height - 24)
+        );
+      }
+    }
+
+    const game = new Phaser.Game({
+      type: Phaser.AUTO,
+      width,
+      height,
+      parent: containerRef.current,
+      physics: {
+        default: "arcade",
+        arcade: {
+          gravity: { x: 0, y: 0 },
+          debug: false
+        }
+      },
+      scene: CasinoScene
+    });
+
+    gameRef.current = game;
+    cleanup = () => {
+      game.destroy(true);
+      gameRef.current = null;
+    };
+
+    return () => {
+      cleanup?.();
+    };
+  }, [navigate]);
+
+  return (
+    <div className="page">
+      <NavBar />
+      <div className="content card" style={{ maxWidth: 820 }}>
+        <h2>Casino Room</h2>
+        <p>Walk to a table to play, or use the door at the bottom to return to the main hub.</p>
+        <div ref={containerRef} style={{ width: "100%", maxWidth: 760, margin: "1rem auto" }} />
+      </div>
+    </div>
+  );
+};
+
+export default CasinoRoom;

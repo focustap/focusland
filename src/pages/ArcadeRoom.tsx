@@ -1,0 +1,195 @@
+import React, { useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import NavBar from "../components/NavBar";
+import Phaser from "phaser";
+
+type Hotspot = {
+  label: string;
+  route: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  entranceX: number;
+  entranceY: number;
+};
+
+const ArcadeRoom: React.FC = () => {
+  const navigate = useNavigate();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const gameRef = useRef<Phaser.Game | null>(null);
+
+  useEffect(() => {
+    if (!containerRef.current || gameRef.current) {
+      return;
+    }
+
+    const width = 780;
+    const height = 520;
+    let cleanup: (() => void) | undefined;
+
+    class ArcadeScene extends Phaser.Scene {
+      player!: Phaser.GameObjects.Ellipse;
+      targetX: number | null = null;
+      targetY: number | null = null;
+      pendingRoute: string | null = null;
+      hotspots: Hotspot[] = [];
+
+      create() {
+        this.cameras.main.setBackgroundColor("#020617");
+        this.add.rectangle(width / 2, height / 2, width, height, 0x111827);
+        this.add.rectangle(width / 2, height / 2, width - 30, height - 30, 0x1f2937);
+        this.add.rectangle(width / 2, height / 2, width - 70, height - 92, 0x0b1220);
+        this.add.rectangle(width / 2, height - 76, width - 120, 98, 0x111827);
+
+        this.add.text(width / 2, 34, "Focusland Arcade", {
+          color: "#7dd3fc",
+          fontSize: "28px",
+          fontStyle: "bold"
+        }).setOrigin(0.5);
+
+        const machines = [
+          { label: "Dodge", route: "/game", x: 126, y: 142, color: 0x22c55e },
+          { label: "Catch", route: "/catch", x: 282, y: 142, color: 0xf97316 },
+          { label: "Pong", route: "/pong", x: 438, y: 142, color: 0x06b6d4 },
+          { label: "Invaders", route: "/invaders", x: 594, y: 142, color: 0x8b5cf6 },
+          { label: "Brawl", route: "/brawl", x: width / 2, y: 308, color: 0xf59e0b }
+        ];
+
+        machines.forEach((machine) => {
+          this.add.rectangle(machine.x, machine.y, 96, 128, machine.color);
+          this.add.rectangle(machine.x, machine.y - 12, 68, 48, 0x020617, 0.9);
+          this.add.circle(machine.x, machine.y + 30, 7, 0xf43f5e);
+          this.add.circle(machine.x + 18, machine.y + 30, 7, 0xfacc15);
+          this.add.rectangle(machine.x, machine.y + 58, 24, 8, 0xe5e7eb);
+          this.add.text(machine.x, machine.y + 82, machine.label, {
+            color: "#f8fafc",
+            fontSize: "16px",
+            fontStyle: "bold"
+          }).setOrigin(0.5);
+
+          this.hotspots.push({
+            label: machine.label,
+            route: machine.route,
+            x: machine.x,
+            y: machine.y,
+            width: 96,
+            height: 128,
+            entranceX: machine.x,
+            entranceY: machine.y + 88
+          });
+        });
+
+        const doorY = height - 70;
+        this.add.rectangle(width - 96, doorY, 88, 120, 0x31211a);
+        this.add.rectangle(width - 96, doorY - 12, 58, 78, 0x9a3412);
+        this.add.text(width - 96, doorY + 58, "Hub Door", {
+          color: "#ffedd5",
+          fontSize: "15px",
+          fontStyle: "bold"
+        }).setOrigin(0.5);
+
+        this.hotspots.push({
+          label: "Hub Door",
+          route: "/lobby",
+          x: width - 96,
+          y: doorY,
+          width: 88,
+          height: 120,
+          entranceX: width - 96,
+          entranceY: height - 100
+        });
+
+        this.player = this.add.ellipse(112, height - 102, 24, 30, 0xffffff);
+        this.add.circle(this.player.x, this.player.y + 20, 16, 0x020617, 0.28);
+
+        this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+          this.targetX = pointer.x;
+          this.targetY = Phaser.Math.Clamp(pointer.y, 56, height - 24);
+          this.pendingRoute = null;
+
+          for (const hotspot of this.hotspots) {
+            const bounds = new Phaser.Geom.Rectangle(
+              hotspot.x - hotspot.width / 2,
+              hotspot.y - hotspot.height / 2,
+              hotspot.width,
+              hotspot.height
+            );
+            if (bounds.contains(pointer.x, pointer.y)) {
+              this.targetX = hotspot.entranceX;
+              this.targetY = hotspot.entranceY;
+              this.pendingRoute = hotspot.route;
+              break;
+            }
+          }
+        });
+      }
+
+      update(_time: number, delta: number) {
+        if (this.targetX == null || this.targetY == null) {
+          return;
+        }
+
+        const dx = this.targetX - this.player.x;
+        const dy = this.targetY - this.player.y;
+        const distance = Math.hypot(dx, dy);
+        const step = (230 * delta) / 1000;
+
+        if (distance <= step) {
+          this.player.setPosition(this.targetX, this.targetY);
+          const route = this.pendingRoute;
+          this.targetX = null;
+          this.targetY = null;
+          this.pendingRoute = null;
+          if (route) {
+            navigate(route);
+          }
+          return;
+        }
+
+        this.player.setPosition(
+          Phaser.Math.Clamp(this.player.x + (dx / distance) * step, 18, width - 18),
+          Phaser.Math.Clamp(this.player.y + (dy / distance) * step, 56, height - 22)
+        );
+      }
+    }
+
+    const game = new Phaser.Game({
+      type: Phaser.AUTO,
+      width,
+      height,
+      parent: containerRef.current,
+      physics: {
+        default: "arcade",
+        arcade: {
+          gravity: { x: 0, y: 0 },
+          debug: false
+        }
+      },
+      scene: ArcadeScene
+    });
+
+    gameRef.current = game;
+    cleanup = () => {
+      game.destroy(true);
+      gameRef.current = null;
+    };
+
+    return () => {
+      cleanup?.();
+    };
+  }, [navigate]);
+
+  return (
+    <div className="page">
+      <NavBar />
+      <div className="content card" style={{ maxWidth: 840 }}>
+        <h2>Arcade Room</h2>
+        <p>Click a machine to walk over and play, or use the door on the right to head back to the hub.</p>
+        <div ref={containerRef} style={{ width: "100%", maxWidth: 780, margin: "1rem auto" }} />
+      </div>
+    </div>
+  );
+};
+
+export default ArcadeRoom;

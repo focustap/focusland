@@ -257,46 +257,18 @@ const Lobby: React.FC = () => {
         // Buildings around the edges.
         buildings = [
           {
-            name: "Try to Dodge",
-            color: 0x22c55e,
+            name: "Casino",
+            color: 0xe11d48,
             body: null,
             entranceX: width / 2,
             entranceY: 80,
-            route: "/game",
+            route: "/casino",
             x: width / 2,
             y: 68,
-            width: 120,
-            height: 70,
-            labelColor: "#082f1d",
-            roofOffsetX: 64
-          },
-          {
-            name: "Pong",
-            color: 0x06b6d4,
-            body: null,
-            entranceX: 120,
-            entranceY: 80,
-            route: "/pong",
-            x: 94,
-            y: 82,
-            width: 108,
-            height: 62,
-            labelColor: "#082f49",
-            roofOffsetX: 60
-          },
-          {
-            name: "Catch Club",
-            color: 0xf97316,
-            body: null,
-            entranceX: width - 120,
-            entranceY: height / 2,
-            route: "/catch",
-            x: width - 86,
-            y: height / 2 - 8,
-            width: 112,
-            height: 82,
-            labelColor: "#431407",
-            roofOffsetX: 64
+            width: 134,
+            height: 72,
+            labelColor: "#4c0519",
+            roofOffsetX: 70
           },
           {
             name: "Profile House",
@@ -313,46 +285,18 @@ const Lobby: React.FC = () => {
             roofOffsetX: 60
           },
           {
-            name: "21",
-            color: 0xe11d48,
-            body: null,
-            entranceX: width / 2,
-            entranceY: height - 80,
-            route: "/casino",
-            x: width / 2,
-            y: height - 62,
-            width: 124,
-            height: 72,
-            labelColor: "#4c0519",
-            roofOffsetX: 72
-          },
-          {
-            name: "Invaders",
+            name: "Arcade",
             color: 0x8b5cf6,
             body: null,
             entranceX: width - 120,
-            entranceY: height - 80,
-            route: "/invaders",
-            x: width - 88,
-            y: height - 62,
-            width: 116,
-            height: 72,
+            entranceY: height / 2,
+            route: "/arcade",
+            x: width - 86,
+            y: height / 2 - 8,
+            width: 120,
+            height: 84,
             labelColor: "#2e1065",
-            roofOffsetX: 66
-          },
-          {
-            name: "Brawl",
-            color: 0xf59e0b,
-            body: null,
-            entranceX: 118,
-            entranceY: height - 80,
-            route: "/brawl",
-            x: 92,
-            y: height - 62,
-            width: 112,
-            height: 72,
-            labelColor: "#451a03",
-            roofOffsetX: 64
+            roofOffsetX: 68
           }
         ];
 
@@ -601,7 +545,7 @@ return () => {
       <NavBar />
       <div className="content card">
         <h2>Town Lobby</h2>
-        <p>Click on the floor to walk, or click a building to enter.</p>
+        <p>Click on the floor to walk, then enter the Casino or Arcade from the main hub.</p>
         <div
           ref={containerRef}
           style={{

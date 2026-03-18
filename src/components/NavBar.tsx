@@ -9,13 +9,9 @@ const NavBar: React.FC = () => {
       <h1 className="navbar-title">Focusland</h1>
       <div className="navbar-links">
         <Link to="/lobby">Lobby</Link>
-        <Link to="/profile">Profile</Link>
-        <Link to="/game">Dodge</Link>
-        <Link to="/catch">Catch</Link>
         <Link to="/casino">Casino</Link>
-        <Link to="/pong">Pong</Link>
-        <Link to="/invaders">Invaders</Link>
-        <Link to="/brawl">Brawl</Link>
+        <Link to="/arcade">Arcade</Link>
+        <Link to="/profile">Profile</Link>
       </div>
     </nav>
   );

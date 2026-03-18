@@ -4,7 +4,9 @@ import { AuthProvider } from "./components/AuthProvider";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 
 const Brawl = lazy(() => import("./pages/Brawl"));
+const ArcadeRoom = lazy(() => import("./pages/ArcadeRoom"));
 const Casino = lazy(() => import("./pages/Casino"));
+const CasinoRoom = lazy(() => import("./pages/CasinoRoom"));
 const CatchGame = lazy(() => import("./pages/CatchGame"));
 const Game = lazy(() => import("./pages/Game"));
 const Lobby = lazy(() => import("./pages/Lobby"));
@@ -64,7 +66,23 @@ const App = () => {
             path="/casino"
             element={
               <ProtectedRoute>
+                <CasinoRoom />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/casino/21"
+            element={
+              <ProtectedRoute>
                 <Casino />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/arcade"
+            element={
+              <ProtectedRoute>
+                <ArcadeRoom />
               </ProtectedRoute>
             }
           />
