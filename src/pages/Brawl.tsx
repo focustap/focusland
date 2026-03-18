@@ -178,7 +178,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const NETWORK_RENDER_WINDOW_MS = 60;
-const BRAWL_VERSION = "0.9";
+const BRAWL_VERSION = "1.0";
 const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
 const LAVA_LANES = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72];
@@ -315,7 +315,7 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     airJumps: 2,
     meleeDamage: 5,
     meleeRange: 48,
-    meleeKnockback: 6.4,
+    meleeKnockback: 8.1,
     meleeLift: 5.4,
     meleeLunge: 0,
     specialDamage: 0,
@@ -378,7 +378,7 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     meleeKnockback: 7.6,
     meleeLift: 5.8,
     meleeLunge: 1.9,
-    specialDamage: 9,
+    specialDamage: 7,
     specialRadius: 10,
     specialSpeed: 8.2,
     specialColor: "#fbbf24",
@@ -449,6 +449,16 @@ function createEffect(x: number, y: number, color: string, radius: number, ttlMs
     color,
     ttlMs
   };
+}
+
+function getDashProfile(characterId: CharacterId | null) {
+  if (characterId === "fighter" || characterId === "assassin" || characterId === "monk") {
+    return { power: 12.4, cooldownMs: 300 };
+  }
+  if (characterId === "archer") {
+    return { power: 9.1, cooldownMs: 460 };
+  }
+  return { power: 8.9, cooldownMs: 480 };
 }
 
 function getPlayersFromPresence(
@@ -606,12 +616,12 @@ function predictPlayerState(
       next.dashReleased = true;
     } else if (next.dashReleased && next.dashCooldownMs === 0) {
       const dashDirection = horizontal !== 0 ? (horizontal > 0 ? 1 : -1) : next.facing;
-      const dashPower =
-        next.selectedCharacter === "fighter" ? 9.8 : next.selectedCharacter === "archer" ? 7.2 : 6.5;
+      const dashProfile = getDashProfile(next.selectedCharacter);
+      const dashPower = dashProfile.power;
       next.vx = dashDirection * dashPower;
       next.vy = grounded ? Math.min(next.vy, -0.5) : next.vy * 0.72;
       next.facing = dashDirection;
-      next.dashCooldownMs = next.selectedCharacter === "fighter" ? 440 : 560;
+      next.dashCooldownMs = dashProfile.cooldownMs;
       next.dashReleased = false;
     }
 
@@ -1239,11 +1249,12 @@ const Brawl: React.FC = () => {
           state.dashReleased = true;
         } else if (state.dashReleased && state.dashCooldownMs === 0) {
           const dashDirection = horizontal !== 0 ? (horizontal > 0 ? 1 : -1) : state.facing;
-          const dashPower = characterId === "fighter" ? 12.4 : characterId === "archer" ? 7.2 : 6.5;
+          const dashProfile = getDashProfile(characterId);
+          const dashPower = dashProfile.power;
           state.vx = dashDirection * dashPower;
           state.vy = grounded ? Math.min(state.vy, -0.5) : state.vy * 0.72;
           state.facing = dashDirection;
-          state.dashCooldownMs = characterId === "fighter" ? 300 : 560;
+          state.dashCooldownMs = dashProfile.cooldownMs;
           state.dashReleased = false;
           nextEffects.push(createEffect(state.x, state.y + 8, config.accent, 14, 140));
         }
@@ -1318,23 +1329,23 @@ const Brawl: React.FC = () => {
               ownerId: player.userId,
               x: state.x + aimVector.x * 24,
               y: state.y - 10 + aimVector.y * 10,
-              vx: (characterId === "archer" ? 11.4 : 7.1) * aimVector.x,
-              vy: (characterId === "archer" ? 11.4 : 7.1) * aimVector.y,
+              vx: (characterId === "archer" ? 9.4 : 7.1) * aimVector.x,
+              vy: (characterId === "archer" ? 9.4 : 7.1) * aimVector.y,
               radius: characterId === "archer" ? 5 : 9,
               damage: characterId === "archer" ? 5 : 6,
-              knockback: characterId === "archer" ? 5.8 : 6.9,
-              lift: characterId === "archer" ? 4.6 : 5.8,
+              knockback: characterId === "archer" ? 8.2 : 6.9,
+              lift: characterId === "archer" ? 5.4 : 5.8,
               color: characterId === "archer" ? "#fef08a" : "#fb923c",
               kind: characterId === "archer" ? "arrow" : "fireball",
               gravity: characterId === "archer" ? 0.01 : 0.015,
-              ttlMs: characterId === "archer" ? 1200 : 1350,
+              ttlMs: characterId === "archer" ? 1280 : 1350,
               isUltimate: false
             });
             nextMessage =
               characterId === "archer"
                 ? `${player.username} fired a quick shot.`
                 : `${player.username} cast a flame bolt.`;
-            state.attackCooldownMs = characterId === "archer" ? 210 : 320;
+            state.attackCooldownMs = characterId === "archer" ? 360 : 320;
           }
           state.attackFlashMs = 130;
         }
@@ -1426,14 +1437,15 @@ const Brawl: React.FC = () => {
           } else if (characterId === "monk") {
             const targetId = getOtherPlayerId(player.userId);
             const target = targetId ? nextPlayers[targetId] : null;
-            state.vx += aimVector.x * 2.2;
-            state.vy += aimVector.y * 1.2;
+            state.vx -= aimVector.x * 8.8;
+            state.vy -= Math.max(1.2, Math.abs(aimVector.y) * 2);
+            state.onGround = false;
             nextEffects.push(createEffect(state.x + aimVector.x * 28, state.y + aimVector.y * 14, config.specialColor, 26, 220));
             nextEffects.push(createEffect(state.x + aimVector.x * 40, state.y + aimVector.y * 18, config.trim, 14, 160));
             if (
               target &&
               target.respawnMs === 0 &&
-              Math.hypot(target.x - state.x, target.y - state.y) <= 78
+              Math.hypot(target.x - state.x, target.y - state.y) <= 84
             ) {
               const targetVector = normalizeVector(target.x - state.x, target.y - state.y);
               if (aimVector.x * targetVector.x + aimVector.y * targetVector.y > 0.05) {
@@ -1441,15 +1453,15 @@ const Brawl: React.FC = () => {
                   targetId!,
                   player.userId,
                   config.specialDamage,
-                  9.2,
-                  6.6,
+                  13.6,
+                  3.2,
                   (state.x + target.x) / 2,
                   (state.y + target.y) / 2,
                   config.specialColor,
                   0,
                   config.specialChargeGain
                 );
-                nextMessage = `${player.username} cracked them with a kick.`;
+                nextMessage = `${player.username} blasted them away with a kick.`;
               }
             }
           } else {
