@@ -114,9 +114,7 @@ const Login: React.FC = () => {
     }
   };
 
-  const handlePasswordKeyState = (
-    event: React.KeyboardEvent<HTMLInputElement> | React.FocusEvent<HTMLInputElement>
-  ) => {
+  const handlePasswordKeyState = (event: React.KeyboardEvent<HTMLInputElement>) => {
     setCapsLockOn(event.getModifierState("CapsLock"));
   };
 
@@ -141,7 +139,6 @@ const Login: React.FC = () => {
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={handlePasswordKeyState}
             onKeyUp={handlePasswordKeyState}
-            onFocus={handlePasswordKeyState}
             onBlur={() => setCapsLockOn(false)}
             required
           />
