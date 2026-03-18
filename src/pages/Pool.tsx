@@ -32,6 +32,11 @@ type PoolState = {
   currentTurnId: string | null;
   groups: Record<string, BallGroup | null>;
   winnerId: string | null;
+  cueBallInHandForId: string | null;
+  shotOwnerId: string | null;
+  shotPocketedIds: string[];
+  shotScratch: boolean;
+  rewardTotals: Record<string, number>;
   message: string;
 };
 
@@ -40,6 +45,12 @@ type ShotPayload = {
   aimX: number;
   aimY: number;
   power: number;
+};
+
+type PlaceCuePayload = {
+  userId: string;
+  x: number;
+  y: number;
 };
 
 const ROOM_NAME = "focusland-pool";
@@ -59,7 +70,8 @@ const POWER_BAR_X = TABLE_WIDTH - 54;
 const POWER_BAR_Y = 80;
 const POWER_BAR_HEIGHT = 300;
 const POWER_BAR_WIDTH = 18;
-const POOL_WIN_GOLD = 18;
+const BALL_REWARD_GOLD = 1;
+const WIN_REWARD_GOLD = 25;
 
 const POCKETS = [
   { x: PLAY_X, y: PLAY_Y },
@@ -76,6 +88,11 @@ const DEFAULT_STATE: PoolState = {
   currentTurnId: null,
   groups: {},
   winnerId: null,
+  cueBallInHandForId: null,
+  shotOwnerId: null,
+  shotPocketedIds: [],
+  shotScratch: false,
+  rewardTotals: {},
   message: "Waiting for two players."
 };
 
@@ -189,18 +206,20 @@ function createInitialState(players: PlayerPresence[]): PoolState {
       return acc;
     }, {}),
     winnerId: null,
-    message: `${players[0]?.username ?? "Host"} breaks. First made ball decides solids or stripes.`
+    cueBallInHandForId: null,
+    shotOwnerId: null,
+    shotPocketedIds: [],
+    shotScratch: false,
+    rewardTotals: players.reduce<Record<string, number>>((acc, player) => {
+      acc[player.userId] = 0;
+      return acc;
+    }, {}),
+    message: `${players[0]?.username ?? "Host"} breaks. First made ball claims solids or stripes.`
   };
 }
 
-function getCardinalGuide(cueBall: Ball, aimX: number, aimY: number) {
-  const dx = aimX - cueBall.x;
-  const dy = aimY - cueBall.y;
-  const length = Math.hypot(dx, dy) || 1;
-  return {
-    x: dx / length,
-    y: dy / length
-  };
+function getOpponentId(players: PlayerPresence[], userId: string) {
+  return players.find((player) => player.userId !== userId)?.userId ?? null;
 }
 
 function getGroupForBall(ball: Ball): BallGroup | null {
@@ -208,8 +227,11 @@ function getGroupForBall(ball: Ball): BallGroup | null {
   return ball.isStripe ? "stripes" : "solids";
 }
 
-function getOpponentId(players: PlayerPresence[], userId: string) {
-  return players.find((player) => player.userId !== userId)?.userId ?? null;
+function getAimVector(cueBall: Ball, aimX: number, aimY: number) {
+  const dx = aimX - cueBall.x;
+  const dy = aimY - cueBall.y;
+  const len = Math.hypot(dx, dy) || 1;
+  return { x: dx / len, y: dy / len };
 }
 
 function applyShotToState(currentState: PoolState, players: PlayerPresence[], shot: ShotPayload) {
@@ -219,6 +241,7 @@ function applyShotToState(currentState: PoolState, players: PlayerPresence[], sh
     !cue ||
     cue.pocketed ||
     currentState.currentTurnId !== shot.userId ||
+    currentState.cueBallInHandForId !== null ||
     currentState.balls.some(
       (ball) => !ball.pocketed && (Math.abs(ball.vx) >= MIN_SPEED || Math.abs(ball.vy) >= MIN_SPEED)
     )
@@ -226,20 +249,39 @@ function applyShotToState(currentState: PoolState, players: PlayerPresence[], sh
     return null;
   }
 
-  const guide = getCardinalGuide(cue, shot.aimX, shot.aimY);
+  const aim = getAimVector(cue, shot.aimX, shot.aimY);
   return {
     ...currentState,
     balls: currentState.balls.map((ball) =>
       ball.isCue
         ? {
             ...ball,
-            vx: guide.x * shot.power * MAX_POWER,
-            vy: guide.y * shot.power * MAX_POWER
+            vx: aim.x * shot.power * MAX_POWER,
+            vy: aim.y * shot.power * MAX_POWER
           }
         : ball
     ),
+    shotOwnerId: shot.userId,
+    shotPocketedIds: [],
+    shotScratch: false,
     message: `${players.find((player) => player.userId === shot.userId)?.username ?? "Player"} shoots.`
   } satisfies PoolState;
+}
+
+function canPlaceCueBall(balls: Ball[], x: number, y: number) {
+  if (
+    x < PLAY_X + BALL_RADIUS ||
+    x > PLAY_X + PLAY_WIDTH - BALL_RADIUS ||
+    y < PLAY_Y + BALL_RADIUS ||
+    y > PLAY_Y + PLAY_HEIGHT - BALL_RADIUS
+  ) {
+    return false;
+  }
+
+  return balls.every((ball) => {
+    if (ball.pocketed || ball.isCue) return true;
+    return distance(ball.x, ball.y, x, y) > BALL_RADIUS * 2.1;
+  });
 }
 
 const Pool: React.FC = () => {
@@ -262,7 +304,7 @@ const Pool: React.FC = () => {
   const frameRef = useRef<number | null>(null);
   const draggingPowerRef = useRef(false);
   const mouseRef = useRef({ x: PLAY_X + 120, y: PLAY_Y + PLAY_HEIGHT / 2, insideTable: false });
-  const rewardClaimedRef = useRef(false);
+  const appliedRewardRef = useRef(0);
 
   useEffect(() => {
     stateRef.current = poolState;
@@ -288,27 +330,27 @@ const Pool: React.FC = () => {
     currentUserId &&
       poolState.phase === "playing" &&
       poolState.currentTurnId === currentUserId &&
+      poolState.cueBallInHandForId === null &&
       cueBall &&
       !cueBall.pocketed &&
+      allStopped
+  );
+  const canPlaceCue = Boolean(
+    currentUserId &&
+      poolState.phase === "playing" &&
+      poolState.cueBallInHandForId === currentUserId &&
       allStopped
   );
   const activeAim = aimLocked && lockedAim ? lockedAim : mouseRef.current;
 
   useEffect(() => {
-    if (poolState.phase !== "gameOver" || rewardClaimedRef.current || !currentUserId) {
-      if (poolState.phase === "playing") {
-        rewardClaimedRef.current = false;
-      }
-      return;
-    }
-
-    rewardClaimedRef.current = true;
-    if (poolState.winnerId !== currentUserId) {
-      return;
-    }
-
-    void recordArcadeResult({ goldEarned: POOL_WIN_GOLD });
-  }, [currentUserId, poolState.phase, poolState.winnerId]);
+    if (!currentUserId) return;
+    const total = poolState.rewardTotals[currentUserId] ?? 0;
+    const delta = total - appliedRewardRef.current;
+    if (delta <= 0) return;
+    appliedRewardRef.current = total;
+    void recordArcadeResult({ goldEarned: delta });
+  }, [currentUserId, poolState.rewardTotals]);
 
   const broadcastState = async (nextState: PoolState) => {
     setPoolState(nextState);
@@ -339,8 +381,6 @@ const Pool: React.FC = () => {
 
       if (nextPlayers.length < 2) {
         setPoolState(DEFAULT_STATE);
-      } else if (stateRef.current.phase === "waiting" && isHostRef.current) {
-        void broadcastState(createInitialState(nextPlayers));
       }
     };
 
@@ -367,14 +407,44 @@ const Pool: React.FC = () => {
 
       channel.on("presence", { event: "sync" }, syncPresence);
       channel.on("broadcast", { event: "pool-state" }, ({ payload }) => {
-        const nextState = payload as PoolState;
-        setPoolState(nextState);
+        setPoolState(payload as PoolState);
       });
       channel.on("broadcast", { event: "pool-shot" }, ({ payload }) => {
         if (!isHostRef.current) return;
-        const shot = payload as ShotPayload;
-        const nextState = applyShotToState(stateRef.current, playersRef.current, shot);
-        if (!nextState) return;
+        const nextState = applyShotToState(stateRef.current, playersRef.current, payload as ShotPayload);
+        if (nextState) {
+          void broadcastState(nextState);
+        }
+      });
+      channel.on("broadcast", { event: "pool-place-cue" }, ({ payload }) => {
+        if (!isHostRef.current) return;
+        const placement = payload as PlaceCuePayload;
+        const currentState = stateRef.current;
+        if (
+          currentState.phase !== "playing" ||
+          currentState.cueBallInHandForId !== placement.userId ||
+          !canPlaceCueBall(currentState.balls, placement.x, placement.y)
+        ) {
+          return;
+        }
+
+        const nextState: PoolState = {
+          ...currentState,
+          balls: currentState.balls.map((ball) =>
+            ball.isCue
+              ? {
+                  ...ball,
+                  pocketed: false,
+                  x: placement.x,
+                  y: placement.y,
+                  vx: 0,
+                  vy: 0
+                }
+              : ball
+          ),
+          cueBallInHandForId: null,
+          message: "Cue ball placed. Take the shot."
+        };
         void broadcastState(nextState);
       });
 
@@ -435,8 +505,8 @@ const Pool: React.FC = () => {
       if (currentState.phase !== "playing") return;
 
       const nextBalls = currentState.balls.map((ball) => ({ ...ball }));
-      let cueScratch = false;
-      const pocketedThisTick: Ball[] = [];
+      let newPocketedIds = [...currentState.shotPocketedIds];
+      let shotScratch = currentState.shotScratch;
 
       nextBalls.forEach((ball) => {
         if (ball.pocketed) return;
@@ -444,7 +514,6 @@ const Pool: React.FC = () => {
         ball.y += ball.vy;
         ball.vx *= FRICTION;
         ball.vy *= FRICTION;
-
         if (Math.abs(ball.vx) < MIN_SPEED) ball.vx = 0;
         if (Math.abs(ball.vy) < MIN_SPEED) ball.vy = 0;
 
@@ -492,7 +561,6 @@ const Pool: React.FC = () => {
           const dpTanB = b.vx * tx + b.vy * ty;
           const dpNormA = a.vx * nx + a.vy * ny;
           const dpNormB = b.vx * nx + b.vy * ny;
-
           a.vx = tx * dpTanA + nx * dpNormB;
           a.vy = ty * dpTanA + ny * dpNormB;
           b.vx = tx * dpTanB + nx * dpNormA;
@@ -508,9 +576,11 @@ const Pool: React.FC = () => {
         ball.pocketed = true;
         ball.vx = 0;
         ball.vy = 0;
-        pocketedThisTick.push(ball);
+        if (!newPocketedIds.includes(ball.id)) {
+          newPocketedIds.push(ball.id);
+        }
         if (ball.isCue) {
-          cueScratch = true;
+          shotScratch = true;
         }
       });
 
@@ -520,14 +590,19 @@ const Pool: React.FC = () => {
 
       let nextState: PoolState = {
         ...currentState,
-        balls: nextBalls
+        balls: nextBalls,
+        shotPocketedIds: newPocketedIds,
+        shotScratch
       };
 
-      if (!moving && pocketedThisTick.length > 0) {
-        const shooterId = currentState.currentTurnId;
-        const opponentId = shooterId ? getOpponentId(playersRef.current, shooterId) : null;
-        const firstObjectBall = pocketedThisTick.find((ball) => !ball.isCue && !ball.isEight) ?? null;
+      if (!moving && currentState.shotOwnerId) {
+        const shooterId = currentState.shotOwnerId;
+        const opponentId = getOpponentId(playersRef.current, shooterId);
         const nextGroups = { ...currentState.groups };
+        const pocketedBalls = newPocketedIds
+          .map((id) => nextBalls.find((ball) => ball.id === id) ?? null)
+          .filter((ball): ball is Ball => Boolean(ball));
+        const firstObjectBall = pocketedBalls.find((ball) => !ball.isCue && !ball.isEight) ?? null;
 
         if (shooterId && opponentId && !nextGroups[shooterId] && firstObjectBall) {
           const shooterGroup = getGroupForBall(firstObjectBall);
@@ -535,51 +610,78 @@ const Pool: React.FC = () => {
           nextGroups[opponentId] = shooterGroup === "stripes" ? "solids" : "stripes";
         }
 
-        const eightBallPocketed = pocketedThisTick.some((ball) => ball.isEight);
-        const shooterGroup = shooterId ? nextGroups[shooterId] : null;
-        const shooterClearedGroup = nextBalls.every((ball) => {
-          if (ball.pocketed || ball.isCue || ball.isEight) return true;
+        const shooterGroup = nextGroups[shooterId];
+        const shooterPocketedOwnGroup = Boolean(
+          shooterGroup &&
+            pocketedBalls.some((ball) => getGroupForBall(ball) === shooterGroup)
+        );
+        const remainingShooterGroupBalls = nextBalls.filter((ball) => {
+          if (ball.pocketed || ball.isCue || ball.isEight) return false;
           if (!shooterGroup) return false;
-          return shooterGroup === "stripes" ? !ball.isStripe : ball.isStripe;
+          return shooterGroup === "stripes" ? ball.isStripe : !ball.isStripe;
         });
+        const eightBallPocketed = pocketedBalls.some((ball) => ball.isEight);
 
         if (eightBallPocketed) {
-          const legalWin = Boolean(shooterId && shooterGroup && shooterClearedGroup && !cueScratch);
+          const legalWin = Boolean(shooterGroup && remainingShooterGroupBalls.length === 0 && !shotScratch);
+          const winnerId = legalWin ? shooterId : opponentId;
           nextState = {
             ...nextState,
             phase: "gameOver",
+            winnerId,
             groups: nextGroups,
-            winnerId: legalWin ? shooterId : opponentId,
+            currentTurnId: null,
+            cueBallInHandForId: null,
+            shotOwnerId: null,
+            shotPocketedIds: [],
+            shotScratch: false,
+            rewardTotals: legalWin && winnerId
+              ? {
+                  ...currentState.rewardTotals,
+                  [winnerId]: (currentState.rewardTotals[winnerId] ?? 0) + WIN_REWARD_GOLD
+                }
+              : currentState.rewardTotals,
             message: legalWin
               ? `${playersRef.current.find((player) => player.userId === shooterId)?.username ?? "Player"} sinks the eight ball and wins.`
-              : `${playersRef.current.find((player) => player.userId === opponentId)?.username ?? "Player"} wins after an early eight ball.`
+              : `${playersRef.current.find((player) => player.userId === opponentId)?.username ?? "Player"} wins after an illegal eight ball.`
           };
         } else {
-          if (cueScratch) {
+          const rewardTotals = { ...currentState.rewardTotals };
+          const rewardedBalls = pocketedBalls.filter((ball) => {
+            if (ball.isCue || ball.isEight) {
+              return false;
+            }
+            if (!shooterGroup) {
+              return getGroupForBall(ball) === getGroupForBall(firstObjectBall ?? ball);
+            }
+            return getGroupForBall(ball) === shooterGroup;
+          });
+          rewardTotals[shooterId] = (rewardTotals[shooterId] ?? 0) + rewardedBalls.length * BALL_REWARD_GOLD;
+
+          if (shotScratch) {
             const cue = nextBalls.find((ball) => ball.isCue);
             if (cue) {
               cue.pocketed = false;
+              cue.vx = 0;
+              cue.vy = 0;
               cue.x = PLAY_X + PLAY_WIDTH * 0.24;
               cue.y = PLAY_Y + PLAY_HEIGHT / 2;
             }
           }
 
-          const pocketedOwnGroup = Boolean(
-            shooterId &&
-              shooterGroup &&
-              pocketedThisTick.some((ball) => getGroupForBall(ball) === shooterGroup)
-          );
-          const keepTurn = !cueScratch && pocketedOwnGroup;
-
+          const nextTurnId = opponentId;
           nextState = {
             ...nextState,
             groups: nextGroups,
-            currentTurnId: keepTurn ? shooterId : opponentId,
-            message: cueScratch
-              ? "Scratch. Turn passes."
-              : keepTurn
-                ? "Ball down. Shoot again."
-                : "Turn passes."
+            rewardTotals,
+            currentTurnId: nextTurnId,
+            cueBallInHandForId: shotScratch ? opponentId : null,
+            shotOwnerId: null,
+            shotPocketedIds: [],
+            shotScratch: false,
+            message: shotScratch
+              ? "Scratch. Opponent has ball in hand."
+              : "Turn passes."
           };
         }
       }
@@ -644,31 +746,37 @@ const Pool: React.FC = () => {
       });
 
       const currentCue = currentState.balls.find((ball) => ball.isCue);
-      const canDrawGuide =
+      const canGuide =
         currentCue &&
         !currentCue.pocketed &&
         currentState.phase === "playing" &&
         currentState.currentTurnId === currentUserIdRef.current &&
+        currentState.cueBallInHandForId === null &&
         currentState.balls.every(
           (ball) => ball.pocketed || (Math.abs(ball.vx) < MIN_SPEED && Math.abs(ball.vy) < MIN_SPEED)
         );
 
-      if (currentCue && canDrawGuide) {
-        const guide = getCardinalGuide(currentCue, activeAim.x, activeAim.y);
-        const guideLength = 92;
+      if (currentCue && canGuide) {
+        const aim = getAimVector(currentCue, activeAim.x, activeAim.y);
         context.strokeStyle = "rgba(255,255,255,0.6)";
         context.lineWidth = 2;
         context.beginPath();
         context.moveTo(currentCue.x, currentCue.y);
-        context.lineTo(currentCue.x + guide.x * guideLength, currentCue.y + guide.y * guideLength);
+        context.lineTo(currentCue.x + aim.x * 92, currentCue.y + aim.y * 92);
         context.stroke();
 
         context.strokeStyle = aimLocked ? "rgba(251,191,36,0.72)" : "rgba(255,255,255,0.18)";
         context.lineWidth = 6;
         context.beginPath();
-        context.moveTo(currentCue.x - guide.x * 24, currentCue.y - guide.y * 24);
-        context.lineTo(currentCue.x - guide.x * (38 + power * 18), currentCue.y - guide.y * (38 + power * 18));
+        context.moveTo(currentCue.x - aim.x * 24, currentCue.y - aim.y * 24);
+        context.lineTo(currentCue.x - aim.x * (38 + power * 18), currentCue.y - aim.y * (38 + power * 18));
         context.stroke();
+      }
+
+      if (currentState.cueBallInHandForId === currentUserIdRef.current) {
+        context.strokeStyle = "rgba(96,165,250,0.8)";
+        context.lineWidth = 2;
+        context.strokeRect(PLAY_X + BALL_RADIUS, PLAY_Y + BALL_RADIUS, PLAY_WIDTH - BALL_RADIUS * 2, PLAY_HEIGHT - BALL_RADIUS * 2);
       }
 
       context.fillStyle = "#111827";
@@ -695,6 +803,43 @@ const Pool: React.FC = () => {
     };
   }, [activeAim.x, activeAim.y, aimLocked, power]);
 
+  const placeCueBall = async (x: number, y: number) => {
+    if (!canPlaceCue || !currentUserId || !channelRef.current) return;
+    if (!canPlaceCueBall(stateRef.current.balls, x, y)) return;
+
+    if (isHost) {
+      const nextState: PoolState = {
+        ...stateRef.current,
+        balls: stateRef.current.balls.map((ball) =>
+          ball.isCue
+            ? {
+                ...ball,
+                pocketed: false,
+                x,
+                y,
+                vx: 0,
+                vy: 0
+              }
+            : ball
+        ),
+        cueBallInHandForId: null,
+        message: "Cue ball placed. Take the shot."
+      };
+      await broadcastState(nextState);
+      return;
+    }
+
+    await channelRef.current.send({
+      type: "broadcast",
+      event: "pool-place-cue",
+      payload: {
+        userId: currentUserId,
+        x,
+        y
+      } satisfies PlaceCuePayload
+    });
+  };
+
   const sendShot = async () => {
     if (!currentUserId || !canShoot || !channelRef.current) {
       return;
@@ -720,6 +865,7 @@ const Pool: React.FC = () => {
         payload: shot
       });
     }
+
     setAimLocked(false);
     setLockedAim(null);
   };
@@ -728,6 +874,12 @@ const Pool: React.FC = () => {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * TABLE_WIDTH;
     const y = ((event.clientY - rect.top) / rect.height) * TABLE_HEIGHT;
+
+    if (canPlaceCue) {
+      void placeCueBall(x, y);
+      return;
+    }
+
     mouseRef.current = {
       x,
       y,
@@ -740,9 +892,7 @@ const Pool: React.FC = () => {
       y >= POWER_BAR_Y &&
       y <= POWER_BAR_Y + POWER_BAR_HEIGHT
     ) {
-      if (!aimLocked) {
-        return;
-      }
+      if (!aimLocked) return;
       draggingPowerRef.current = true;
       setPower(clamp(1 - (y - POWER_BAR_Y) / POWER_BAR_HEIGHT, 0.12, 1));
       return;
@@ -763,6 +913,7 @@ const Pool: React.FC = () => {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * TABLE_WIDTH;
     const y = ((event.clientY - rect.top) / rect.height) * TABLE_HEIGHT;
+
     if (!aimLocked) {
       mouseRef.current = {
         x,
@@ -787,12 +938,12 @@ const Pool: React.FC = () => {
     await broadcastState(createInitialState(players));
     setAimLocked(false);
     setLockedAim(null);
+    appliedRewardRef.current = 0;
   };
 
-  const myGroup = currentUserId ? poolState.groups[currentUserId] : null;
   const opponent = players.find((player) => player.userId !== currentUserId) ?? null;
+  const myGroup = currentUserId ? poolState.groups[currentUserId] : null;
   const opponentGroup = opponent ? poolState.groups[opponent.userId] : null;
-  const myName = players.find((player) => player.userId === currentUserId)?.username ?? currentUsername;
 
   return (
     <div className="page">
@@ -802,7 +953,7 @@ const Pool: React.FC = () => {
         <p>Two-player table. Click once to lock your aim, then drag the power bar and release to shoot. First made ball assigns solids or stripes.</p>
         <div className="info">
           Seats filled: {Math.min(players.length, 2)}/2
-          {connected && !roomFull ? ` | ${myName}` : ""}
+          {connected && !roomFull ? ` | ${currentUsername}` : ""}
           {poolState.currentTurnId ? ` | Turn: ${players.find((player) => player.userId === poolState.currentTurnId)?.username ?? "Player"}` : ""}
         </div>
         {roomFull && !isSeated ? (
@@ -833,7 +984,7 @@ const Pool: React.FC = () => {
                 border: "1px solid #334155",
                 background: "#4b2e19",
                 touchAction: "none",
-                cursor: canShoot ? "crosshair" : "default"
+                cursor: canPlaceCue ? "copy" : canShoot ? "crosshair" : "default"
               }}
             />
             <p className="info">{poolState.message}</p>
