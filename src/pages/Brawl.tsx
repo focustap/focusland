@@ -128,6 +128,8 @@ type Effect = {
   radius: number;
   color: string;
   ttlMs: number;
+  x2?: number;
+  y2?: number;
 };
 
 type LavaHazard = {
@@ -165,7 +167,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const NETWORK_RENDER_WINDOW_MS = 60;
-const BRAWL_VERSION = "0.4";
+const BRAWL_VERSION = "0.5";
 const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
 const LAVA_LANES = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72];
@@ -249,7 +251,7 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     specialSpeed: 6,
     specialColor: "#fb923c",
     specialGravity: 0.03,
-    specialCooldownMs: 720,
+    specialCooldownMs: 5400,
     specialChargeGain: 8,
     ultimateDamage: 28,
     ultimateRadius: 18,
@@ -279,7 +281,7 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     specialSpeed: 8.4,
     specialColor: "#e2e8f0",
     specialGravity: 0,
-    specialCooldownMs: 430,
+    specialCooldownMs: 5200,
     specialChargeGain: 10,
     ultimateDamage: 22,
     ultimateRadius: 13,
@@ -309,7 +311,7 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     specialSpeed: 10.8,
     specialColor: "#fef08a",
     specialGravity: 0.008,
-    specialCooldownMs: 560,
+    specialCooldownMs: 5600,
     specialChargeGain: 7,
     ultimateDamage: 11,
     ultimateRadius: 9,
@@ -339,7 +341,7 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     specialSpeed: 9.4,
     specialColor: "#4ade80",
     specialGravity: 0.18,
-    specialCooldownMs: 260,
+    specialCooldownMs: 5800,
     specialChargeGain: 9,
     ultimateDamage: 18,
     ultimateRadius: 18,
@@ -369,7 +371,7 @@ const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     specialSpeed: 8.2,
     specialColor: "#fbbf24",
     specialGravity: 0,
-    specialCooldownMs: 420,
+    specialCooldownMs: 5500,
     specialChargeGain: 10,
     ultimateDamage: 21,
     ultimateRadius: 20,
@@ -1172,6 +1174,16 @@ const Brawl: React.FC = () => {
                 );
                 state.vx += aimVector.x * 2.8;
                 nextEffects.push(createEffect((state.x + target.x) / 2, (state.y + target.y) / 2, config.specialColor, 20, 180));
+                nextEffects.push({
+                  id: `chain-${player.userId}-${Date.now()}-${Math.random()}`,
+                  x: state.x + aimVector.x * 18,
+                  y: state.y - 4 + aimVector.y * 10,
+                  x2: target.x,
+                  y2: target.y,
+                  radius: 3,
+                  color: config.specialColor,
+                  ttlMs: 150
+                });
                 nextMessage = `${player.username} hooked them in with a chain.`;
               }
             }
@@ -1618,7 +1630,7 @@ const Brawl: React.FC = () => {
       } else if (key === "e") {
         event.preventDefault();
         updateInput({ special: true });
-      } else if (key === " ") {
+      } else if (key === "r") {
         event.preventDefault();
         updateInput({ ultimate: true });
       }
@@ -1652,7 +1664,7 @@ const Brawl: React.FC = () => {
       } else if (key === "e") {
         event.preventDefault();
         updateInput({ special: false });
-      } else if (key === " ") {
+      } else if (key === "r") {
         event.preventDefault();
         updateInput({ ultimate: false });
       }
@@ -1990,9 +2002,18 @@ const Brawl: React.FC = () => {
         const effectAlpha = Math.max(effect.ttlMs / 220, 0.12);
         ctx.globalAlpha = effectAlpha;
         ctx.fillStyle = effect.color;
-        ctx.beginPath();
-        ctx.arc(effect.x, effect.y, effect.radius * (1.1 + (1 - effectAlpha)), 0, Math.PI * 2);
-        ctx.fill();
+        if (typeof effect.x2 === "number" && typeof effect.y2 === "number") {
+          ctx.strokeStyle = effect.color;
+          ctx.lineWidth = effect.radius;
+          ctx.beginPath();
+          ctx.moveTo(effect.x, effect.y);
+          ctx.lineTo(effect.x2, effect.y2);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(effect.x, effect.y, effect.radius * (1.1 + (1 - effectAlpha)), 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.globalAlpha = 1;
       });
 
@@ -2221,7 +2242,7 @@ const Brawl: React.FC = () => {
                 <strong>Roster:</strong> Mage fights with bolts and blink spacing, Fighter closes gaps with dashes and chain pulls, Archer plays spacing with shots and a barrage, Assassin chains daggers into knife teleports, Monk pressures with hands, kicks, and a punch flurry.
               </p>
               <p className="brawl-controls">
-                <strong>Controls:</strong> WASD move, Shift dash, mouse aim, left click primary, E utility, Space ultimate.
+                <strong>Controls:</strong> WASD move, Shift dash, mouse aim, left click primary, E utility, R ultimate.
               </p>
             </div>
 
