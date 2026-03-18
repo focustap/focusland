@@ -71,7 +71,7 @@ const BALL_REWARD_GOLD = 1;
 const WIN_REWARD_GOLD = 25;
 const BROADCAST_INTERVAL_MS = 33;
 const UI_SYNC_INTERVAL_MS = 100;
-const POOL_VERSION = "0.2";
+const POOL_VERSION = "0.3";
 
 const POCKETS = [
   { x: PLAY_X, y: PLAY_Y },
@@ -234,121 +234,50 @@ function getAimVector(cueBall: Ball, aimX: number, aimY: number) {
   return { x: dx / len, y: dy / len };
 }
 
-function stepBalls(balls: Ball[]) {
-  const nextBalls = balls.map((ball) => ({ ...ball }));
-
-  nextBalls.forEach((ball) => {
-    if (ball.pocketed) return;
-    ball.x += ball.vx;
-    ball.y += ball.vy;
-    ball.vx *= FRICTION;
-    ball.vy *= FRICTION;
-    if (Math.abs(ball.vx) < MIN_SPEED) ball.vx = 0;
-    if (Math.abs(ball.vy) < MIN_SPEED) ball.vy = 0;
-
-    if (ball.x - BALL_RADIUS <= PLAY_X) {
-      ball.x = PLAY_X + BALL_RADIUS;
-      ball.vx *= -1;
-    }
-    if (ball.x + BALL_RADIUS >= PLAY_X + PLAY_WIDTH) {
-      ball.x = PLAY_X + PLAY_WIDTH - BALL_RADIUS;
-      ball.vx *= -1;
-    }
-    if (ball.y - BALL_RADIUS <= PLAY_Y) {
-      ball.y = PLAY_Y + BALL_RADIUS;
-      ball.vy *= -1;
-    }
-    if (ball.y + BALL_RADIUS >= PLAY_Y + PLAY_HEIGHT) {
-      ball.y = PLAY_Y + PLAY_HEIGHT - BALL_RADIUS;
-      ball.vy *= -1;
-    }
-  });
-
-  let cueCollision: { targetBall: Ball; objectDirection: { x: number; y: number } } | null = null;
-
-  for (let i = 0; i < nextBalls.length; i += 1) {
-    const a = nextBalls[i];
-    if (a.pocketed) continue;
-    for (let j = i + 1; j < nextBalls.length; j += 1) {
-      const b = nextBalls[j];
-      if (b.pocketed) continue;
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const dist = Math.hypot(dx, dy);
-      const minDist = BALL_RADIUS * 2;
-      if (!dist || dist >= minDist) continue;
-
-      const nx = dx / dist;
-      const ny = dy / dist;
-      const overlap = minDist - dist;
-      a.x -= nx * overlap * 0.5;
-      a.y -= ny * overlap * 0.5;
-      b.x += nx * overlap * 0.5;
-      b.y += ny * overlap * 0.5;
-
-      const tx = -ny;
-      const ty = nx;
-      const dpTanA = a.vx * tx + a.vy * ty;
-      const dpTanB = b.vx * tx + b.vy * ty;
-      const dpNormA = a.vx * nx + a.vy * ny;
-      const dpNormB = b.vx * nx + b.vy * ny;
-      a.vx = tx * dpTanA + nx * dpNormB;
-      a.vy = ty * dpTanA + ny * dpNormB;
-      b.vx = tx * dpTanB + nx * dpNormA;
-      b.vy = ty * dpTanB + ny * dpNormA;
-
-      const cueBall = a.isCue ? a : b.isCue ? b : null;
-      const objectBall = a.isCue ? b : b.isCue ? a : null;
-      if (cueBall && objectBall && !cueCollision) {
-        const velocityLength = Math.hypot(objectBall.vx, objectBall.vy) || 1;
-        cueCollision = {
-          targetBall: { ...objectBall },
-          objectDirection: {
-            x: objectBall.vx / velocityLength,
-            y: objectBall.vy / velocityLength
-          }
-        };
-      }
-    }
-  }
-
-  nextBalls.forEach((ball) => {
-    if (ball.pocketed) return;
-    if (!POCKETS.some((pocket) => distance(ball.x, ball.y, pocket.x, pocket.y) <= POCKET_RADIUS)) {
-      return;
-    }
-    ball.pocketed = true;
-    ball.vx = 0;
-    ball.vy = 0;
-  });
-
-  return { balls: nextBalls, cueCollision };
-}
-
 function getShotGuide(cueBall: Ball, balls: Ball[], aimX: number, aimY: number, power: number) {
-  const previewBalls = balls.map((ball) => ({ ...ball, vx: 0, vy: 0 }));
-  const previewCue = previewBalls.find((ball) => ball.isCue);
-  if (!previewCue) return null;
-
   const aim = getAimVector(cueBall, aimX, aimY);
-  previewCue.vx = aim.x * power * MAX_POWER;
-  previewCue.vy = aim.y * power * MAX_POWER;
+  let bestBall: Ball | null = null;
+  let bestImpactDistance = Number.POSITIVE_INFINITY;
+  let bestObjectDirection = aim;
 
-  for (let step = 0; step < 120; step += 1) {
-    const result = stepBalls(previewBalls);
-    previewBalls.splice(0, previewBalls.length, ...result.balls);
-    if (result.cueCollision) {
-      return result.cueCollision;
-    }
+  balls.forEach((ball) => {
+    if (ball.pocketed || ball.isCue) return;
 
-    const previewCueBall = previewBalls.find((ball) => ball.isCue);
-    if (!previewCueBall || previewCueBall.pocketed) return null;
-    if (Math.abs(previewCueBall.vx) < MIN_SPEED && Math.abs(previewCueBall.vy) < MIN_SPEED) {
-      break;
-    }
-  }
+    const toBallX = ball.x - cueBall.x;
+    const toBallY = ball.y - cueBall.y;
+    const projection = toBallX * aim.x + toBallY * aim.y;
+    if (projection <= 0) return;
 
-  return null;
+    const collisionDistance = BALL_RADIUS * 2;
+    const perpendicular = Math.abs(toBallX * aim.y - toBallY * aim.x);
+    if (perpendicular >= collisionDistance) return;
+
+    const impactOffset = Math.sqrt(collisionDistance * collisionDistance - perpendicular * perpendicular);
+    const impactDistance = projection - impactOffset;
+    if (impactDistance <= 0 || impactDistance >= bestImpactDistance) return;
+
+    const cueImpactX = cueBall.x + aim.x * impactDistance;
+    const cueImpactY = cueBall.y + aim.y * impactDistance;
+    const normalX = ball.x - cueImpactX;
+    const normalY = ball.y - cueImpactY;
+    const normalLength = Math.hypot(normalX, normalY) || 1;
+
+    bestBall = ball;
+    bestImpactDistance = impactDistance;
+    bestObjectDirection = {
+      x: normalX / normalLength,
+      y: normalY / normalLength
+    };
+  });
+
+  if (!bestBall) return null;
+
+  const guideScale = 64 + power * 18;
+  return {
+    ball: bestBall,
+    objectDirection: bestObjectDirection,
+    guideLength: guideScale
+  };
 }
 
 function applyShotToState(currentState: PoolState, players: PlayerPresence[], shot: ShotPayload) {
@@ -933,7 +862,10 @@ const Pool: React.FC = () => {
           context.lineWidth = 2;
           context.beginPath();
           context.moveTo(targetBall.x, targetBall.y);
-          context.lineTo(targetBall.x + objectDir.x * 72, targetBall.y + objectDir.y * 72);
+          context.lineTo(
+            targetBall.x + objectDir.x * shotGuide.guideLength,
+            targetBall.y + objectDir.y * shotGuide.guideLength
+          );
           context.stroke();
 
           context.strokeStyle = "rgba(255,255,255,0.28)";
