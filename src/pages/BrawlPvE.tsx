@@ -12,10 +12,14 @@ type CharacterConfig = {
   color: string;
   accent: string;
   speed: number;
+  jumpPower: number;
   dashPower: number;
   primaryDamage: number;
   primaryRange: number;
   primaryCooldownMs: number;
+  specialCooldownMs: number;
+  specialDamage: number;
+  ultimateDamage: number;
 };
 
 type BossDefinition = {
@@ -31,9 +35,12 @@ type PlayerState = {
   vx: number;
   vy: number;
   hp: number;
+  onGround: boolean;
   dashCooldownMs: number;
   attackCooldownMs: number;
+  specialCooldownMs: number;
   invulnMs: number;
+  ultimateCharge: number;
   facing: 1 | -1;
 };
 
@@ -64,13 +71,26 @@ const FLOOR_Y = 430;
 const PLAYER_SIZE = 34;
 const BOSS_WIDTH = 110;
 const BOSS_HEIGHT = 140;
+const GRAVITY = 0.68;
+const MAX_FALL_SPEED = 12;
+const ULTIMATE_CHARGE_MAX = 100;
+const PVE_VERSION = "0.2";
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeVector(dx: number, dy: number) {
+  const length = Math.hypot(dx, dy) || 1;
+  return { x: dx / length, y: dy / length, length };
+}
 
 const CHARACTERS: Record<CharacterId, CharacterConfig> = {
-  mage: { id: "mage", name: "Mage", color: "#8b5cf6", accent: "#c4b5fd", speed: 4.1, dashPower: 9.8, primaryDamage: 11, primaryRange: 160, primaryCooldownMs: 300 },
-  fighter: { id: "fighter", name: "Fighter", color: "#ef4444", accent: "#fecaca", speed: 4.4, dashPower: 12.2, primaryDamage: 17, primaryRange: 72, primaryCooldownMs: 360 },
-  archer: { id: "archer", name: "Archer", color: "#10b981", accent: "#a7f3d0", speed: 4.65, dashPower: 9.3, primaryDamage: 10, primaryRange: 190, primaryCooldownMs: 380 },
-  assassin: { id: "assassin", name: "Assassin", color: "#22c55e", accent: "#bbf7d0", speed: 4.9, dashPower: 12.2, primaryDamage: 14, primaryRange: 78, primaryCooldownMs: 220 },
-  monk: { id: "monk", name: "Monk", color: "#f59e0b", accent: "#fde68a", speed: 4.55, dashPower: 12.2, primaryDamage: 15, primaryRange: 82, primaryCooldownMs: 260 }
+  mage: { id: "mage", name: "Mage", color: "#8b5cf6", accent: "#c4b5fd", speed: 4.1, jumpPower: -11.2, dashPower: 9.8, primaryDamage: 11, primaryRange: 160, primaryCooldownMs: 300, specialCooldownMs: 4400, specialDamage: 14, ultimateDamage: 30 },
+  fighter: { id: "fighter", name: "Fighter", color: "#ef4444", accent: "#fecaca", speed: 4.4, jumpPower: -10.9, dashPower: 12.2, primaryDamage: 17, primaryRange: 72, primaryCooldownMs: 360, specialCooldownMs: 4800, specialDamage: 20, ultimateDamage: 34 },
+  archer: { id: "archer", name: "Archer", color: "#10b981", accent: "#a7f3d0", speed: 4.65, jumpPower: -11.5, dashPower: 9.3, primaryDamage: 10, primaryRange: 190, primaryCooldownMs: 380, specialCooldownMs: 5000, specialDamage: 16, ultimateDamage: 28 },
+  assassin: { id: "assassin", name: "Assassin", color: "#22c55e", accent: "#bbf7d0", speed: 4.9, jumpPower: -11.3, dashPower: 12.2, primaryDamage: 14, primaryRange: 78, primaryCooldownMs: 220, specialCooldownMs: 4600, specialDamage: 18, ultimateDamage: 30 },
+  monk: { id: "monk", name: "Monk", color: "#f59e0b", accent: "#fde68a", speed: 4.55, jumpPower: -11.1, dashPower: 12.2, primaryDamage: 15, primaryRange: 82, primaryCooldownMs: 260, specialCooldownMs: 4700, specialDamage: 18, ultimateDamage: 32 }
 };
 
 const BOSSES: Record<string, BossDefinition> = {
@@ -94,15 +114,22 @@ const BrawlPvE: React.FC = () => {
   const [lost, setLost] = useState(false);
   const keysRef = useRef<Record<string, boolean>>({});
   const mouseRef = useRef({ x: WIDTH / 2, y: HEIGHT / 2 });
+  const mouseDownRef = useRef(false);
+  const jumpLatchRef = useRef(false);
+  const specialLatchRef = useRef(false);
+  const ultimateLatchRef = useRef(false);
   const playerRef = useRef<PlayerState>({
     x: 180,
     y: FLOOR_Y,
     vx: 0,
     vy: 0,
     hp: 100,
+    onGround: true,
     dashCooldownMs: 0,
     attackCooldownMs: 0,
+    specialCooldownMs: 0,
     invulnMs: 0,
+    ultimateCharge: 0,
     facing: 1
   });
   const bossRef = useRef<BossState>({
@@ -173,10 +200,12 @@ const BrawlPvE: React.FC = () => {
       const boss = bossRef.current;
       const character = CHARACTERS[selectedCharacter];
       const keys = keysRef.current;
+      const aimVector = normalizeVector(mouseRef.current.x - player.x, mouseRef.current.y - (player.y - 18));
 
       if (!won && !lost) {
         player.attackCooldownMs = Math.max(0, player.attackCooldownMs - dt);
         player.dashCooldownMs = Math.max(0, player.dashCooldownMs - dt);
+        player.specialCooldownMs = Math.max(0, player.specialCooldownMs - dt);
         player.invulnMs = Math.max(0, player.invulnMs - dt);
         boss.attackCooldownMs = Math.max(0, boss.attackCooldownMs - dt);
 
@@ -188,6 +217,15 @@ const BrawlPvE: React.FC = () => {
           player.facing = moveX > 0 ? 1 : -1;
         }
 
+        const jumpPressed = Boolean(keys.w || keys.arrowup || keys[" "]);
+        if (!jumpPressed) {
+          jumpLatchRef.current = false;
+        } else if (!jumpLatchRef.current && player.onGround) {
+          jumpLatchRef.current = true;
+          player.vy = character.jumpPower;
+          player.onGround = false;
+        }
+
         const dashPressed = Boolean(keys.shift);
         if (!dashPressed) {
           dashLatchRef.current = false;
@@ -197,16 +235,24 @@ const BrawlPvE: React.FC = () => {
           player.dashCooldownMs = 440;
         }
 
-        player.x = Math.max(34, Math.min(WIDTH - 34, player.x + player.vx));
+        player.vy = Math.min(MAX_FALL_SPEED, player.vy + GRAVITY);
+        player.x = clamp(player.x + player.vx, 34, WIDTH - 34);
+        player.y += player.vy;
+        if (player.y >= FLOOR_Y) {
+          player.y = FLOOR_Y;
+          player.vy = 0;
+          player.onGround = true;
+        }
 
-        if ((keys[" "] || keys.enter) && player.attackCooldownMs === 0) {
+        if (mouseDownRef.current && player.attackCooldownMs === 0) {
           player.attackCooldownMs = character.primaryCooldownMs;
           const dx = boss.x - player.x;
-          const dy = (boss.y - 36) - player.y;
+          const dy = (boss.y - 48) - (player.y - 18);
           const inRange = Math.hypot(dx, dy) <= character.primaryRange;
-          const aimingForward = Math.sign(dx || player.facing) === player.facing || Math.abs(dx) < 18;
+          const aimingForward = aimVector.x * Math.sign(dx || player.facing) > -0.15;
           if (inRange && aimingForward) {
             boss.hp = Math.max(0, boss.hp - character.primaryDamage);
+            player.ultimateCharge = Math.min(ULTIMATE_CHARGE_MAX, player.ultimateCharge + 14);
             setStatus(`${character.name} landed a hit on ${bossDef?.name ?? "the boss"}.`);
             if (boss.hp <= boss.maxHp / 2) {
               boss.phase = 2;
@@ -218,6 +264,60 @@ const BrawlPvE: React.FC = () => {
                 completeBrawlPveBoss(bossDef.id, bossDef.nextBossId);
                 void recordArcadeResult({ goldEarned: bossDef.goldReward });
               }
+            }
+          }
+        }
+
+        const specialPressed = Boolean(keys.e);
+        if (!specialPressed) {
+          specialLatchRef.current = false;
+        } else if (!specialLatchRef.current && player.specialCooldownMs === 0) {
+          specialLatchRef.current = true;
+          player.specialCooldownMs = character.specialCooldownMs;
+          if (selectedCharacter === "mage") {
+            player.x = clamp(player.x + (aimVector.x >= 0 ? 1 : -1) * 120, 34, WIDTH - 34);
+            setStatus("Mage blinked through the arena.");
+          } else if (selectedCharacter === "archer") {
+            player.vy = character.jumpPower * 0.95;
+            player.vx = -player.facing * 4.2;
+            player.onGround = false;
+            setStatus("Archer vaulted away.");
+          } else if (selectedCharacter === "monk") {
+            player.vx -= aimVector.x * 8.5;
+            player.vy = Math.min(player.vy, -3.6);
+            player.onGround = false;
+            if (Math.hypot(boss.x - player.x, (boss.y - 40) - player.y) <= 92) {
+              boss.hp = Math.max(0, boss.hp - character.specialDamage);
+              player.ultimateCharge = Math.min(ULTIMATE_CHARGE_MAX, player.ultimateCharge + 18);
+            }
+            setStatus("Monk fired off a recoil kick.");
+          } else {
+            player.vx += aimVector.x * 4.4;
+            player.vy = Math.min(player.vy, -2.6);
+            if (Math.hypot(boss.x - player.x, (boss.y - 40) - player.y) <= 100) {
+              boss.hp = Math.max(0, boss.hp - character.specialDamage);
+              player.ultimateCharge = Math.min(ULTIMATE_CHARGE_MAX, player.ultimateCharge + 18);
+            }
+            setStatus(`${character.name} used a utility strike.`);
+          }
+        }
+
+        const ultimatePressed = Boolean(keys.r);
+        if (!ultimatePressed) {
+          ultimateLatchRef.current = false;
+        } else if (!ultimateLatchRef.current && player.ultimateCharge >= ULTIMATE_CHARGE_MAX) {
+          ultimateLatchRef.current = true;
+          player.ultimateCharge = 0;
+          if (Math.hypot(boss.x - player.x, (boss.y - 46) - player.y) <= (selectedCharacter === "archer" ? 230 : 115)) {
+            boss.hp = Math.max(0, boss.hp - character.ultimateDamage);
+          }
+          setStatus(`${character.name} unleashed their ultimate.`);
+          if (boss.hp <= 0 && !won) {
+            setWon(true);
+            setStatus("Boss defeated. The next gate is open.");
+            if (bossDef) {
+              completeBrawlPveBoss(bossDef.id, bossDef.nextBossId);
+              void recordArcadeResult({ goldEarned: bossDef.goldReward });
             }
           }
         }
@@ -349,23 +449,47 @@ const BrawlPvE: React.FC = () => {
       ctx.fillStyle = character.color;
       ctx.fillRect(player.x - PLAYER_SIZE / 2, player.y - PLAYER_SIZE, PLAYER_SIZE, PLAYER_SIZE);
       ctx.fillStyle = character.accent;
-      ctx.fillRect(player.x + player.facing * 8, player.y - 24, 12, 8);
+      ctx.fillRect(player.x + aimVector.x * 10, player.y - 24 + aimVector.y * 8, 12, 8);
       ctx.restore();
 
+      ctx.fillStyle = "rgba(2, 6, 23, 0.72)";
+      ctx.fillRect(18, 16, 228, 98);
+      ctx.fillStyle = character.color;
+      ctx.fillRect(18, 16, 10, 98);
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = "15px monospace";
+      ctx.fillText(character.name, 36, 36);
+      ctx.fillStyle = character.accent;
+      ctx.fillText("PvE Loadout", 36, 56);
+      ctx.fillStyle = "#1e293b";
+      ctx.fillRect(36, 64, 150, 10);
+      ctx.fillStyle = player.hp > 55 ? "#22c55e" : player.hp > 28 ? "#f59e0b" : "#ef4444";
+      ctx.fillRect(36, 64, 150 * (player.hp / 100), 10);
+      ctx.fillStyle = "#1e293b";
+      ctx.fillRect(36, 79, 150, 6);
+      ctx.fillStyle = character.accent;
+      ctx.fillRect(36, 79, 150 * (player.ultimateCharge / ULTIMATE_CHARGE_MAX), 6);
+      ctx.fillStyle = "#f8fafc";
+      ctx.font = "12px monospace";
+      ctx.fillText(`HP ${player.hp.toFixed(0)}`, 194, 72);
+      ctx.fillStyle = player.specialCooldownMs === 0 ? "#93c5fd" : "#94a3b8";
+      ctx.fillText(
+        player.specialCooldownMs === 0 ? "E READY" : `E ${(player.specialCooldownMs / 1000).toFixed(1)}s`,
+        36,
+        102
+      );
+      ctx.fillStyle = player.ultimateCharge >= ULTIMATE_CHARGE_MAX ? "#fcd34d" : "#94a3b8";
+      ctx.fillText(player.ultimateCharge >= ULTIMATE_CHARGE_MAX ? "R READY" : "R CHARGING", 136, 102);
+
+      ctx.fillStyle = "rgba(2, 6, 23, 0.78)";
+      ctx.fillRect(WIDTH - 264, 16, 240, 54);
       ctx.fillStyle = "#e2e8f0";
-      ctx.fillRect(24, 20, 240, 16);
+      ctx.fillRect(WIDTH - 246, 38, 204, 14);
       ctx.fillStyle = "#ef4444";
-      ctx.fillRect(24, 20, 240 * (boss.hp / boss.maxHp), 16);
+      ctx.fillRect(WIDTH - 246, 38, 204 * (boss.hp / boss.maxHp), 14);
       ctx.fillStyle = "#f8fafc";
       ctx.font = "bold 16px sans-serif";
-      ctx.fillText(bossDef?.name ?? "Boss", 24, 16);
-
-      ctx.fillStyle = "#1e293b";
-      ctx.fillRect(WIDTH - 264, 20, 240, 16);
-      ctx.fillStyle = character.color;
-      ctx.fillRect(WIDTH - 264, 20, 240 * (player.hp / 100), 16);
-      ctx.fillStyle = "#f8fafc";
-      ctx.fillText(`${character.name} HP`, WIDTH - 264, 16);
+      ctx.fillText(bossDef?.name ?? "Boss", WIDTH - 246, 32);
 
       animationRef.current = window.requestAnimationFrame(update);
     };
@@ -386,9 +510,12 @@ const BrawlPvE: React.FC = () => {
       vx: 0,
       vy: 0,
       hp: 100,
+      onGround: true,
       dashCooldownMs: 0,
       attackCooldownMs: 0,
+      specialCooldownMs: 0,
       invulnMs: 0,
+      ultimateCharge: 0,
       facing: 1
     };
     bossRef.current = {
@@ -411,7 +538,7 @@ const BrawlPvE: React.FC = () => {
     <div className="page">
       <NavBar />
       <div className="content card" style={{ maxWidth: 980 }}>
-        <h2>{bossDef?.name ?? "Boss Arena"}</h2>
+        <h2>{bossDef?.name ?? "Boss Arena"} PvE v{PVE_VERSION}</h2>
         <p>First PvE slice. Pick a class, dodge telegraphed mechanics, and wear the boss down. Multiplayer support is the next layer after this prototype loop.</p>
 
         {!selectedCharacter && (
@@ -448,6 +575,15 @@ const BrawlPvE: React.FC = () => {
               ref={canvasRef}
               width={WIDTH}
               height={HEIGHT}
+              onMouseDown={() => {
+                mouseDownRef.current = true;
+              }}
+              onMouseUp={() => {
+                mouseDownRef.current = false;
+              }}
+              onMouseLeave={() => {
+                mouseDownRef.current = false;
+              }}
               onMouseMove={(event) => {
                 const rect = event.currentTarget.getBoundingClientRect();
                 mouseRef.current = {
@@ -466,7 +602,7 @@ const BrawlPvE: React.FC = () => {
               }}
             />
             <p className="info">{status}</p>
-            <p className="score-display">Controls: `A/D` move, `Shift` dash, `Space` attack. This first PvE slice is singleplayer-focused; 1-4 player syncing is the next pass.</p>
+            <p className="score-display">Controls: `A/D` move, `W/Space` jump, `Shift` dash, mouse aim, left click primary, `E` utility, `R` ultimate.</p>
           </>
         )}
       </div>
