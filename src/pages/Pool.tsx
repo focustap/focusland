@@ -53,6 +53,11 @@ type PlaceCuePayload = {
   y: number;
 };
 
+type TurnResultPayload = {
+  shot: ShotPayload;
+  finalState: PoolState;
+};
+
 const ROOM_NAME = "focusland-pool";
 const TABLE_WIDTH = 920;
 const TABLE_HEIGHT = 520;
@@ -71,7 +76,7 @@ const BALL_REWARD_GOLD = 1;
 const WIN_REWARD_GOLD = 25;
 const BROADCAST_INTERVAL_MS = 80;
 const UI_SYNC_INTERVAL_MS = 100;
-const POOL_VERSION = "0.5";
+const POOL_VERSION = "0.6";
 
 const POCKETS = [
   { x: PLAY_X, y: PLAY_Y },
@@ -316,6 +321,108 @@ function applyShotToState(currentState: PoolState, players: PlayerPresence[], sh
   } satisfies PoolState;
 }
 
+function resolveShotEnd(currentState: PoolState, nextBalls: Ball[], players: PlayerPresence[]) {
+  const shooterId = currentState.shotOwnerId;
+  if (!shooterId) {
+    return {
+      ...currentState,
+      balls: nextBalls
+    } satisfies PoolState;
+  }
+
+  const opponentId = getOpponentId(players, shooterId);
+  const nextGroups = { ...currentState.groups };
+  const pocketedBalls = currentState.shotPocketedIds
+    .map((id) => nextBalls.find((ball) => ball.id === id) ?? null)
+    .filter((ball): ball is Ball => Boolean(ball));
+  const firstObjectBall = pocketedBalls.find((ball) => !ball.isCue && !ball.isEight) ?? null;
+
+  if (shooterId && opponentId && !nextGroups[shooterId] && firstObjectBall) {
+    const shooterGroup = getGroupForBall(firstObjectBall);
+    nextGroups[shooterId] = shooterGroup;
+    nextGroups[opponentId] = shooterGroup === "stripes" ? "solids" : "stripes";
+  }
+
+  const shooterGroup = nextGroups[shooterId];
+  const shooterPocketedOwnGroup = Boolean(
+    shooterGroup &&
+      pocketedBalls.some((ball) => getGroupForBall(ball) === shooterGroup)
+  );
+  const remainingShooterGroupBalls = nextBalls.filter((ball) => {
+    if (ball.pocketed || ball.isCue || ball.isEight) return false;
+    if (!shooterGroup) return false;
+    return shooterGroup === "stripes" ? ball.isStripe : !ball.isStripe;
+  });
+  const eightBallPocketed = pocketedBalls.some((ball) => ball.isEight);
+
+  if (eightBallPocketed) {
+    const legalWin = Boolean(shooterGroup && remainingShooterGroupBalls.length === 0 && !currentState.shotScratch);
+    const winnerId = legalWin ? shooterId : opponentId;
+    return {
+      ...currentState,
+      balls: nextBalls,
+      phase: "gameOver",
+      winnerId,
+      groups: nextGroups,
+      currentTurnId: null,
+      cueBallInHandForId: null,
+      shotOwnerId: null,
+      shotPocketedIds: [],
+      shotScratch: false,
+      rewardTotals: legalWin && winnerId
+        ? {
+            ...currentState.rewardTotals,
+            [winnerId]: (currentState.rewardTotals[winnerId] ?? 0) + WIN_REWARD_GOLD
+          }
+        : currentState.rewardTotals,
+      message: legalWin
+        ? `${players.find((player) => player.userId === shooterId)?.username ?? "Player"} sinks the eight ball and wins.`
+        : `${players.find((player) => player.userId === opponentId)?.username ?? "Player"} wins after an illegal eight ball.`
+    } satisfies PoolState;
+  }
+
+  const rewardTotals = { ...currentState.rewardTotals };
+  const rewardedBalls = pocketedBalls.filter((ball) => {
+    if (ball.isCue || ball.isEight) {
+      return false;
+    }
+    if (!shooterGroup) {
+      return getGroupForBall(ball) === getGroupForBall(firstObjectBall ?? ball);
+    }
+    return getGroupForBall(ball) === shooterGroup;
+  });
+  rewardTotals[shooterId] = (rewardTotals[shooterId] ?? 0) + rewardedBalls.length * BALL_REWARD_GOLD;
+
+  if (currentState.shotScratch) {
+    const cue = nextBalls.find((ball) => ball.isCue);
+    if (cue) {
+      cue.pocketed = false;
+      cue.vx = 0;
+      cue.vy = 0;
+      cue.x = PLAY_X + PLAY_WIDTH * 0.24;
+      cue.y = PLAY_Y + PLAY_HEIGHT / 2;
+    }
+  }
+
+  const nextTurnId = currentState.shotScratch || !shooterPocketedOwnGroup ? opponentId : shooterId;
+  return {
+    ...currentState,
+    balls: nextBalls,
+    groups: nextGroups,
+    rewardTotals,
+    currentTurnId: nextTurnId,
+    cueBallInHandForId: currentState.shotScratch ? opponentId : null,
+    shotOwnerId: null,
+    shotPocketedIds: [],
+    shotScratch: false,
+    message: currentState.shotScratch
+      ? "Scratch. Opponent has ball in hand."
+      : shooterPocketedOwnGroup
+        ? "Ball down. Same shooter."
+        : "Turn passes."
+  } satisfies PoolState;
+}
+
 function canPlaceCueBall(balls: Ball[], x: number, y: number) {
   if (
     x < PLAY_X + BALL_RADIUS ||
@@ -356,6 +463,8 @@ const Pool: React.FC = () => {
   const lastBroadcastAtRef = useRef(0);
   const lastUiSyncAtRef = useRef(0);
   const powerControlRef = useRef<HTMLDivElement | null>(null);
+  const lastShotRef = useRef<ShotPayload | null>(null);
+  const pendingTurnResultRef = useRef<TurnResultPayload | null>(null);
 
   useEffect(() => {
     stateRef.current = poolState;
@@ -487,13 +596,16 @@ const Pool: React.FC = () => {
       channel.on("broadcast", { event: "pool-state" }, ({ payload }) => {
         commitState(payload as PoolState, true);
       });
-      channel.on("broadcast", { event: "pool-shot" }, ({ payload }) => {
-        const shot = payload as ShotPayload;
-        if (shot.userId === currentUserIdRef.current) return;
-        const nextState = applyShotToState(stateRef.current, playersRef.current, shot);
-        if (nextState) {
-          commitState(nextState, true);
+      channel.on("broadcast", { event: "pool-turn-result" }, ({ payload }) => {
+        const result = payload as TurnResultPayload;
+        if (result.shot.userId === currentUserIdRef.current) return;
+        const replayState = applyShotToState(stateRef.current, playersRef.current, result.shot);
+        if (!replayState) {
+          commitState(result.finalState, true);
+          return;
         }
+        pendingTurnResultRef.current = result;
+        commitState(replayState, true);
       });
       channel.on("broadcast", { event: "pool-place-cue" }, ({ payload }) => {
         if (!isHostRef.current) return;
@@ -674,112 +786,29 @@ const Pool: React.FC = () => {
         shotScratch
       };
 
-      if (!moving && currentState.shotOwnerId && isHostRef.current) {
-        const shooterId = currentState.shotOwnerId;
-        const opponentId = getOpponentId(playersRef.current, shooterId);
-        const nextGroups = { ...currentState.groups };
-        const pocketedBalls = newPocketedIds
-          .map((id) => nextBalls.find((ball) => ball.id === id) ?? null)
-          .filter((ball): ball is Ball => Boolean(ball));
-        const firstObjectBall = pocketedBalls.find((ball) => !ball.isCue && !ball.isEight) ?? null;
-
-        if (shooterId && opponentId && !nextGroups[shooterId] && firstObjectBall) {
-          const shooterGroup = getGroupForBall(firstObjectBall);
-          nextGroups[shooterId] = shooterGroup;
-          nextGroups[opponentId] = shooterGroup === "stripes" ? "solids" : "stripes";
-        }
-
-        const shooterGroup = nextGroups[shooterId];
-        const shooterPocketedOwnGroup = Boolean(
-          shooterGroup &&
-            pocketedBalls.some((ball) => getGroupForBall(ball) === shooterGroup)
-        );
-        const remainingShooterGroupBalls = nextBalls.filter((ball) => {
-          if (ball.pocketed || ball.isCue || ball.isEight) return false;
-          if (!shooterGroup) return false;
-          return shooterGroup === "stripes" ? ball.isStripe : !ball.isStripe;
-        });
-        const eightBallPocketed = pocketedBalls.some((ball) => ball.isEight);
-
-        if (eightBallPocketed) {
-          const legalWin = Boolean(shooterGroup && remainingShooterGroupBalls.length === 0 && !shotScratch);
-          const winnerId = legalWin ? shooterId : opponentId;
-          nextState = {
-            ...nextState,
-            phase: "gameOver",
-            winnerId,
-            groups: nextGroups,
-            currentTurnId: null,
-            cueBallInHandForId: null,
-            shotOwnerId: null,
-            shotPocketedIds: [],
-            shotScratch: false,
-            rewardTotals: legalWin && winnerId
-              ? {
-                  ...currentState.rewardTotals,
-                  [winnerId]: (currentState.rewardTotals[winnerId] ?? 0) + WIN_REWARD_GOLD
-                }
-              : currentState.rewardTotals,
-            message: legalWin
-              ? `${playersRef.current.find((player) => player.userId === shooterId)?.username ?? "Player"} sinks the eight ball and wins.`
-              : `${playersRef.current.find((player) => player.userId === opponentId)?.username ?? "Player"} wins after an illegal eight ball.`
-          };
-        } else {
-          const rewardTotals = { ...currentState.rewardTotals };
-          const rewardedBalls = pocketedBalls.filter((ball) => {
-            if (ball.isCue || ball.isEight) {
-              return false;
-            }
-            if (!shooterGroup) {
-              return getGroupForBall(ball) === getGroupForBall(firstObjectBall ?? ball);
-            }
-            return getGroupForBall(ball) === shooterGroup;
-          });
-          rewardTotals[shooterId] = (rewardTotals[shooterId] ?? 0) + rewardedBalls.length * BALL_REWARD_GOLD;
-
-          if (shotScratch) {
-            const cue = nextBalls.find((ball) => ball.isCue);
-            if (cue) {
-              cue.pocketed = false;
-              cue.vx = 0;
-              cue.vy = 0;
-              cue.x = PLAY_X + PLAY_WIDTH * 0.24;
-              cue.y = PLAY_Y + PLAY_HEIGHT / 2;
-            }
+      if (!moving && currentState.shotOwnerId) {
+        if (currentState.shotOwnerId === currentUserIdRef.current) {
+          const finalState = resolveShotEnd(nextState, nextBalls, playersRef.current);
+          nextState = finalState;
+          const lastShot = lastShotRef.current;
+          if (lastShot && channelRef.current) {
+            void channelRef.current.send({
+              type: "broadcast",
+              event: "pool-turn-result",
+              payload: {
+                shot: lastShot,
+                finalState
+              } satisfies TurnResultPayload
+            });
           }
-
-          const nextTurnId = shotScratch || !shooterPocketedOwnGroup ? opponentId : shooterId;
-          nextState = {
-            ...nextState,
-            groups: nextGroups,
-            rewardTotals,
-            currentTurnId: nextTurnId,
-            cueBallInHandForId: shotScratch ? opponentId : null,
-            shotOwnerId: null,
-            shotPocketedIds: [],
-            shotScratch: false,
-            message: shotScratch
-              ? "Scratch. Opponent has ball in hand."
-              : shooterPocketedOwnGroup
-                ? "Ball down. Same shooter."
-                : "Turn passes."
-          };
+          lastShotRef.current = null;
+        } else if (pendingTurnResultRef.current) {
+          nextState = pendingTurnResultRef.current.finalState;
+          pendingTurnResultRef.current = null;
         }
       }
 
       commitState(nextState);
-
-      if (isHostRef.current) {
-        const shotResolved = currentState.shotOwnerId !== null && nextState.shotOwnerId === null;
-        if (shotResolved && channelRef.current) {
-          lastBroadcastAtRef.current = performance.now();
-          void channelRef.current.send({
-            type: "broadcast",
-            event: "pool-state",
-            payload: nextState
-          });
-        }
-      }
     }, 16);
 
     return () => {
@@ -1017,12 +1046,8 @@ const Pool: React.FC = () => {
       return;
     }
 
+    lastShotRef.current = shot;
     commitState(nextState, true);
-    await channelRef.current.send({
-      type: "broadcast",
-      event: "pool-shot",
-      payload: shot
-    });
 
     setAimLocked(false);
     setLockedAim(null);
