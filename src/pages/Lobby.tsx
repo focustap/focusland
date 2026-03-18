@@ -285,6 +285,20 @@ const Lobby: React.FC = () => {
             roofOffsetX: 60
           },
           {
+            name: "Arena",
+            color: 0xf59e0b,
+            body: null,
+            entranceX: 120,
+            entranceY: 80,
+            route: "/arena",
+            x: 92,
+            y: 82,
+            width: 112,
+            height: 66,
+            labelColor: "#451a03",
+            roofOffsetX: 62
+          },
+          {
             name: "Records House",
             color: 0x22c55e,
             body: null,
@@ -297,6 +311,20 @@ const Lobby: React.FC = () => {
             height: 74,
             labelColor: "#052e16",
             roofOffsetX: 70
+          },
+          {
+            name: "Hangar",
+            color: 0x06b6d4,
+            body: null,
+            entranceX: width - 120,
+            entranceY: 80,
+            route: "/hangar",
+            x: width - 92,
+            y: 82,
+            width: 118,
+            height: 66,
+            labelColor: "#083344",
+            roofOffsetX: 66
           },
           {
             name: "Arcade",
@@ -559,7 +587,7 @@ return () => {
       <NavBar />
       <div className="content card">
         <h2>Town Lobby</h2>
-        <p>Click on the floor to walk, then enter the Casino or Arcade from the main hub.</p>
+        <p>Click on the floor to walk, then enter the Casino, Arcade, Arena, Hangar, or Records House from the main hub.</p>
         <div
           ref={containerRef}
           style={{

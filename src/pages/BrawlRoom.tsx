@@ -6,7 +6,6 @@ import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } fr
 import { supabase } from "../lib/supabase";
 
 type Hotspot = {
-  label: string;
   route: string;
   x: number;
   y: number;
@@ -16,7 +15,7 @@ type Hotspot = {
   entranceY: number;
 };
 
-const ArcadeRoom: React.FC = () => {
+const BrawlRoom: React.FC = () => {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -31,7 +30,7 @@ const ArcadeRoom: React.FC = () => {
 
     const setup = async () => {
       const width = 780;
-      const height = 520;
+      const height = 500;
       let playerColor = profileColorToNumber(DEFAULT_PROFILE_COLOR);
 
       const {
@@ -54,83 +53,67 @@ const ArcadeRoom: React.FC = () => {
         return;
       }
 
-      class ArcadeScene extends Phaser.Scene {
+      class ArenaScene extends Phaser.Scene {
         player!: Phaser.GameObjects.Rectangle;
-        playerShadow!: Phaser.GameObjects.Ellipse;
+        shadow!: Phaser.GameObjects.Ellipse;
         targetX: number | null = null;
         targetY: number | null = null;
         pendingRoute: string | null = null;
         hotspots: Hotspot[] = [];
 
         create() {
-          this.cameras.main.setBackgroundColor("#020617");
-          this.add.rectangle(width / 2, height / 2, width, height, 0x111827);
-          this.add.rectangle(width / 2, height / 2, width - 30, height - 30, 0x1f2937);
-          this.add.rectangle(width / 2, height / 2, width - 70, height - 92, 0x0b1220);
-          this.add.rectangle(width / 2, height - 76, width - 120, 98, 0x111827);
+          this.cameras.main.setBackgroundColor("#1f1304");
+          this.add.rectangle(width / 2, height / 2, width, height, 0x2b1707);
+          this.add.rectangle(width / 2, height / 2, width - 40, height - 40, 0x5b2a07);
+          this.add.rectangle(width / 2, height - 68, width - 110, 116, 0x4a1d06);
+          this.add.text(width / 2, 34, "Focus Arena", {
+            color: "#fde68a",
+            fontSize: "28px",
+            fontStyle: "bold"
+          }).setOrigin(0.5);
 
-        this.add.text(width / 2, 34, "Focusland Arcade", {
-          color: "#7dd3fc",
-          fontSize: "28px",
-          fontStyle: "bold"
-        }).setOrigin(0.5);
-
-        const machines = [
-          { label: "Dodge", route: "/game", x: 170, y: 168, color: 0x22c55e },
-          { label: "Catch", route: "/catch", x: width / 2, y: 168, color: 0xf97316 },
-          { label: "Pong", route: "/pong", x: width - 170, y: 168, color: 0x06b6d4 }
-        ];
-
-        machines.forEach((machine) => {
-          this.add.rectangle(machine.x, machine.y, 96, 128, machine.color);
-          this.add.rectangle(machine.x, machine.y - 12, 68, 48, 0x020617, 0.9);
-          this.add.circle(machine.x, machine.y + 30, 7, 0xf43f5e);
-          this.add.circle(machine.x + 18, machine.y + 30, 7, 0xfacc15);
-          this.add.rectangle(machine.x, machine.y + 58, 24, 8, 0xe5e7eb);
-          this.add.text(machine.x, machine.y + 82, machine.label, {
-            color: "#f8fafc",
-            fontSize: "16px",
+          this.add.rectangle(width / 2, 250, 420, 18, 0x7c2d12);
+          this.add.rectangle(width / 2, 242, 270, 14, 0xf59e0b);
+          this.add.text(width / 2, 208, "Brawl Gate", {
+            color: "#fff7ed",
+            fontSize: "24px",
             fontStyle: "bold"
           }).setOrigin(0.5);
 
           this.hotspots.push({
-            label: machine.label,
-            route: machine.route,
-            x: machine.x,
-            y: machine.y,
-            width: 96,
-            height: 128,
-            entranceX: machine.x,
-            entranceY: machine.y + 88
+            route: "/brawl",
+            x: width / 2,
+            y: 250,
+            width: 420,
+            height: 90,
+            entranceX: width / 2,
+            entranceY: 320
           });
-        });
 
-        const doorY = height - 70;
-        this.add.rectangle(width - 96, doorY, 88, 120, 0x31211a);
-        this.add.rectangle(width - 96, doorY - 12, 58, 78, 0x9a3412);
-        this.add.text(width - 96, doorY + 58, "Hub Door", {
-          color: "#ffedd5",
-          fontSize: "15px",
-          fontStyle: "bold"
-        }).setOrigin(0.5);
+          this.add.rectangle(110, height - 78, 86, 116, 0x31211a);
+          this.add.rectangle(110, height - 90, 58, 78, 0x9a3412);
+          this.add.text(110, height - 14, "Hub Door", {
+            color: "#ffedd5",
+            fontSize: "15px",
+            fontStyle: "bold"
+          }).setOrigin(0.5);
 
-        this.hotspots.push({
-          label: "Hub Door",
-          route: "/lobby",
-          x: width - 96,
-          y: doorY,
-          width: 88,
-          height: 120,
-          entranceX: width - 96,
-          entranceY: height - 100
-        });
+          this.hotspots.push({
+            route: "/lobby",
+            x: 110,
+            y: height - 78,
+            width: 86,
+            height: 116,
+            entranceX: 110,
+            entranceY: height - 118
+          });
 
-          this.playerShadow = this.add.ellipse(112, height - 84, 28, 12, 0x020617, 0.28);
-          this.player = this.add.rectangle(112, height - 102, 24, 32, playerColor);
+          this.shadow = this.add.ellipse(width / 2, height - 84, 28, 12, 0x020617, 0.28);
+          this.player = this.add.rectangle(width / 2, height - 102, 24, 32, playerColor);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
-            this.targetY = Phaser.Math.Clamp(pointer.y, 56, height - 24);
+            this.targetY = Phaser.Math.Clamp(pointer.y, 56, height - 22);
             this.pendingRoute = null;
 
             for (const hotspot of this.hotspots) {
@@ -162,7 +145,7 @@ const ArcadeRoom: React.FC = () => {
 
           if (distance <= step) {
             this.player.setPosition(this.targetX, this.targetY);
-            this.playerShadow.setPosition(this.targetX, this.targetY + 18);
+            this.shadow.setPosition(this.targetX, this.targetY + 18);
             const route = this.pendingRoute;
             this.targetX = null;
             this.targetY = null;
@@ -176,7 +159,7 @@ const ArcadeRoom: React.FC = () => {
           const nextX = Phaser.Math.Clamp(this.player.x + (dx / distance) * step, 18, width - 18);
           const nextY = Phaser.Math.Clamp(this.player.y + (dy / distance) * step, 56, height - 22);
           this.player.setPosition(nextX, nextY);
-          this.playerShadow.setPosition(nextX, nextY + 18);
+          this.shadow.setPosition(nextX, nextY + 18);
         }
       }
 
@@ -192,7 +175,7 @@ const ArcadeRoom: React.FC = () => {
             debug: false
           }
         },
-        scene: ArcadeScene
+        scene: ArenaScene
       });
 
       gameRef.current = game;
@@ -214,12 +197,12 @@ const ArcadeRoom: React.FC = () => {
     <div className="page">
       <NavBar />
       <div className="content card" style={{ maxWidth: 840 }}>
-        <h2>Arcade Room</h2>
-        <p>Click a machine to walk over and play. The main event games now have their own buildings in town.</p>
+        <h2>Arena</h2>
+        <p>Walk through the arena gate to enter Brawl, or head back to town through the side door.</p>
         <div ref={containerRef} style={{ width: "100%", maxWidth: 780, margin: "1rem auto" }} />
       </div>
     </div>
   );
 };
 
-export default ArcadeRoom;
+export default BrawlRoom;

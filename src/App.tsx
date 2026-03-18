@@ -5,10 +5,12 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 
 const Brawl = lazy(() => import("./pages/Brawl"));
 const ArcadeRoom = lazy(() => import("./pages/ArcadeRoom"));
+const BrawlRoom = lazy(() => import("./pages/BrawlRoom"));
 const Casino = lazy(() => import("./pages/Casino"));
 const CasinoRoom = lazy(() => import("./pages/CasinoRoom"));
 const CatchGame = lazy(() => import("./pages/CatchGame"));
 const Game = lazy(() => import("./pages/Game"));
+const InvadersRoom = lazy(() => import("./pages/InvadersRoom"));
 const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const Lobby = lazy(() => import("./pages/Lobby"));
 const Login = lazy(() => import("./pages/Login"));
@@ -101,6 +103,22 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <ArcadeRoom />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/arena"
+            element={
+              <ProtectedRoute>
+                <BrawlRoom />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/hangar"
+            element={
+              <ProtectedRoute>
+                <InvadersRoom />
               </ProtectedRoute>
             }
           />

@@ -6,7 +6,6 @@ import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } fr
 import { supabase } from "../lib/supabase";
 
 type Hotspot = {
-  label: string;
   route: string;
   x: number;
   y: number;
@@ -16,7 +15,7 @@ type Hotspot = {
   entranceY: number;
 };
 
-const ArcadeRoom: React.FC = () => {
+const InvadersRoom: React.FC = () => {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -31,7 +30,7 @@ const ArcadeRoom: React.FC = () => {
 
     const setup = async () => {
       const width = 780;
-      const height = 520;
+      const height = 500;
       let playerColor = profileColorToNumber(DEFAULT_PROFILE_COLOR);
 
       const {
@@ -54,83 +53,71 @@ const ArcadeRoom: React.FC = () => {
         return;
       }
 
-      class ArcadeScene extends Phaser.Scene {
+      class HangarScene extends Phaser.Scene {
         player!: Phaser.GameObjects.Rectangle;
-        playerShadow!: Phaser.GameObjects.Ellipse;
+        shadow!: Phaser.GameObjects.Ellipse;
         targetX: number | null = null;
         targetY: number | null = null;
         pendingRoute: string | null = null;
         hotspots: Hotspot[] = [];
 
         create() {
-          this.cameras.main.setBackgroundColor("#020617");
-          this.add.rectangle(width / 2, height / 2, width, height, 0x111827);
-          this.add.rectangle(width / 2, height / 2, width - 30, height - 30, 0x1f2937);
-          this.add.rectangle(width / 2, height / 2, width - 70, height - 92, 0x0b1220);
-          this.add.rectangle(width / 2, height - 76, width - 120, 98, 0x111827);
+          this.cameras.main.setBackgroundColor("#04111f");
+          this.add.rectangle(width / 2, height / 2, width, height, 0x081829);
+          this.add.rectangle(width / 2, height / 2, width - 36, height - 36, 0x10253e);
+          this.add.rectangle(width / 2, height / 2, width - 160, height - 150, 0x0f172a);
+          this.add.text(width / 2, 34, "Defender Hangar", {
+            color: "#7dd3fc",
+            fontSize: "28px",
+            fontStyle: "bold"
+          }).setOrigin(0.5);
 
-        this.add.text(width / 2, 34, "Focusland Arcade", {
-          color: "#7dd3fc",
-          fontSize: "28px",
-          fontStyle: "bold"
-        }).setOrigin(0.5);
+          for (let i = 0; i < 8; i += 1) {
+            this.add.circle(120 + i * 78, 110 + (i % 2) * 18, 2, 0xe2e8f0);
+          }
 
-        const machines = [
-          { label: "Dodge", route: "/game", x: 170, y: 168, color: 0x22c55e },
-          { label: "Catch", route: "/catch", x: width / 2, y: 168, color: 0xf97316 },
-          { label: "Pong", route: "/pong", x: width - 170, y: 168, color: 0x06b6d4 }
-        ];
-
-        machines.forEach((machine) => {
-          this.add.rectangle(machine.x, machine.y, 96, 128, machine.color);
-          this.add.rectangle(machine.x, machine.y - 12, 68, 48, 0x020617, 0.9);
-          this.add.circle(machine.x, machine.y + 30, 7, 0xf43f5e);
-          this.add.circle(machine.x + 18, machine.y + 30, 7, 0xfacc15);
-          this.add.rectangle(machine.x, machine.y + 58, 24, 8, 0xe5e7eb);
-          this.add.text(machine.x, machine.y + 82, machine.label, {
-            color: "#f8fafc",
-            fontSize: "16px",
+          this.add.rectangle(width / 2, 248, 240, 120, 0x1d4ed8);
+          this.add.rectangle(width / 2, 248, 180, 84, 0x020617);
+          this.add.text(width / 2, 248, "INVADERS", {
+            color: "#e0f2fe",
+            fontSize: "26px",
             fontStyle: "bold"
           }).setOrigin(0.5);
 
           this.hotspots.push({
-            label: machine.label,
-            route: machine.route,
-            x: machine.x,
-            y: machine.y,
-            width: 96,
-            height: 128,
-            entranceX: machine.x,
-            entranceY: machine.y + 88
+            route: "/invaders",
+            x: width / 2,
+            y: 248,
+            width: 240,
+            height: 120,
+            entranceX: width / 2,
+            entranceY: 330
           });
-        });
 
-        const doorY = height - 70;
-        this.add.rectangle(width - 96, doorY, 88, 120, 0x31211a);
-        this.add.rectangle(width - 96, doorY - 12, 58, 78, 0x9a3412);
-        this.add.text(width - 96, doorY + 58, "Hub Door", {
-          color: "#ffedd5",
-          fontSize: "15px",
-          fontStyle: "bold"
-        }).setOrigin(0.5);
+          this.add.rectangle(width - 110, height - 78, 86, 116, 0x31211a);
+          this.add.rectangle(width - 110, height - 90, 58, 78, 0x9a3412);
+          this.add.text(width - 110, height - 14, "Hub Door", {
+            color: "#ffedd5",
+            fontSize: "15px",
+            fontStyle: "bold"
+          }).setOrigin(0.5);
 
-        this.hotspots.push({
-          label: "Hub Door",
-          route: "/lobby",
-          x: width - 96,
-          y: doorY,
-          width: 88,
-          height: 120,
-          entranceX: width - 96,
-          entranceY: height - 100
-        });
+          this.hotspots.push({
+            route: "/lobby",
+            x: width - 110,
+            y: height - 78,
+            width: 86,
+            height: 116,
+            entranceX: width - 110,
+            entranceY: height - 118
+          });
 
-          this.playerShadow = this.add.ellipse(112, height - 84, 28, 12, 0x020617, 0.28);
-          this.player = this.add.rectangle(112, height - 102, 24, 32, playerColor);
+          this.shadow = this.add.ellipse(140, height - 84, 28, 12, 0x020617, 0.28);
+          this.player = this.add.rectangle(140, height - 102, 24, 32, playerColor);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
-            this.targetY = Phaser.Math.Clamp(pointer.y, 56, height - 24);
+            this.targetY = Phaser.Math.Clamp(pointer.y, 56, height - 22);
             this.pendingRoute = null;
 
             for (const hotspot of this.hotspots) {
@@ -162,7 +149,7 @@ const ArcadeRoom: React.FC = () => {
 
           if (distance <= step) {
             this.player.setPosition(this.targetX, this.targetY);
-            this.playerShadow.setPosition(this.targetX, this.targetY + 18);
+            this.shadow.setPosition(this.targetX, this.targetY + 18);
             const route = this.pendingRoute;
             this.targetX = null;
             this.targetY = null;
@@ -176,7 +163,7 @@ const ArcadeRoom: React.FC = () => {
           const nextX = Phaser.Math.Clamp(this.player.x + (dx / distance) * step, 18, width - 18);
           const nextY = Phaser.Math.Clamp(this.player.y + (dy / distance) * step, 56, height - 22);
           this.player.setPosition(nextX, nextY);
-          this.playerShadow.setPosition(nextX, nextY + 18);
+          this.shadow.setPosition(nextX, nextY + 18);
         }
       }
 
@@ -192,7 +179,7 @@ const ArcadeRoom: React.FC = () => {
             debug: false
           }
         },
-        scene: ArcadeScene
+        scene: HangarScene
       });
 
       gameRef.current = game;
@@ -214,12 +201,12 @@ const ArcadeRoom: React.FC = () => {
     <div className="page">
       <NavBar />
       <div className="content card" style={{ maxWidth: 840 }}>
-        <h2>Arcade Room</h2>
-        <p>Click a machine to walk over and play. The main event games now have their own buildings in town.</p>
+        <h2>Hangar</h2>
+        <p>Walk up to the console wall to launch Space Invaders, or use the hangar door to head back to town.</p>
         <div ref={containerRef} style={{ width: "100%", maxWidth: 780, margin: "1rem auto" }} />
       </div>
     </div>
   );
 };
 
-export default ArcadeRoom;
+export default InvadersRoom;
