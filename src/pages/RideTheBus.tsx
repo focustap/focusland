@@ -93,6 +93,13 @@ function formatCard(card: Card) {
   return `${getCardRank(card)} of ${card.suit[0].toUpperCase()}${card.suit.slice(1)} (${getCardColor(card)})`;
 }
 
+function getCardSymbol(card: Card) {
+  if (card.suit === "spades") return "\u2660";
+  if (card.suit === "clubs") return "\u2663";
+  if (card.suit === "diamonds") return "\u2666";
+  return "\u2665";
+}
+
 function getSeatStyle(index: number, count: number): React.CSSProperties {
   const layouts: Record<number, Array<React.CSSProperties>> = {
     1: [{ left: "50%", top: "70%", transform: "translateX(-50%)" }],
@@ -545,8 +552,7 @@ const RideTheBus: React.FC = () => {
                 {(player.seat?.cards ?? []).map((card, cardIndex) => (
                   <div key={`${player.userId}-${cardIndex}-${card.suit}-${card.value}`} className="ride-bus-card">
                     <div style={{ color: getCardTextColor(card) }}>{getCardRank(card)}</div>
-                    <div style={{ color: getCardTextColor(card) }}>{card.suit}</div>
-                    <div style={{ color: getCardTextColor(card) }}>{getCardColor(card)}</div>
+                    <div style={{ color: getCardTextColor(card), fontSize: "1.2rem" }}>{getCardSymbol(card)}</div>
                   </div>
                 ))}
               </div>
@@ -623,9 +629,9 @@ const RideTheBus: React.FC = () => {
         </div>
 
         <div className="button-row">
-          <button className="secondary-button" type="button" onClick={() => void updateEmote("UP")}>UP</button>
-          <button className="secondary-button" type="button" onClick={() => void updateEmote("DOWN")}>DOWN</button>
-          <button className="secondary-button" type="button" onClick={() => void updateEmote("HEAT")}>HEAT</button>
+          <button className="secondary-button" type="button" onClick={() => void updateEmote("👍")}>{"👍"}</button>
+          <button className="secondary-button" type="button" onClick={() => void updateEmote("👎")}>{"👎"}</button>
+          <button className="secondary-button" type="button" onClick={() => void updateEmote("🔥")}>{"🔥"}</button>
         </div>
       </div>
     </div>
