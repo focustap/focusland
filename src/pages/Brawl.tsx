@@ -139,6 +139,14 @@ type LavaHazard = {
   ttlMs: number;
 };
 
+type MoonHazard = {
+  phase: "warning" | "active";
+  x: number;
+  width: number;
+  ttlMs: number;
+  vx: number;
+};
+
 type BrawlState = {
   phase: "waiting" | "select" | "playing" | "gameOver";
   selectedMap: MapId;
@@ -146,6 +154,7 @@ type BrawlState = {
   projectiles: Projectile[];
   effects: Effect[];
   lavaHazard: LavaHazard | null;
+  moonHazard: MoonHazard | null;
   stageEventCooldownMs: number;
   winnerId: string | null;
   message: string;
@@ -172,6 +181,7 @@ const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
 const LAVA_LANES = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72];
 const LAVA_WIDTH = 96;
+const MOON_BEAM_WIDTH = 122;
 
 const STAGES: Record<MapId, StageConfig> = {
   "sky-ruins": {
@@ -213,7 +223,7 @@ const STAGES: Record<MapId, StageConfig> = {
   "moon-pier": {
     id: "moon-pier",
     name: "Moon Pier",
-    subtitle: "Wide side lanes and a high center platform",
+    subtitle: "Wide side lanes with a roaming moonbeam hazard",
     floorY: 348,
     respawnY: 130,
     platforms: [
@@ -403,6 +413,7 @@ const DEFAULT_STATE: BrawlState = {
   projectiles: [],
   effects: [],
   lavaHazard: null,
+  moonHazard: null,
   stageEventCooldownMs: 3200,
   winnerId: null,
   message: "Waiting for two players."
@@ -501,6 +512,7 @@ function createSelectState(players: PlayerPresence[], selectedMap: MapId): Brawl
     projectiles: [],
     effects: [],
     lavaHazard: null,
+    moonHazard: null,
     stageEventCooldownMs: 3200,
     winnerId: null,
     message: "Choose fighters and a stage."
@@ -529,6 +541,7 @@ function startMatchState(players: PlayerPresence[], currentState: BrawlState): B
     projectiles: [],
     effects: [],
     lavaHazard: null,
+    moonHazard: null,
     stageEventCooldownMs: 2600,
     winnerId: null,
     message: `${stage.name}. Fight.`
@@ -897,6 +910,20 @@ const Brawl: React.FC = () => {
         .filter((effect) => effect.ttlMs > 0);
       let nextLavaHazard = currentState.lavaHazard
         ? { ...currentState.lavaHazard, ttlMs: currentState.lavaHazard.ttlMs - 33 }
+        : null;
+      let nextMoonHazard = currentState.moonHazard
+        ? {
+            ...currentState.moonHazard,
+            ttlMs: currentState.moonHazard.ttlMs - 33,
+            x:
+              currentState.moonHazard.phase === "active"
+                ? clamp(
+                    currentState.moonHazard.x + currentState.moonHazard.vx,
+                    96,
+                    WIDTH - 96
+                  )
+                : currentState.moonHazard.x
+          }
         : null;
       let nextStageEventCooldownMs = Math.max(0, currentState.stageEventCooldownMs - 33);
       let nextMessage = currentState.message;
@@ -1473,7 +1500,7 @@ const Brawl: React.FC = () => {
         if (
           nextLavaHazard?.phase === "active" &&
           Math.abs(state.x - nextLavaHazard.x) <= nextLavaHazard.width / 2 &&
-          state.y + PLAYER_HEIGHT / 2 >= stage.floorY - 10
+          state.y + PLAYER_HEIGHT / 2 >= stage.floorY - 170
         ) {
           applyHit(
             player.userId,
@@ -1487,6 +1514,25 @@ const Brawl: React.FC = () => {
             260
           );
           nextMessage = `${player.username} got clipped by lava.`;
+        }
+
+        if (
+          nextMoonHazard?.phase === "active" &&
+          Math.abs(state.x - nextMoonHazard.x) <= nextMoonHazard.width / 2 &&
+          state.y + PLAYER_HEIGHT / 2 >= 48
+        ) {
+          applyHit(
+            player.userId,
+            null,
+            11,
+            9.4,
+            8.4,
+            nextMoonHazard.x,
+            state.y,
+            "#c4b5fd",
+            320
+          );
+          nextMessage = `${player.username} was caught in the moonbeam.`;
         }
       });
 
@@ -1507,8 +1553,34 @@ const Brawl: React.FC = () => {
         } else if (nextLavaHazard?.phase === "active" && nextLavaHazard.ttlMs <= 0) {
           nextLavaHazard = null;
         }
+        nextMoonHazard = null;
+      } else if (stage.id === "moon-pier") {
+        nextLavaHazard = null;
+        if (!nextMoonHazard && nextStageEventCooldownMs === 0) {
+          nextMoonHazard = {
+            phase: "warning",
+            x: WIDTH * (0.24 + Math.random() * 0.52),
+            width: MOON_BEAM_WIDTH,
+            ttlMs: 1100,
+            vx: Math.random() > 0.5 ? 2.6 : -2.6
+          };
+          nextStageEventCooldownMs = 4700;
+          nextMessage = "Moonlight is gathering overhead.";
+        } else if (nextMoonHazard?.phase === "warning" && nextMoonHazard.ttlMs <= 0) {
+          nextMoonHazard = { ...nextMoonHazard, phase: "active", ttlMs: 1350 };
+          nextEffects.push(createEffect(nextMoonHazard.x, 96, "#ddd6fe", 42, 320));
+          nextMessage = "Moonbeam sweep!";
+        } else if (nextMoonHazard?.phase === "active") {
+          if (nextMoonHazard.x <= 96 || nextMoonHazard.x >= WIDTH - 96) {
+            nextMoonHazard.vx *= -1;
+          }
+          if (nextMoonHazard.ttlMs <= 0) {
+            nextMoonHazard = null;
+          }
+        }
       } else {
         nextLavaHazard = null;
+        nextMoonHazard = null;
         nextStageEventCooldownMs = 3200;
       }
 
@@ -1579,6 +1651,7 @@ const Brawl: React.FC = () => {
         projectiles: survivingProjectiles,
         effects: nextEffects,
         lavaHazard: nextLavaHazard,
+        moonHazard: nextMoonHazard,
         stageEventCooldownMs: nextStageEventCooldownMs,
         winnerId,
         message:
@@ -1760,7 +1833,11 @@ const Brawl: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const drawStage = (stage: StageConfig, lavaHazard: LavaHazard | null) => {
+    const drawStage = (
+      stage: StageConfig,
+      lavaHazard: LavaHazard | null,
+      moonHazard: MoonHazard | null
+    ) => {
       const gradient = ctx.createLinearGradient(0, 0, 0, HEIGHT);
       gradient.addColorStop(0, stage.bgTop);
       gradient.addColorStop(1, stage.bgBottom);
@@ -1817,19 +1894,45 @@ const Brawl: React.FC = () => {
         );
         if (lavaHazard.phase === "active") {
           ctx.fillStyle = "rgba(249, 115, 22, 0.88)";
-          for (let plume = 0; plume < 3; plume += 1) {
+          for (let plume = 0; plume < 4; plume += 1) {
             ctx.beginPath();
             ctx.moveTo(lavaHazard.x - 30 + plume * 28, stage.floorY);
             ctx.quadraticCurveTo(
-              lavaHazard.x - 18 + plume * 28,
-              stage.floorY - 40 - plume * 10,
-              lavaHazard.x - 8 + plume * 28,
-              stage.floorY - 10
+              lavaHazard.x - 20 + plume * 24,
+              stage.floorY - 145 - plume * 22,
+              lavaHazard.x - 8 + plume * 24,
+              stage.floorY - 28
             );
             ctx.strokeStyle = "#fdba74";
-            ctx.lineWidth = 8;
+            ctx.lineWidth = 10;
             ctx.stroke();
           }
+          ctx.fillStyle = "rgba(255, 237, 213, 0.22)";
+          ctx.fillRect(lavaHazard.x - lavaHazard.width / 2, stage.floorY - 170, lavaHazard.width, 150);
+        }
+      }
+
+      if (stage.id === "moon-pier" && moonHazard) {
+        const beamAlpha =
+          moonHazard.phase === "warning" ? 0.16 + ((moonHazard.ttlMs % 260) / 260) * 0.24 : 0.3;
+        ctx.fillStyle =
+          moonHazard.phase === "warning"
+            ? `rgba(196, 181, 253, ${beamAlpha})`
+            : "rgba(147, 197, 253, 0.28)";
+        ctx.fillRect(moonHazard.x - moonHazard.width / 2, 0, moonHazard.width, stage.floorY);
+        if (moonHazard.phase === "active") {
+          const beamGradient = ctx.createLinearGradient(0, 0, 0, stage.floorY);
+          beamGradient.addColorStop(0, "rgba(224, 231, 255, 0.12)");
+          beamGradient.addColorStop(0.2, "rgba(196, 181, 253, 0.45)");
+          beamGradient.addColorStop(1, "rgba(147, 197, 253, 0.18)");
+          ctx.fillStyle = beamGradient;
+          ctx.fillRect(moonHazard.x - moonHazard.width / 2, 0, moonHazard.width, stage.floorY);
+          ctx.strokeStyle = "rgba(255,255,255,0.68)";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(moonHazard.x, 0);
+          ctx.lineTo(moonHazard.x, stage.floorY);
+          ctx.stroke();
         }
       }
     };
@@ -2013,7 +2116,7 @@ const Brawl: React.FC = () => {
       });
 
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
-      drawStage(stage, currentState.lavaHazard);
+      drawStage(stage, currentState.lavaHazard, currentState.moonHazard);
 
       currentState.effects.forEach((effect) => {
         const effectAlpha = Math.max(effect.ttlMs / 220, 0.12);
