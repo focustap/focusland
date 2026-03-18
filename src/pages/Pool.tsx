@@ -70,6 +70,7 @@ const POWER_BAR_HEIGHT = 300;
 const BALL_REWARD_GOLD = 1;
 const WIN_REWARD_GOLD = 25;
 const BROADCAST_INTERVAL_MS = 33;
+const POOL_VERSION = "0.1";
 
 const POCKETS = [
   { x: PLAY_X, y: PLAY_Y },
@@ -246,15 +247,20 @@ function getShotGuide(cueBall: Ball, balls: Ball[], aimX: number, aimY: number) 
     if (projection <= 0 || projection >= bestProjection) return;
 
     const perpendicular = Math.abs(toBallX * aim.y - toBallY * aim.x);
-    if (perpendicular > BALL_RADIUS * 2.2) return;
+    const collisionDistance = BALL_RADIUS * 2;
+    if (perpendicular >= collisionDistance) return;
 
-    const closestX = cueBall.x + aim.x * projection;
-    const closestY = cueBall.y + aim.y * projection;
-    const normalX = ball.x - closestX;
-    const normalY = ball.y - closestY;
+    const collisionOffset = Math.sqrt(Math.max(collisionDistance * collisionDistance - perpendicular * perpendicular, 0));
+    const cueImpactDistance = projection - collisionOffset;
+    if (cueImpactDistance <= 0 || cueImpactDistance >= bestProjection) return;
+
+    const cueImpactX = cueBall.x + aim.x * cueImpactDistance;
+    const cueImpactY = cueBall.y + aim.y * cueImpactDistance;
+    const normalX = ball.x - cueImpactX;
+    const normalY = ball.y - cueImpactY;
     const normalLength = Math.hypot(normalX, normalY);
 
-    bestProjection = projection;
+    bestProjection = cueImpactDistance;
     bestBall = ball;
     bestNormal =
       normalLength > 0.001
@@ -1050,7 +1056,7 @@ const Pool: React.FC = () => {
     <div className="page">
       <NavBar />
       <div className="content card" style={{ maxWidth: 980 }}>
-        <h2>8 Ball</h2>
+        <h2>8 Ball v{POOL_VERSION}</h2>
         <p>Two-player table. Click once to lock your aim, then drag the power bar and release to shoot. First made ball assigns solids or stripes.</p>
         <div className="info">
           Seats filled: {Math.min(players.length, 2)}/2
