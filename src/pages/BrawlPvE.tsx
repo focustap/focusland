@@ -34,6 +34,7 @@ type RemoteSnapshot = {
   invulnMs: number;
   selectedCharacter: CharacterId;
 };
+type RemoteRenderState = RemoteSnapshot;
 type StartPayload = {
   partySize: number;
   bossId: string;
@@ -344,10 +345,12 @@ const BrawlPvE: React.FC = () => {
   const [progressLoading, setProgressLoading] = useState(true);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const remoteSnapshotsRef = useRef<Record<string, RemoteSnapshot>>({});
+  const remoteRenderStatesRef = useRef<Record<string, RemoteRenderState>>({});
   const lastSnapshotAtRef = useRef(0);
   const appliedDamageEventsRef = useRef<Set<string>>(new Set());
   const encounterSeedRef = useRef(1);
   const encounterStartedAtRef = useRef(0);
+  const isStartAuthority = players[0]?.userId === currentUserId;
 
   useEffect(() => {
     let active = true;
@@ -413,6 +416,7 @@ const BrawlPvE: React.FC = () => {
         const nextPayload = payload as RemoteSnapshot;
         if (nextPayload.userId === session.user.id) return;
         remoteSnapshotsRef.current[nextPayload.userId] = nextPayload;
+        remoteRenderStatesRef.current[nextPayload.userId] ??= { ...nextPayload };
       });
       channel.on("broadcast", { event: "pve-damage" }, ({ payload }) => {
         const nextPayload = payload as DamagePayload;
@@ -469,6 +473,8 @@ const BrawlPvE: React.FC = () => {
 
     return () => {
       isUnmounted = true;
+      remoteSnapshotsRef.current = {};
+      remoteRenderStatesRef.current = {};
       const channel = channelRef.current;
       if (channel) {
         void supabase.removeChannel(channel);
@@ -1385,17 +1391,29 @@ const BrawlPvE: React.FC = () => {
       });
 
       Object.values(remoteSnapshotsRef.current).forEach((snapshot) => {
+        const renderState = remoteRenderStatesRef.current[snapshot.userId] ?? { ...snapshot };
+        renderState.x += (snapshot.x - renderState.x) * 0.22;
+        renderState.y += (snapshot.y - renderState.y) * 0.22;
+        renderState.aimX += (snapshot.aimX - renderState.aimX) * 0.24;
+        renderState.aimY += (snapshot.aimY - renderState.aimY) * 0.24;
+        renderState.hp += (snapshot.hp - renderState.hp) * 0.2;
+        renderState.facing = snapshot.facing;
+        renderState.attackFlashMs = Math.max(renderState.attackFlashMs - (1000 / 60), snapshot.attackFlashMs);
+        renderState.invulnMs = Math.max(renderState.invulnMs - (1000 / 60), snapshot.invulnMs);
+        renderState.username = snapshot.username;
+        renderState.selectedCharacter = snapshot.selectedCharacter;
+        remoteRenderStatesRef.current[snapshot.userId] = renderState;
         drawBrawlCharacter({
           ctx,
-          characterId: snapshot.selectedCharacter,
-          x: snapshot.x,
-          y: snapshot.y,
-          facing: snapshot.facing,
-          aimX: snapshot.aimX,
-          aimY: snapshot.aimY,
-          attackFlashMs: snapshot.attackFlashMs,
-          invulnMs: snapshot.invulnMs,
-          username: snapshot.username,
+          characterId: renderState.selectedCharacter,
+          x: renderState.x,
+          y: renderState.y,
+          facing: renderState.facing,
+          aimX: renderState.aimX,
+          aimY: renderState.aimY,
+          attackFlashMs: renderState.attackFlashMs,
+          invulnMs: renderState.invulnMs,
+          username: renderState.username,
           width: PLAYER_WIDTH,
           height: PLAYER_HEIGHT
         });
@@ -1498,7 +1516,7 @@ const BrawlPvE: React.FC = () => {
   }, [bossDef, bossId, currentUserId, currentUsername, fightStarted, lost, navigate, selectedCharacter, won, session?.user.id]);
 
   const resetFight = () => {
-    if (!selectedCharacter) return;
+    if (!selectedCharacter || !isStartAuthority) return;
     const partySize = Math.max(1, Math.min(MAX_PVE_PLAYERS, players.length || 1));
     const startedAt = Date.now();
     const seed = (startedAt ^ ((partySize + 17) * 2654435761)) >>> 0;
@@ -1558,6 +1576,9 @@ const BrawlPvE: React.FC = () => {
               .join(" | ")}
           </p>
         ) : null}
+        <p className="info">
+          Start control: {isStartAuthority ? "You can start the pull." : `${players[0]?.username ?? "Room host"} controls pull start.`}
+        </p>
         {!selectedCharacter && (
           <div className="brawl-pick-grid">
             {(Object.keys(CHARACTER_CONFIGS) as CharacterId[]).map((characterId) => {
@@ -1574,7 +1595,9 @@ const BrawlPvE: React.FC = () => {
         {selectedCharacter && (
           <>
             <div className="button-row">
-              <button className="primary-button" type="button" onClick={resetFight}>{fightStarted ? "Retry boss" : "Enter fight"}</button>
+              <button className="primary-button" type="button" onClick={resetFight} disabled={!isStartAuthority}>
+                {fightStarted ? "Retry boss" : isStartAuthority ? "Enter fight" : "Waiting for host"}
+              </button>
               <button className="secondary-button" type="button" onClick={() => navigate("/arena/pve")}>Back to world map</button>
             </div>
             <canvas
