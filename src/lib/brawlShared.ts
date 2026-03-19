@@ -101,7 +101,7 @@ export const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     trim: "#fde68a",
     moveSpeed: 4.65,
     jumpVelocity: -11.9,
-    airJumps: 2,
+    airJumps: 1,
     meleeDamage: 5,
     meleeRange: 48,
     meleeKnockback: 8.1,
@@ -131,7 +131,7 @@ export const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
     trim: "#052e16",
     moveSpeed: 4.9,
     jumpVelocity: -11.8,
-    airJumps: 2,
+    airJumps: 1,
     meleeDamage: 7,
     meleeRange: 54,
     meleeKnockback: 7.1,
@@ -194,13 +194,8 @@ export function normalizeVector(dx: number, dy: number) {
 }
 
 export function getDashProfile(characterId: CharacterId | null) {
-  if (characterId === "fighter" || characterId === "assassin" || characterId === "monk") {
-    return { power: 12.4, cooldownMs: 300 };
-  }
-  if (characterId === "archer") {
-    return { power: 9.1, cooldownMs: 460 };
-  }
-  return { power: 8.9, cooldownMs: 480 };
+  void characterId;
+  return { power: 12.4, cooldownMs: 300 };
 }
 
 type DrawCharacterArgs = {

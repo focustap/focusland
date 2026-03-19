@@ -44,7 +44,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "1.0";
+const PVE_VERSION = "1.1";
 const BOSSES: Record<string, BossDefinition> = { "boss-1": { id: "boss-1", name: "Ashen Juggernaut", nextBossId: "boss-2", goldReward: 24 } };
 
 function createEffect(x: number, y: number, color: string, radius: number, ttlMs: number): Effect {
@@ -98,6 +98,8 @@ const BrawlPvE: React.FC = () => {
   const hazardsRef = useRef<Hazard[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const effectsRef = useRef<Effect[]>([]);
+  const bossDeathStartedAtRef = useRef<number | null>(null);
+  const winOverlayStartedAtRef = useRef<number | null>(null);
   const bossDef = BOSSES[bossId];
   const isUnlocked = useMemo(() => getBrawlPveProgress().unlockedBosses.includes(bossId), [bossId]);
 
@@ -128,6 +130,23 @@ const BrawlPvE: React.FC = () => {
 
     const finishWin = () => {
       if (won) return;
+      const now = performance.now();
+      bossDeathStartedAtRef.current = now;
+      winOverlayStartedAtRef.current = now + 450;
+      effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 88, "#fff7ed", 96, 420));
+      effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 88, "#fb923c", 148, 620));
+      for (let burst = 0; burst < 8; burst += 1) {
+        const angle = (burst / 8) * Math.PI * 2;
+        effectsRef.current.push(
+          createEffect(
+            BOSS_X + Math.cos(angle) * 44,
+            FLOOR_Y - 92 + Math.sin(angle) * 28,
+            burst % 2 === 0 ? "#f97316" : "#fde68a",
+            20 + burst * 4,
+            260 + burst * 50
+          )
+        );
+      }
       setWon(true);
       setStatus("Boss defeated. The next gate is open.");
       if (bossDef) {
@@ -509,6 +528,9 @@ const BrawlPvE: React.FC = () => {
       }
 
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
+      const deathProgress = bossDeathStartedAtRef.current
+        ? clamp((performance.now() - bossDeathStartedAtRef.current) / 1200, 0, 1)
+        : 0;
       const bg = ctx.createLinearGradient(0, 0, 0, HEIGHT);
       bg.addColorStop(0, "#16080a");
       bg.addColorStop(0.45, "#311115");
@@ -631,7 +653,9 @@ const BrawlPvE: React.FC = () => {
 
       const dragonBreathing = hazardsRef.current.some((hazard) => hazard.kind === "flame-warning" || hazard.kind === "flame-wall");
       ctx.save();
-      ctx.translate(boss.x, boss.y - 98);
+      ctx.translate(boss.x, boss.y - 98 + deathProgress * 120);
+      ctx.globalAlpha = 1 - deathProgress * 0.92;
+      ctx.rotate(deathProgress * 0.18);
       const wingLift = 12 + Math.sin(performance.now() / 180) * 6;
       const bodyFill = boss.hitFlashMs > 0 ? "#fff7ed" : boss.weaknessMs > 0 ? "#86efac" : "#5a1f18";
       const scaleRidge = boss.phase === 2 ? "#f97316" : "#ef4444";
@@ -667,6 +691,16 @@ const BrawlPvE: React.FC = () => {
         drawPolygon(ctx, [[54, 0], [74, -10], [92, 0], [74, 10]], "rgba(255,237,213,0.55)");
       }
       ctx.restore();
+
+      if (deathProgress > 0 && deathProgress < 1) {
+        ctx.save();
+        ctx.globalAlpha = 0.22 * (1 - deathProgress);
+        ctx.fillStyle = "#fff7ed";
+        ctx.beginPath();
+        ctx.ellipse(BOSS_X, FLOOR_Y + 12, 110 + deathProgress * 24, 24 + deathProgress * 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
 
       drawBrawlCharacter({
         ctx,
@@ -714,6 +748,34 @@ const BrawlPvE: React.FC = () => {
       ctx.textAlign = "right";
       ctx.fillText(player.ultimateCharge >= ULTIMATE_CHARGE_MAX ? "R READY" : "R CHARGING", 188, 96);
 
+      if (won && winOverlayStartedAtRef.current) {
+        const overlayProgress = clamp((performance.now() - winOverlayStartedAtRef.current) / 420, 0, 1);
+        const overlayAlpha = overlayProgress * 0.96;
+        ctx.save();
+        ctx.globalAlpha = overlayAlpha;
+        ctx.fillStyle = "rgba(2,6,23,0.82)";
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        drawPolygon(ctx, [[0, 0], [WIDTH * 0.54, 0], [WIDTH * 0.33, HEIGHT], [0, HEIGHT]], "rgba(245,158,11,0.24)");
+        drawPolygon(ctx, [[WIDTH * 0.48, 0], [WIDTH, 0], [WIDTH, HEIGHT], [WIDTH * 0.66, HEIGHT]], "rgba(251,146,60,0.2)");
+        ctx.strokeStyle = "rgba(255,237,213,0.8)";
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(WIDTH * 0.5, 0);
+        ctx.lineTo(WIDTH * 0.38, HEIGHT);
+        ctx.stroke();
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#fff7ed";
+        ctx.font = "bold 42px monospace";
+        ctx.fillText("YOU WON", WIDTH / 2, HEIGHT * 0.32);
+        ctx.font = "18px monospace";
+        ctx.fillText(config.name, WIDTH * 0.24, HEIGHT * 0.6);
+        ctx.fillText(bossDef?.name ?? "Dragon", WIDTH * 0.76, HEIGHT * 0.6);
+        ctx.font = "14px monospace";
+        ctx.fillStyle = "#fed7aa";
+        ctx.fillText("The gate to the next hunt opens.", WIDTH / 2, HEIGHT * 0.72);
+        ctx.restore();
+      }
+
       animationRef.current = window.requestAnimationFrame(update);
     };
 
@@ -734,6 +796,8 @@ const BrawlPvE: React.FC = () => {
     hazardsRef.current = [];
     projectilesRef.current = [];
     effectsRef.current = [];
+    bossDeathStartedAtRef.current = null;
+    winOverlayStartedAtRef.current = null;
     setWon(false);
     setLost(false);
     setFightStarted(true);
