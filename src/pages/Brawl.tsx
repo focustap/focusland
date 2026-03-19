@@ -1,5 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
+import {
+  CHARACTER_CONFIGS,
+  clamp,
+  drawBrawlCharacter,
+  getDashProfile,
+  normalizeVector,
+  type CharacterId
+} from "../lib/brawlShared";
 import { recordArcadeResult } from "../lib/progression";
 import { supabase } from "../lib/supabase";
 
@@ -9,7 +17,6 @@ type PlayerPresence = {
   onlineAt: string;
 };
 
-type CharacterId = "mage" | "fighter" | "archer" | "assassin" | "monk";
 type MapId = "sky-ruins" | "ember-yard" | "moon-pier";
 type ProjectileKind = "fireball" | "dagger" | "arrow" | "ultimate";
 
@@ -45,37 +52,6 @@ type StageConfig = {
   floorEdge: string;
   platformColor: string;
   accent: string;
-};
-
-type CharacterConfig = {
-  id: CharacterId;
-  name: string;
-  title: string;
-  color: string;
-  accent: string;
-  trim: string;
-  moveSpeed: number;
-  jumpVelocity: number;
-  airJumps: number;
-  meleeDamage: number;
-  meleeRange: number;
-  meleeKnockback: number;
-  meleeLift: number;
-  meleeLunge: number;
-  specialDamage: number;
-  specialRadius: number;
-  specialSpeed: number;
-  specialColor: string;
-  specialGravity: number;
-  specialCooldownMs: number;
-  specialChargeGain: number;
-  ultimateDamage: number;
-  ultimateRadius: number;
-  ultimateSpeed: number;
-  ultimateColor: string;
-  ultimateCooldownMs: number;
-  ultimateChargeGain: number;
-  ultimateShots: number;
 };
 
 type FighterPlayer = {
@@ -242,159 +218,6 @@ const STAGES: Record<MapId, StageConfig> = {
   }
 };
 
-const CHARACTER_CONFIGS: Record<CharacterId, CharacterConfig> = {
-  mage: {
-    id: "mage",
-    name: "Mage",
-    title: "Control and burst",
-    color: "#8b5cf6",
-    accent: "#c4b5fd",
-    trim: "#f97316",
-    moveSpeed: 4,
-    jumpVelocity: -11.5,
-    airJumps: 1,
-    meleeDamage: 6,
-    meleeRange: 52,
-    meleeKnockback: 6.8,
-    meleeLift: 6.2,
-    meleeLunge: 0,
-    specialDamage: 0,
-    specialRadius: 10,
-    specialSpeed: 6,
-    specialColor: "#fb923c",
-    specialGravity: 0.03,
-    specialCooldownMs: 5400,
-    specialChargeGain: 8,
-    ultimateDamage: 28,
-    ultimateRadius: 18,
-    ultimateSpeed: 7.2,
-    ultimateColor: "#f97316",
-    ultimateCooldownMs: 980,
-    ultimateChargeGain: 16,
-    ultimateShots: 1
-  },
-  fighter: {
-    id: "fighter",
-    name: "Fighter",
-    title: "Pressure and lunge",
-    color: "#ef4444",
-    accent: "#fecaca",
-    trim: "#f8fafc",
-    moveSpeed: 4.35,
-    jumpVelocity: -11.1,
-    airJumps: 1,
-    meleeDamage: 11,
-    meleeRange: 62,
-    meleeKnockback: 8.9,
-    meleeLift: 6.1,
-    meleeLunge: 2.8,
-    specialDamage: 9,
-    specialRadius: 7,
-    specialSpeed: 8.4,
-    specialColor: "#e2e8f0",
-    specialGravity: 0,
-    specialCooldownMs: 5200,
-    specialChargeGain: 10,
-    ultimateDamage: 22,
-    ultimateRadius: 13,
-    ultimateSpeed: 10.5,
-    ultimateColor: "#f8fafc",
-    ultimateCooldownMs: 950,
-    ultimateChargeGain: 18,
-    ultimateShots: 1
-  },
-  archer: {
-    id: "archer",
-    name: "Archer",
-    title: "Spacing and volley",
-    color: "#10b981",
-    accent: "#a7f3d0",
-    trim: "#fde68a",
-    moveSpeed: 4.65,
-    jumpVelocity: -11.9,
-    airJumps: 2,
-    meleeDamage: 5,
-    meleeRange: 48,
-    meleeKnockback: 8.1,
-    meleeLift: 5.4,
-    meleeLunge: 0,
-    specialDamage: 0,
-    specialRadius: 6,
-    specialSpeed: 10.8,
-    specialColor: "#fef08a",
-    specialGravity: 0.008,
-    specialCooldownMs: 5600,
-    specialChargeGain: 7,
-    ultimateDamage: 11,
-    ultimateRadius: 9,
-    ultimateSpeed: 8.8,
-    ultimateColor: "#facc15",
-    ultimateCooldownMs: 980,
-    ultimateChargeGain: 14,
-    ultimateShots: 5
-  },
-  assassin: {
-    id: "assassin",
-    name: "Assassin",
-    title: "Mobility and burst",
-    color: "#22c55e",
-    accent: "#bbf7d0",
-    trim: "#052e16",
-    moveSpeed: 4.9,
-    jumpVelocity: -11.8,
-    airJumps: 2,
-    meleeDamage: 7,
-    meleeRange: 54,
-    meleeKnockback: 7.1,
-    meleeLift: 5.7,
-    meleeLunge: 1.6,
-    specialDamage: 6,
-    specialRadius: 7,
-    specialSpeed: 9.4,
-    specialColor: "#4ade80",
-    specialGravity: 0.18,
-    specialCooldownMs: 5800,
-    specialChargeGain: 9,
-    ultimateDamage: 18,
-    ultimateRadius: 18,
-    ultimateSpeed: 0,
-    ultimateColor: "#22c55e",
-    ultimateCooldownMs: 1050,
-    ultimateChargeGain: 18,
-    ultimateShots: 1
-  },
-  monk: {
-    id: "monk",
-    name: "Monk",
-    title: "Pressure and flurry",
-    color: "#f59e0b",
-    accent: "#fde68a",
-    trim: "#7c2d12",
-    moveSpeed: 4.55,
-    jumpVelocity: -11.4,
-    airJumps: 1,
-    meleeDamage: 8,
-    meleeRange: 56,
-    meleeKnockback: 7.6,
-    meleeLift: 5.8,
-    meleeLunge: 1.9,
-    specialDamage: 7,
-    specialRadius: 10,
-    specialSpeed: 8.2,
-    specialColor: "#fbbf24",
-    specialGravity: 0,
-    specialCooldownMs: 5500,
-    specialChargeGain: 10,
-    ultimateDamage: 21,
-    ultimateRadius: 20,
-    ultimateSpeed: 0,
-    ultimateColor: "#f97316",
-    ultimateCooldownMs: 980,
-    ultimateChargeGain: 18,
-    ultimateShots: 1
-  }
-};
-
 const DEFAULT_INPUT: InputState = {
   left: false,
   right: false,
@@ -421,15 +244,6 @@ const DEFAULT_STATE: BrawlState = {
   message: "Waiting for two players."
 };
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function normalizeVector(dx: number, dy: number) {
-  const length = Math.hypot(dx, dy) || 1;
-  return { x: dx / length, y: dy / length, length };
-}
-
 function approach(current: number, target: number, amount: number) {
   if (current < target) return Math.min(current + amount, target);
   if (current > target) return Math.max(current - amount, target);
@@ -449,16 +263,6 @@ function createEffect(x: number, y: number, color: string, radius: number, ttlMs
     color,
     ttlMs
   };
-}
-
-function getDashProfile(characterId: CharacterId | null) {
-  if (characterId === "fighter" || characterId === "assassin" || characterId === "monk") {
-    return { power: 12.4, cooldownMs: 300 };
-  }
-  if (characterId === "archer") {
-    return { power: 9.1, cooldownMs: 460 };
-  }
-  return { power: 8.9, cooldownMs: 480 };
 }
 
 function getPlayersFromPresence(
@@ -2142,13 +1946,7 @@ const Brawl: React.FC = () => {
 
     const drawCharacter = (playerId: string, player: FighterPlayer, username: string) => {
       if (player.respawnMs > 0 || !player.selectedCharacter) return;
-      const config = CHARACTER_CONFIGS[player.selectedCharacter];
-      const bodyX = player.x - PLAYER_WIDTH / 2;
-      const bodyY = player.y - PLAYER_HEIGHT / 2;
       const input = inputStatesRef.current[playerId] ?? DEFAULT_INPUT;
-      const rawAimVector = normalizeVector(input.aimX - player.x, input.aimY - player.y);
-      const aimVector =
-        rawAimVector.length < 10 ? { x: player.facing, y: 0, length: 1 } : rawAimVector;
       const introAge = performance.now() - introStartedAtRef.current;
       const introIndex = playersRef.current.findIndex((entry) => entry.userId === playerId);
       const introProgress = clamp((introAge - introIndex * 110) / 420, 0, 1);
@@ -2166,99 +1964,20 @@ const Brawl: React.FC = () => {
       ctx.save();
       ctx.translate(0, -introLift);
       ctx.globalAlpha *= introProgress < 1 ? 0.28 + introProgress * 0.72 : 1;
-      if (player.invulnMs > 0 && Math.floor(player.invulnMs / 90) % 2 === 0) {
-        ctx.globalAlpha = 0.45;
-      }
-
-      ctx.fillStyle = "rgba(2, 6, 23, 0.22)";
-      ctx.beginPath();
-      ctx.ellipse(player.x, player.y + PLAYER_HEIGHT / 2 + 6, 18, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = "rgba(255,255,255,0.18)";
-      ctx.lineWidth = 1.5;
-      ctx.fillStyle = config.color;
-      ctx.fillRect(bodyX, bodyY, PLAYER_WIDTH, PLAYER_HEIGHT);
-      ctx.strokeRect(bodyX, bodyY, PLAYER_WIDTH, PLAYER_HEIGHT);
-      ctx.fillStyle = config.accent;
-      ctx.fillRect(bodyX + 5, bodyY - 8, PLAYER_WIDTH - 10, 8);
-      ctx.fillStyle = config.trim;
-
-      if (player.selectedCharacter === "mage") {
-        ctx.beginPath();
-        ctx.moveTo(player.x, bodyY - 18);
-        ctx.lineTo(player.x - 10, bodyY - 2);
-        ctx.lineTo(player.x + 10, bodyY - 2);
-        ctx.closePath();
-        ctx.fill();
-        ctx.save();
-        ctx.translate(player.x + aimVector.x * 12, player.y - 10 + aimVector.y * 8);
-        ctx.rotate(Math.atan2(aimVector.y, aimVector.x));
-        ctx.fillRect(0, -2, 18, 4);
-        ctx.restore();
-      } else if (player.selectedCharacter === "fighter") {
-        ctx.save();
-        ctx.translate(player.x + aimVector.x * 14, player.y - 6 + aimVector.y * 10);
-        ctx.rotate(Math.atan2(aimVector.y, aimVector.x));
-        ctx.fillRect(0, -3, 24, 6);
-        ctx.fillRect(20, -7, 6, 14);
-        ctx.restore();
-      } else if (player.selectedCharacter === "assassin") {
-        ctx.save();
-        ctx.translate(player.x + aimVector.x * 10, player.y - 6 + aimVector.y * 8);
-        ctx.rotate(Math.atan2(aimVector.y, aimVector.x));
-        ctx.fillRect(0, -2, 16, 4);
-        ctx.fillRect(6, -9, 4, 18);
-        ctx.fillRect(-6, -5, 12, 3);
-        ctx.restore();
-        ctx.save();
-        ctx.translate(player.x - aimVector.x * 8, player.y + 2 - aimVector.y * 4);
-        ctx.rotate(Math.atan2(-aimVector.y, -aimVector.x));
-        ctx.fillRect(0, -2, 14, 4);
-        ctx.fillRect(5, -8, 4, 16);
-        ctx.restore();
-      } else if (player.selectedCharacter === "monk") {
-        ctx.fillRect(bodyX + 6, bodyY + 6, 5, 16);
-        ctx.fillRect(bodyX + PLAYER_WIDTH - 11, bodyY + 6, 5, 16);
-        ctx.save();
-        ctx.translate(player.x + aimVector.x * 12, player.y - 4 + aimVector.y * 8);
-        ctx.rotate(Math.atan2(aimVector.y, aimVector.x));
-        ctx.beginPath();
-        ctx.arc(8, -5, 5, 0, Math.PI * 2);
-        ctx.arc(18, 5, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-        ctx.beginPath();
-        ctx.arc(player.x - aimVector.x * 6, player.y + 4 - aimVector.y * 4, 4, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.beginPath();
-        ctx.arc(player.x, bodyY + 5, 12, Math.PI, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = config.trim;
-        ctx.lineWidth = 2;
-        ctx.save();
-        ctx.translate(player.x, player.y - 2);
-        ctx.rotate(Math.atan2(aimVector.y, aimVector.x));
-        ctx.beginPath();
-        ctx.arc(8, 0, 11, -0.9, 0.9);
-        ctx.stroke();
-        ctx.restore();
-      }
-
-      if (player.attackFlashMs > 0) {
-        ctx.fillStyle = "#fff7ed";
-        ctx.save();
-        ctx.translate(player.x + aimVector.x * 16, player.y - 8 + aimVector.y * 10);
-        ctx.rotate(Math.atan2(aimVector.y, aimVector.x));
-        ctx.fillRect(0, -4, 18, 8);
-        ctx.restore();
-      }
-
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = "#020617";
-      ctx.font = "12px monospace";
-      ctx.fillText(username, player.x - username.length * 3.2, bodyY - 16);
+      drawBrawlCharacter({
+        ctx,
+        characterId: player.selectedCharacter,
+        x: player.x,
+        y: player.y,
+        facing: player.facing,
+        aimX: input.aimX,
+        aimY: input.aimY,
+        attackFlashMs: player.attackFlashMs,
+        invulnMs: player.invulnMs,
+        username,
+        width: PLAYER_WIDTH,
+        height: PLAYER_HEIGHT
+      });
       ctx.restore();
     };
 
