@@ -14,7 +14,7 @@ type PlayerState = {
 };
 type BossState = { x: number; y: number; vx: number; hp: number; maxHp: number; attackCooldownMs: number; phase: 1 | 2; weaknessMs: number; hitFlashMs: number };
 type ProjectileKind = "fireball" | "dagger" | "arrow" | "ultimate";
-type Projectile = { id: string; x: number; y: number; vx: number; vy: number; radius: number; damage: number; knockback: number; lift: number; color: string; kind: ProjectileKind; gravity: number; ttlMs: number; isUltimate: boolean; stuck?: boolean };
+type Projectile = { id: string; x: number; y: number; vx: number; vy: number; radius: number; damage: number; knockback: number; lift: number; color: string; kind: ProjectileKind; gravity: number; ttlMs: number; isUltimate: boolean; stuck?: boolean; spent?: boolean };
 type Effect = { id: string; x: number; y: number; radius: number; color: string; ttlMs: number; x2?: number; y2?: number };
 type Hazard = {
   id: string;
@@ -44,7 +44,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "1.1";
+const PVE_VERSION = "1.2";
 const BOSSES: Record<string, BossDefinition> = { "boss-1": { id: "boss-1", name: "Ashen Juggernaut", nextBossId: "boss-2", goldReward: 24 } };
 
 function createEffect(x: number, y: number, color: string, radius: number, ttlMs: number): Effect {
@@ -54,8 +54,8 @@ function createEffect(x: number, y: number, color: string, radius: number, ttlMs
 function drawPolygon(
   ctx: CanvasRenderingContext2D,
   points: Array<[number, number]>,
-  fillStyle: string,
-  strokeStyle?: string
+  fillStyle: string | CanvasGradient,
+  strokeStyle?: string | CanvasGradient
 ) {
   if (points.length === 0) return;
   ctx.beginPath();
@@ -441,9 +441,13 @@ const BrawlPvE: React.FC = () => {
           const hitBoss = Math.abs(next.x - boss.x) <= BOSS_WIDTH / 2 + next.radius && Math.abs(next.y - (boss.y - BOSS_HEIGHT / 2)) <= BOSS_HEIGHT / 2 + next.radius;
           if (hitBoss) {
             if (next.kind === "dagger" && player.assassinKnifeId === next.id) {
+              if (next.spent) {
+                return [next];
+              }
               next.vx = 0;
               next.vy = 0;
               next.stuck = true;
+              next.spent = true;
               next.ttlMs = Math.min(next.ttlMs, 900);
               damageBoss(next.damage, next.knockback, next.lift, next.x, next.y, next.color, 0, config.specialChargeGain);
               return [next];
@@ -757,12 +761,12 @@ const BrawlPvE: React.FC = () => {
         ctx.fillRect(0, 0, WIDTH, HEIGHT);
         drawPolygon(ctx, [[0, 0], [WIDTH * 0.54, 0], [WIDTH * 0.33, HEIGHT], [0, HEIGHT]], "rgba(245,158,11,0.24)");
         drawPolygon(ctx, [[WIDTH * 0.48, 0], [WIDTH, 0], [WIDTH, HEIGHT], [WIDTH * 0.66, HEIGHT]], "rgba(251,146,60,0.2)");
-        ctx.strokeStyle = "rgba(255,237,213,0.8)";
-        ctx.lineWidth = 6;
-        ctx.beginPath();
-        ctx.moveTo(WIDTH * 0.5, 0);
-        ctx.lineTo(WIDTH * 0.38, HEIGHT);
-        ctx.stroke();
+        const dividerGlow = ctx.createLinearGradient(WIDTH * 0.47, 0, WIDTH * 0.37, HEIGHT);
+        dividerGlow.addColorStop(0, "rgba(255,237,213,0)");
+        dividerGlow.addColorStop(0.45, "rgba(255,237,213,0.14)");
+        dividerGlow.addColorStop(1, "rgba(255,237,213,0)");
+        ctx.fillStyle = dividerGlow;
+        drawPolygon(ctx, [[WIDTH * 0.49, 0], [WIDTH * 0.52, 0], [WIDTH * 0.4, HEIGHT], [WIDTH * 0.37, HEIGHT]], dividerGlow as unknown as string);
         ctx.textAlign = "center";
         ctx.fillStyle = "#fff7ed";
         ctx.font = "bold 42px monospace";
