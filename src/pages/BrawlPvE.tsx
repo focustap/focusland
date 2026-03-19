@@ -44,7 +44,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.9";
+const PVE_VERSION = "1.0";
 const BOSSES: Record<string, BossDefinition> = { "boss-1": { id: "boss-1", name: "Ashen Juggernaut", nextBossId: "boss-2", goldReward: 24 } };
 
 function createEffect(x: number, y: number, color: string, radius: number, ttlMs: number): Effect {
@@ -429,7 +429,16 @@ const BrawlPvE: React.FC = () => {
               damageBoss(next.damage, next.knockback, next.lift, next.x, next.y, next.color, 0, config.specialChargeGain);
               return [next];
             }
-            damageBoss(next.damage, next.knockback, next.lift, next.x, next.y, next.color, 0, 0);
+            damageBoss(
+              next.damage,
+              next.knockback,
+              next.lift,
+              next.x,
+              next.y,
+              next.color,
+              0,
+              next.isUltimate ? 0 : next.kind === "arrow" ? 7 : 8
+            );
             return [];
           }
           if (next.ttlMs <= 0 || next.x < -20 || next.x > WIDTH + 20 || next.y < -20 || next.y > HEIGHT + 40) {
