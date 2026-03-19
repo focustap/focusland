@@ -63,7 +63,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "2.0";
+const PVE_VERSION = "2.1";
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
     id: "boss-1",
@@ -579,7 +579,7 @@ const BrawlPvE: React.FC = () => {
                 radius: 0,
                 width: Math.max(0, safeLane - safeWidth / 2),
                 height: 210,
-                ttlMs: 2500
+                ttlMs: 3200
               });
               hazardsRef.current.push({
                 id: `collapse-right-${timestamp}`,
@@ -589,7 +589,7 @@ const BrawlPvE: React.FC = () => {
                 radius: 0,
                 width: Math.max(0, WIDTH - (safeLane + safeWidth / 2)),
                 height: 210,
-                ttlMs: 2500
+                ttlMs: 3200
               });
               for (let quake = 0; quake < 4; quake += 1) {
                 hazardsRef.current.push({
@@ -651,12 +651,13 @@ const BrawlPvE: React.FC = () => {
                     id: `giant-pillar-${timestamp}-${pillar}`,
                     kind: "pillar",
                     x: pillarX,
-                    y: -160 - pillar * 34,
+                    y: -320 - pillar * 40,
                     radius: boss.phase === 3 ? 34 : 30,
-                    ttlMs: boss.phase === 3 ? 2550 : 2300,
+                    ttlMs: boss.phase === 3 ? 3900 : 3600,
                     width: boss.phase === 3 ? 52 : 46,
                     height: 0,
-                    vy: boss.phase === 3 ? 1.35 : 1.15
+                    vx: boss.phase === 3 ? 3900 : 3600,
+                    vy: -320 - pillar * 40
                   });
                 }
                 setStatus("Ceiling pillars break loose. Move before they crush the floor.");
@@ -794,23 +795,30 @@ const BrawlPvE: React.FC = () => {
           const next = { ...hazard, ttlMs: hazard.ttlMs - dt };
           if (hazard.kind === "pillar") {
             const pillarWidth = next.width ?? 48;
-            const descendEnd = 1150;
-            const crushEnd = 1650;
-            const baseY = FLOOR_Y - 190;
-            if (next.ttlMs > descendEnd) {
-              const descendProgress = 1 - (next.ttlMs - descendEnd) / Math.max(1, (hazard.ttlMs - descendEnd));
-              next.height = 210 * clamp(descendProgress, 0, 1);
-              next.y = -170 + (baseY + 170) * clamp(descendProgress, 0, 1);
-            } else if (next.ttlMs > crushEnd) {
-              next.height = 210;
-              next.y = baseY;
-              if (Math.abs(player.x - next.x) < pillarWidth * 0.7 && player.y > FLOOR_Y - 56) {
+            const totalMs = hazard.vx ?? 3600;
+            const startY = hazard.vy ?? -320;
+            const topY = -22;
+            const fullHeight = FLOOR_Y - topY + 8;
+            const descendMs = 1600;
+            const holdMs = 700;
+            const retractMs = Math.max(600, totalMs - descendMs - holdMs);
+            const elapsedMs = totalMs - next.ttlMs;
+
+            if (elapsedMs <= descendMs) {
+              const descendProgress = clamp(elapsedMs / descendMs, 0, 1);
+              next.y = startY + (topY - startY) * descendProgress;
+              next.height = Math.max(0, FLOOR_Y - next.y + 8);
+            } else if (elapsedMs <= descendMs + holdMs) {
+              next.y = topY;
+              next.height = fullHeight;
+              if (Math.abs(player.x - next.x) < pillarWidth * 0.72 && player.y > FLOOR_Y - 60) {
                 damagePlayer(32, "A cave pillar crushed you.");
               }
             } else {
-              const retractProgress = 1 - next.ttlMs / crushEnd;
-              next.height = 210 * Math.max(0, 1 - retractProgress);
-              next.y = baseY - 190 * retractProgress;
+              const retractElapsed = elapsedMs - descendMs - holdMs;
+              const retractProgress = clamp(retractElapsed / retractMs, 0, 1);
+              next.y = topY + (startY - topY) * retractProgress;
+              next.height = Math.max(0, FLOOR_Y - next.y + 8);
             }
             if (next.ttlMs <= 0 || (next.height ?? 0) <= 0) {
               return [];
