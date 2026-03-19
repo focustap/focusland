@@ -123,7 +123,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.102";
+const PVE_VERSION = "0.103";
 const MAX_PVE_PLAYERS = 4;
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
@@ -1429,7 +1429,7 @@ const BrawlPvE: React.FC = () => {
           }
           const particleKey = getKenneyParticleKey(effect);
           const particle = particleKey ? particleImagesRef.current?.[particleKey] : null;
-          if (particle && particle.complete) {
+          if (particle && particle.complete && particle.naturalWidth > 0) {
             const size = effect.radius * 3.2;
             ctx.drawImage(particle, effect.x - size / 2, effect.y - size / 2, size, size);
           }

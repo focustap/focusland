@@ -1,30 +1,32 @@
+const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path}`;
+
 export const KENNEY_PROMPTS = {
-  a: "/assets/kenney/ui/keyboard_a.png",
-  d: "/assets/kenney/ui/keyboard_d.png",
-  e: "/assets/kenney/ui/keyboard_e.png",
-  mouseLeft: "/assets/kenney/ui/mouse_left.png",
-  r: "/assets/kenney/ui/keyboard_r.png",
-  shift: "/assets/kenney/ui/keyboard_shift.png",
-  space: "/assets/kenney/ui/keyboard_space.png",
-  w: "/assets/kenney/ui/keyboard_w.png"
+  a: assetUrl("assets/kenney/ui/keyboard_a.png"),
+  d: assetUrl("assets/kenney/ui/keyboard_d.png"),
+  e: assetUrl("assets/kenney/ui/keyboard_e.png"),
+  mouseLeft: assetUrl("assets/kenney/ui/mouse_left.png"),
+  r: assetUrl("assets/kenney/ui/keyboard_r.png"),
+  shift: assetUrl("assets/kenney/ui/keyboard_shift.png"),
+  space: assetUrl("assets/kenney/ui/keyboard_space.png"),
+  w: assetUrl("assets/kenney/ui/keyboard_w.png")
 } as const;
 
 export const KENNEY_PARTICLES = {
-  flame: "/assets/kenney/particles/flame_04.png",
-  magic: "/assets/kenney/particles/magic_03.png",
-  slash: "/assets/kenney/particles/slash_03.png",
-  smoke: "/assets/kenney/particles/smoke_05.png",
-  spark: "/assets/kenney/particles/spark_06.png"
+  flame: assetUrl("assets/kenney/particles/flame_04.png"),
+  magic: assetUrl("assets/kenney/particles/magic_03.png"),
+  slash: assetUrl("assets/kenney/particles/slash_03.png"),
+  smoke: assetUrl("assets/kenney/particles/smoke_05.png"),
+  spark: assetUrl("assets/kenney/particles/spark_06.png")
 } as const;
 
 export const KENNEY_SFX = {
-  hazard: ["/assets/kenney/sfx/impactMining_002.ogg"],
+  hazard: [assetUrl("assets/kenney/sfx/impactMining_002.ogg")],
   hit: [
-    "/assets/kenney/sfx/impactPunch_medium_000.ogg",
-    "/assets/kenney/sfx/impactPunch_heavy_001.ogg"
+    assetUrl("assets/kenney/sfx/impactPunch_medium_000.ogg"),
+    assetUrl("assets/kenney/sfx/impactPunch_heavy_001.ogg")
   ],
-  ult: ["/assets/kenney/sfx/impactPlate_heavy_001.ogg"],
-  win: ["/assets/kenney/sfx/impactBell_heavy_003.ogg"]
+  ult: [assetUrl("assets/kenney/sfx/impactPlate_heavy_001.ogg")],
+  win: [assetUrl("assets/kenney/sfx/impactBell_heavy_003.ogg")]
 } as const;
 
 export type KenneyParticleKey = keyof typeof KENNEY_PARTICLES;
@@ -73,6 +75,7 @@ export function loadKenneyParticleImages() {
     Object.entries(KENNEY_PARTICLES).map(([key, src]) => {
       const image = new Image();
       image.src = src;
+      image.decoding = "async";
       return [key, image];
     })
   ) as Record<KenneyParticleKey, HTMLImageElement>;
@@ -108,4 +111,3 @@ export function getKenneyParticleKey(effect: EffectLike): KenneyParticleKey | nu
   }
   return "spark";
 }
-

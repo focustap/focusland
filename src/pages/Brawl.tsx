@@ -165,7 +165,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const NETWORK_RENDER_WINDOW_MS = 60;
-const BRAWL_VERSION = "1.2";
+const BRAWL_VERSION = "1.3";
 const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
 const LAVA_LANES = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72];
@@ -2119,7 +2119,7 @@ const Brawl: React.FC = () => {
           ctx.fill();
           const particleKey = getKenneyParticleKey(effect);
           const particle = particleKey ? particleImagesRef.current?.[particleKey] : null;
-          if (particle && particle.complete) {
+          if (particle && particle.complete && particle.naturalWidth > 0) {
             const size = effect.radius * 3.1;
             ctx.drawImage(particle, effect.x - size / 2, effect.y - size / 2, size, size);
           }
