@@ -562,6 +562,40 @@ input {
   color: #334155;
 }
 
+.input-prompt-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  margin-left: 0.55rem;
+}
+
+.input-prompt-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.75);
+}
+
+.input-prompt {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.input-prompt img {
+  width: 1.55rem;
+  height: 1.55rem;
+  object-fit: contain;
+  image-rendering: -webkit-optimize-contrast;
+}
+
 .brawl-shell {
   background:
     radial-gradient(circle at top, rgba(191, 219, 254, 0.35), transparent 42%),

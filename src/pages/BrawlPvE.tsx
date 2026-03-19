@@ -1,9 +1,19 @@
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AuthContext } from "../components/AuthProvider";
+import InputPrompt from "../components/InputPrompt";
 import NavBar from "../components/NavBar";
 import { completeBrawlPveBoss, loadBrawlPveProgress } from "../lib/brawlPveProgress";
 import { CHARACTER_CONFIGS, clamp, type CharacterId, drawBrawlCharacter, getDashProfile, normalizeVector } from "../lib/brawlShared";
+import {
+  createKenneyAudioPools,
+  getKenneyParticleKey,
+  KENNEY_PROMPTS,
+  loadKenneyParticleImages,
+  playKenneySfx,
+  type KenneyParticleKey,
+  type KenneySfxKey
+} from "../lib/kenneyAssets";
 import { recordArcadeResult } from "../lib/progression";
 import { supabase } from "../lib/supabase";
 
@@ -113,7 +123,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.101";
+const PVE_VERSION = "0.102";
 const MAX_PVE_PLAYERS = 4;
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
@@ -357,6 +367,9 @@ const BrawlPvE: React.FC = () => {
   const bossDeathStartedAtRef = useRef<number | null>(null);
   const winOverlayStartedAtRef = useRef<number | null>(null);
   const clearRewardGrantedRef = useRef(false);
+  const audioPoolsRef = useRef<Record<KenneySfxKey, HTMLAudioElement[]> | null>(null);
+  const audioUnlockedRef = useRef(false);
+  const particleImagesRef = useRef<Record<KenneyParticleKey, HTMLImageElement> | null>(null);
   const bossDef = BOSSES[bossId];
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [progressLoading, setProgressLoading] = useState(true);
@@ -370,6 +383,25 @@ const BrawlPvE: React.FC = () => {
   const selectedCharacterRef = useRef<CharacterId | null>(null);
   const bossDefRef = useRef<BossDefinition | undefined>(bossDef);
   const isStartAuthority = players[0]?.userId === currentUserId;
+
+  useEffect(() => {
+    particleImagesRef.current = loadKenneyParticleImages();
+  }, []);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (audioUnlockedRef.current) return;
+      audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
+      audioUnlockedRef.current = true;
+    };
+
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+  }, []);
 
   useEffect(() => {
     selectedCharacterRef.current = selectedCharacter;
@@ -593,6 +625,10 @@ const BrawlPvE: React.FC = () => {
       }
       setWon(true);
       setStatus("Boss defeated. The next gate is open.");
+      if (audioUnlockedRef.current) {
+        audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
+        playKenneySfx(audioPoolsRef.current, "win", 0.64);
+      }
       if (!clearRewardGrantedRef.current && bossDef) {
         clearRewardGrantedRef.current = true;
         void completeBrawlPveBoss(session?.user.id, bossDef.id, bossDef.nextBossId);
@@ -618,6 +654,10 @@ const BrawlPvE: React.FC = () => {
       if (weaknessMs > 0) boss.weaknessMs = Math.max(boss.weaknessMs, weaknessMs);
       player.ultimateCharge = clamp(player.ultimateCharge + chargeGain, 0, ULTIMATE_CHARGE_MAX);
       effectsRef.current.push(createEffect(hitX, hitY, bossDef?.style === "giant" ? "#cbd5e1" : color, 20, 180));
+      if (audioUnlockedRef.current) {
+        audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
+        playKenneySfx(audioPoolsRef.current, chargeGain === 0 ? "ult" : "hit", chargeGain === 0 ? 0.5 : 0.36);
+      }
       const eventId = `${currentUserId ?? "local"}-${Date.now()}-${Math.random()}`;
       appliedDamageEventsRef.current.add(eventId);
       if (channelRef.current && currentUserId) {
@@ -666,6 +706,10 @@ const BrawlPvE: React.FC = () => {
         deathStartedAtRef.current = now;
         effectsRef.current.push(createEffect(player.x, player.y - 8, "#e2e8f0", 28, 220));
         effectsRef.current.push(createEffect(player.x, player.y - 8, "#94a3b8", 44, 360));
+        if (audioUnlockedRef.current) {
+          audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
+          playKenneySfx(audioPoolsRef.current, "hazard", 0.42);
+        }
         setLost(true);
         setStatus("You are down. Spectating the hunt.");
       }
@@ -1383,6 +1427,12 @@ const BrawlPvE: React.FC = () => {
             ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2);
             ctx.fill();
           }
+          const particleKey = getKenneyParticleKey(effect);
+          const particle = particleKey ? particleImagesRef.current?.[particleKey] : null;
+          if (particle && particle.complete) {
+            const size = effect.radius * 3.2;
+            ctx.drawImage(particle, effect.x - size / 2, effect.y - size / 2, size, size);
+          }
         }
         ctx.restore();
       });
@@ -1753,7 +1803,31 @@ const BrawlPvE: React.FC = () => {
               style={{ width: "100%", maxWidth: WIDTH, display: "block", margin: "1rem auto", borderRadius: "1rem", border: "1px solid #334155", background: "#0f172a" }}
             />
             <p className="info">{status}</p>
-            <p className="score-display">Controls: `A/D` move, `W/Space` jump, `Shift` dash, mouse aim, left click primary, `E` utility, `R` ultimate.</p>
+            <p className="score-display brawl-controls">
+              <strong>Controls:</strong>
+              <span className="input-prompt-row">
+                <span className="input-prompt-group">
+                  <InputPrompt src={KENNEY_PROMPTS.a} alt="A key" />
+                  <InputPrompt src={KENNEY_PROMPTS.d} alt="D key" label="move" />
+                </span>
+                <span className="input-prompt-group">
+                  <InputPrompt src={KENNEY_PROMPTS.w} alt="W key" />
+                  <InputPrompt src={KENNEY_PROMPTS.space} alt="Space key" label="jump" />
+                </span>
+                <span className="input-prompt-group">
+                  <InputPrompt src={KENNEY_PROMPTS.shift} alt="Shift key" label="dash" />
+                </span>
+                <span className="input-prompt-group">
+                  <InputPrompt src={KENNEY_PROMPTS.mouseLeft} alt="Left mouse button" label="primary" />
+                </span>
+                <span className="input-prompt-group">
+                  <InputPrompt src={KENNEY_PROMPTS.e} alt="E key" label="utility" />
+                </span>
+                <span className="input-prompt-group">
+                  <InputPrompt src={KENNEY_PROMPTS.r} alt="R key" label="ultimate" />
+                </span>
+              </span>
+            </p>
           </>
         )}
       </div>

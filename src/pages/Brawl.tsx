@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import InputPrompt from "../components/InputPrompt";
 import NavBar from "../components/NavBar";
 import {
   CHARACTER_CONFIGS,
@@ -8,6 +9,15 @@ import {
   normalizeVector,
   type CharacterId
 } from "../lib/brawlShared";
+import {
+  createKenneyAudioPools,
+  getKenneyParticleKey,
+  KENNEY_PROMPTS,
+  loadKenneyParticleImages,
+  playKenneySfx,
+  type KenneyParticleKey,
+  type KenneySfxKey
+} from "../lib/kenneyAssets";
 import { recordArcadeResult } from "../lib/progression";
 import { supabase } from "../lib/supabase";
 
@@ -155,7 +165,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const NETWORK_RENDER_WINDOW_MS = 60;
-const BRAWL_VERSION = "1.1";
+const BRAWL_VERSION = "1.2";
 const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
 const LAVA_LANES = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72];
@@ -519,8 +529,9 @@ const Brawl: React.FC = () => {
   const cameraShakeRef = useRef({ intensity: 0, ttlMs: 0 });
   const hitStopUntilRef = useRef<number>(0);
   const introStartedAtRef = useRef<number>(0);
-  const audioContextRef = useRef<AudioContext | null>(null);
   const audioUnlockedRef = useRef(false);
+  const audioPoolsRef = useRef<Record<KenneySfxKey, HTMLAudioElement[]> | null>(null);
+  const particleImagesRef = useRef<Record<KenneyParticleKey, HTMLImageElement> | null>(null);
   const vsIntroTimeoutRef = useRef<number | null>(null);
   const rewardClaimedRef = useRef(false);
 
@@ -576,12 +587,13 @@ const Brawl: React.FC = () => {
   }, [brawlState.phase, brawlState.winnerId, currentUserId, players]);
 
   useEffect(() => {
+    particleImagesRef.current = loadKenneyParticleImages();
+  }, []);
+
+  useEffect(() => {
     const unlockAudio = () => {
       if (audioUnlockedRef.current) return;
-      const AudioCtor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioCtor) return;
-      audioContextRef.current = audioContextRef.current ?? new AudioCtor();
-      void audioContextRef.current.resume();
+      audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
       audioUnlockedRef.current = true;
     };
 
@@ -622,45 +634,14 @@ const Brawl: React.FC = () => {
     };
 
     const playSfx = (kind: "hit" | "hazard" | "ult" | "ready" | "win") => {
-      const context = audioContextRef.current;
-      if (!context || context.state !== "running") return;
-
-      const now = context.currentTime;
-      const tones =
-        kind === "hit"
-          ? [
-              { frequency: 160, duration: 0.06, type: "square" as OscillatorType, gain: 0.04 },
-              { frequency: 90, duration: 0.09, type: "triangle" as OscillatorType, gain: 0.03 }
-            ]
-          : kind === "hazard"
-            ? [
-                { frequency: 220, duration: 0.12, type: "sawtooth" as OscillatorType, gain: 0.05 },
-                { frequency: 140, duration: 0.16, type: "triangle" as OscillatorType, gain: 0.04 }
-              ]
-            : kind === "ult"
-              ? [
-                  { frequency: 280, duration: 0.1, type: "square" as OscillatorType, gain: 0.05 },
-                  { frequency: 420, duration: 0.15, type: "triangle" as OscillatorType, gain: 0.045 }
-                ]
-              : kind === "ready"
-                ? [{ frequency: 540, duration: 0.08, type: "triangle" as OscillatorType, gain: 0.035 }]
-                : [
-                    { frequency: 420, duration: 0.14, type: "triangle" as OscillatorType, gain: 0.04 },
-                    { frequency: 620, duration: 0.22, type: "sine" as OscillatorType, gain: 0.04 }
-                  ];
-
-      tones.forEach((tone, index) => {
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.type = tone.type;
-        oscillator.frequency.setValueAtTime(tone.frequency, now + index * 0.02);
-        gain.gain.setValueAtTime(tone.gain, now + index * 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.02 + tone.duration);
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.start(now + index * 0.02);
-        oscillator.stop(now + index * 0.02 + tone.duration);
-      });
+      if (!audioUnlockedRef.current) return;
+      audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
+      const volume = kind === "win" ? 0.62 : kind === "ult" ? 0.52 : kind === "hazard" ? 0.46 : 0.38;
+      playKenneySfx(
+        audioPoolsRef.current,
+        kind === "ready" ? "hit" : kind,
+        volume
+      );
     };
 
     if (currentState.phase !== nextState.phase && nextState.phase === "playing") {
@@ -2136,6 +2117,12 @@ const Brawl: React.FC = () => {
           ctx.beginPath();
           ctx.arc(effect.x, effect.y, effect.radius * (1.1 + (1 - effectAlpha)), 0, Math.PI * 2);
           ctx.fill();
+          const particleKey = getKenneyParticleKey(effect);
+          const particle = particleKey ? particleImagesRef.current?.[particleKey] : null;
+          if (particle && particle.complete) {
+            const size = effect.radius * 3.1;
+            ctx.drawImage(particle, effect.x - size / 2, effect.y - size / 2, size, size);
+          }
         }
         ctx.globalAlpha = 1;
       });
@@ -2407,7 +2394,26 @@ const Brawl: React.FC = () => {
                 <strong>Roster:</strong> Mage fights with bolts and blink spacing, Fighter closes gaps with dashes and chain pulls, Archer plays spacing with shots and a barrage, Assassin chains daggers into knife teleports, Monk pressures with hands, kicks, and a punch flurry.
               </p>
               <p className="brawl-controls">
-                <strong>Controls:</strong> WASD move, Shift dash, mouse aim, left click primary, E utility, R ultimate.
+                <strong>Controls:</strong>
+                <span className="input-prompt-row">
+                  <span className="input-prompt-group">
+                    <InputPrompt src={KENNEY_PROMPTS.w} alt="W key" />
+                    <InputPrompt src={KENNEY_PROMPTS.a} alt="A key" />
+                    <InputPrompt src={KENNEY_PROMPTS.d} alt="D key" label="move" />
+                  </span>
+                  <span className="input-prompt-group">
+                    <InputPrompt src={KENNEY_PROMPTS.shift} alt="Shift key" label="dash" />
+                  </span>
+                  <span className="input-prompt-group">
+                    <InputPrompt src={KENNEY_PROMPTS.mouseLeft} alt="Left mouse button" label="primary" />
+                  </span>
+                  <span className="input-prompt-group">
+                    <InputPrompt src={KENNEY_PROMPTS.e} alt="E key" label="utility" />
+                  </span>
+                  <span className="input-prompt-group">
+                    <InputPrompt src={KENNEY_PROMPTS.r} alt="R key" label="ultimate" />
+                  </span>
+                </span>
               </p>
             </div>
 
