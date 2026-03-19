@@ -16,7 +16,18 @@ type BossState = { x: number; y: number; vx: number; hp: number; maxHp: number; 
 type ProjectileKind = "fireball" | "dagger" | "arrow" | "ultimate";
 type Projectile = { id: string; x: number; y: number; vx: number; vy: number; radius: number; damage: number; knockback: number; lift: number; color: string; kind: ProjectileKind; gravity: number; ttlMs: number; isUltimate: boolean; stuck?: boolean };
 type Effect = { id: string; x: number; y: number; radius: number; color: string; ttlMs: number; x2?: number; y2?: number };
-type Hazard = { id: string; kind: "slam-warning" | "slam-hit" | "orb"; x: number; y: number; radius: number; ttlMs: number; vx?: number; vy?: number };
+type Hazard = {
+  id: string;
+  kind: "slam-warning" | "slam-hit" | "orb" | "flame-warning" | "flame-wall" | "ember-warning" | "ember-hit";
+  x: number;
+  y: number;
+  radius: number;
+  ttlMs: number;
+  vx?: number;
+  vy?: number;
+  width?: number;
+  height?: number;
+};
 
 const WIDTH = 920;
 const HEIGHT = 520;
@@ -32,7 +43,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.6";
+const PVE_VERSION = "0.7";
 const BOSSES: Record<string, BossDefinition> = { "boss-1": { id: "boss-1", name: "Ashen Juggernaut", nextBossId: "boss-2", goldReward: 24 } };
 
 function createEffect(x: number, y: number, color: string, radius: number, ttlMs: number): Effect {
@@ -332,11 +343,40 @@ const BrawlPvE: React.FC = () => {
                 });
               }
               setStatus("Radial burst. Move between the lanes.");
-            } else {
+            } else if (roll < 0.86) {
               const laneOffset = boss.phase === 2 ? 170 : 150;
               hazardsRef.current.push({ id: `lane-left-${timestamp}`, kind: "slam-warning", x: BOSS_X - laneOffset, y: FLOOR_Y + 2, radius: 60, ttlMs: 620 });
               hazardsRef.current.push({ id: `lane-right-${timestamp}`, kind: "slam-warning", x: BOSS_X + laneOffset, y: FLOOR_Y + 2, radius: 60, ttlMs: 620 });
               setStatus("Side lanes marked. Hold center or jump over the edge blasts.");
+            } else if (roll < 0.94) {
+              const flameWidth = boss.phase === 2 ? 280 : 220;
+              const flameHeight = boss.phase === 2 ? 78 : 62;
+              const flameLeft = player.x < BOSS_X ? BOSS_X - 22 : BOSS_X - flameWidth + 22;
+              hazardsRef.current.push({
+                id: `flame-warning-${timestamp}`,
+                kind: "flame-warning",
+                x: flameLeft,
+                y: FLOOR_Y - 120,
+                radius: 0,
+                width: flameWidth,
+                height: flameHeight,
+                ttlMs: 560
+              });
+              setStatus("Dragon breath charging. Cross the head or clear the lane.");
+            } else {
+              const emberCount = boss.phase === 2 ? 4 : 3;
+              for (let ember = 0; ember < emberCount; ember += 1) {
+                const emberX = 140 + Math.random() * (WIDTH - 280);
+                hazardsRef.current.push({
+                  id: `ember-warning-${timestamp}-${ember}`,
+                  kind: "ember-warning",
+                  x: emberX,
+                  y: FLOOR_Y + 2,
+                  radius: boss.phase === 2 ? 42 : 34,
+                  ttlMs: 760 + ember * 90
+                });
+              }
+              setStatus("Embers rain down. Keep moving.");
             }
             boss.attackCooldownMs = boss.phase === 2 ? 1120 : 1550;
           }
@@ -382,11 +422,39 @@ const BrawlPvE: React.FC = () => {
               return [];
             }
           }
+          if (hazard.kind === "flame-wall" && typeof next.width === "number" && typeof next.height === "number") {
+            if (
+              player.x + PLAYER_WIDTH / 2 > next.x &&
+              player.x - PLAYER_WIDTH / 2 < next.x + next.width &&
+              player.y > next.y &&
+              player.y - PLAYER_HEIGHT < next.y + next.height
+            ) {
+              damagePlayer(20, "Dragonfire scorched you.");
+              return [];
+            }
+          }
           if (hazard.kind === "slam-warning" && next.ttlMs <= 0) {
             if (Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 60) damagePlayer(22, "The slam connected.");
             return [{ id: hazard.id.replace("warning", "hit"), kind: "slam-hit", x: next.x, y: next.y, radius: next.radius, ttlMs: 180 }];
           }
+          if (hazard.kind === "ember-warning" && next.ttlMs <= 0) {
+            if (Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 92) damagePlayer(16, "A falling ember blasted you.");
+            return [{ id: hazard.id.replace("warning", "hit"), kind: "ember-hit", x: next.x, y: next.y, radius: next.radius + 10, ttlMs: 220 }];
+          }
+          if (hazard.kind === "flame-warning" && next.ttlMs <= 0) {
+            return [{
+              id: hazard.id.replace("warning", "wall"),
+              kind: "flame-wall",
+              x: next.x,
+              y: next.y,
+              radius: 0,
+              width: next.width,
+              height: next.height,
+              ttlMs: boss.phase === 2 ? 520 : 420
+            }];
+          }
           if (hazard.kind === "slam-hit" && Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 60) damagePlayer(18, "Shockwave hit.");
+          if (hazard.kind === "ember-hit" && Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 84) damagePlayer(14, "The blast zone caught you.");
           return next.ttlMs > 0 ? [next] : [];
         });
 
@@ -410,6 +478,18 @@ const BrawlPvE: React.FC = () => {
         if (hazard.kind === "slam-warning") {
           ctx.fillStyle = "rgba(251,146,60,0.28)";
           ctx.strokeStyle = "rgba(254,215,170,0.8)";
+        } else if (hazard.kind === "flame-warning") {
+          ctx.fillStyle = "rgba(251,146,60,0.18)";
+          ctx.strokeStyle = "rgba(253,186,116,0.92)";
+        } else if (hazard.kind === "flame-wall") {
+          ctx.fillStyle = "rgba(249,115,22,0.4)";
+          ctx.strokeStyle = "rgba(255,237,213,0.9)";
+        } else if (hazard.kind === "ember-warning") {
+          ctx.fillStyle = "rgba(253,224,71,0.18)";
+          ctx.strokeStyle = "rgba(254,240,138,0.85)";
+        } else if (hazard.kind === "ember-hit") {
+          ctx.fillStyle = "rgba(239,68,68,0.3)";
+          ctx.strokeStyle = "rgba(254,202,202,0.85)";
         } else if (hazard.kind === "slam-hit") {
           ctx.fillStyle = "rgba(239,68,68,0.35)";
           ctx.strokeStyle = "rgba(254,202,202,0.85)";
@@ -418,10 +498,15 @@ const BrawlPvE: React.FC = () => {
           ctx.strokeStyle = "#fff7ed";
         }
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(hazard.x, hazard.kind === "orb" ? hazard.y : FLOOR_Y - 10, hazard.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+        if ((hazard.kind === "flame-warning" || hazard.kind === "flame-wall") && typeof hazard.width === "number" && typeof hazard.height === "number") {
+          ctx.fillRect(hazard.x, hazard.y, hazard.width, hazard.height);
+          ctx.strokeRect(hazard.x, hazard.y, hazard.width, hazard.height);
+        } else {
+          ctx.beginPath();
+          ctx.arc(hazard.x, hazard.kind === "orb" ? hazard.y : FLOOR_Y - 10, hazard.radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
         ctx.restore();
       });
 
@@ -461,16 +546,69 @@ const BrawlPvE: React.FC = () => {
       });
 
       ctx.save();
-      ctx.translate(boss.x, boss.y - BOSS_HEIGHT / 2);
-      ctx.fillStyle = boss.hitFlashMs > 0 ? "#fff7ed" : boss.weaknessMs > 0 ? "#86efac" : "#7c2d12";
-      ctx.fillRect(-BOSS_WIDTH / 2, 0, BOSS_WIDTH, BOSS_HEIGHT);
+      ctx.translate(boss.x, boss.y - 86);
+      ctx.fillStyle = boss.hitFlashMs > 0 ? "#fff7ed" : boss.weaknessMs > 0 ? "#86efac" : "#4a1d10";
+      ctx.beginPath();
+      ctx.moveTo(-84, 34);
+      ctx.lineTo(-26, -8);
+      ctx.lineTo(26, -16);
+      ctx.lineTo(74, 12);
+      ctx.lineTo(62, 58);
+      ctx.lineTo(14, 82);
+      ctx.lineTo(-42, 78);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "rgba(127,29,29,0.92)";
+      ctx.beginPath();
+      ctx.moveTo(-22, 0);
+      ctx.lineTo(-92, -46);
+      ctx.lineTo(-44, 22);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(24, -6);
+      ctx.lineTo(98, -54);
+      ctx.lineTo(56, 18);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#7c2d12";
+      ctx.beginPath();
+      ctx.moveTo(52, 22);
+      ctx.lineTo(104, 10);
+      ctx.lineTo(124, 26);
+      ctx.lineTo(80, 42);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#fb923c";
+      ctx.beginPath();
+      ctx.moveTo(62, 24);
+      ctx.lineTo(118, 18);
+      ctx.lineTo(94, 34);
+      ctx.lineTo(118, 48);
+      ctx.lineTo(62, 42);
+      ctx.closePath();
+      ctx.fill();
       ctx.fillStyle = "#fca5a5";
-      ctx.fillRect(-BOSS_WIDTH / 2 + 14, -14, BOSS_WIDTH - 28, 16);
-      ctx.fillStyle = "#fde68a";
-      ctx.fillRect(-BOSS_WIDTH / 2 + 22, 36, BOSS_WIDTH - 44, 20);
+      ctx.beginPath();
+      ctx.moveTo(-32, -10);
+      ctx.lineTo(-18, -32);
+      ctx.lineTo(-4, -8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(2, -12);
+      ctx.lineTo(18, -38);
+      ctx.lineTo(28, -8);
+      ctx.closePath();
+      ctx.fill();
       ctx.fillStyle = "#111827";
-      ctx.fillRect(-18, 54, 12, 12);
-      ctx.fillRect(6, 54, 12, 12);
+      ctx.beginPath();
+      ctx.arc(18, 10, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fef08a";
+      ctx.beginPath();
+      ctx.arc(18, 10, 3, 0, Math.PI * 2);
+      ctx.fill();
       ctx.restore();
 
       drawBrawlCharacter({
