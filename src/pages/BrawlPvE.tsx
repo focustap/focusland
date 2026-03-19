@@ -21,6 +21,7 @@ type Hazard = { id: string; kind: "slam-warning" | "slam-hit" | "orb"; x: number
 const WIDTH = 920;
 const HEIGHT = 520;
 const FLOOR_Y = 430;
+const BOSS_X = WIDTH / 2;
 const PLAYER_WIDTH = 28;
 const PLAYER_HEIGHT = 44;
 const BOSS_WIDTH = 110;
@@ -31,7 +32,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.5";
+const PVE_VERSION = "0.6";
 const BOSSES: Record<string, BossDefinition> = { "boss-1": { id: "boss-1", name: "Ashen Juggernaut", nextBossId: "boss-2", goldReward: 24 } };
 
 function createEffect(x: number, y: number, color: string, radius: number, ttlMs: number): Effect {
@@ -60,7 +61,7 @@ const BrawlPvE: React.FC = () => {
   const mouseRef = useRef({ x: WIDTH / 2, y: HEIGHT / 2 });
   const mouseDownRef = useRef(false);
   const playerRef = useRef<PlayerState | null>(null);
-  const bossRef = useRef<BossState>({ x: 700, y: FLOOR_Y, vx: 0, hp: 380, maxHp: 380, attackCooldownMs: 1800, phase: 1, weaknessMs: 0, hitFlashMs: 0 });
+  const bossRef = useRef<BossState>({ x: BOSS_X, y: FLOOR_Y, vx: 0, hp: 380, maxHp: 380, attackCooldownMs: 1800, phase: 1, weaknessMs: 0, hitFlashMs: 0 });
   const hazardsRef = useRef<Hazard[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const effectsRef = useRef<Effect[]>([]);
@@ -108,13 +109,13 @@ const BrawlPvE: React.FC = () => {
       const boss = bossRef.current;
       const adjusted = boss.weaknessMs > 0 ? amount * 1.5 : amount;
       boss.hp = Math.max(0, boss.hp - adjusted);
-      boss.vx += Math.sign(boss.x - player.x || player.facing) * knockback;
       boss.hitFlashMs = 120;
       if (weaknessMs > 0) boss.weaknessMs = Math.max(boss.weaknessMs, weaknessMs);
       player.ultimateCharge = clamp(player.ultimateCharge + chargeGain, 0, ULTIMATE_CHARGE_MAX);
       effectsRef.current.push(createEffect(hitX, hitY, color, 20, 180));
       if (boss.hp <= boss.maxHp / 2) boss.phase = 2;
       if (boss.hp <= 0) finishWin();
+      boss.x = BOSS_X;
       boss.y = clamp(boss.y - lift * 0.25, FLOOR_Y - 6, FLOOR_Y);
     };
 
@@ -229,9 +230,6 @@ const BrawlPvE: React.FC = () => {
             const startY = player.y - 4 + aim.y * 10;
             effectsRef.current.push({ id: `chain-${Date.now()}`, x: startX, y: startY, x2: clamp(startX + aim.x * 132, 16, WIDTH - 16), y2: clamp(startY + aim.y * 132, 18, FLOOR_Y - 12), radius: 3, color: config.specialColor, ttlMs: 120 });
             if (Math.hypot(boss.x - player.x, boss.y - player.y) <= 150 && aim.x * toBoss.x + aim.y * toBoss.y > 0.15) {
-              const pull = normalizeVector(player.x - boss.x, player.y - boss.y);
-              boss.x = clamp(player.x - pull.x * 48, 90, WIDTH - 90);
-              boss.vx = pull.x * 7.8;
               damageBoss(config.specialDamage, 6.4, 4.2, (player.x + boss.x) / 2, (player.y + boss.y) / 2, config.specialColor, 0, config.specialChargeGain);
             }
           } else if (player.selectedCharacter === "mage") {
@@ -310,23 +308,35 @@ const BrawlPvE: React.FC = () => {
         }
 
         if (boss.hp > 0) {
-          const dir = Math.sign(player.x - boss.x) || 1;
-          boss.vx = boss.vx * Math.pow(0.92, scale) + dir * (boss.phase === 2 ? 0.78 : 0.56) * scale;
-          boss.x = clamp(boss.x + boss.vx, 90, WIDTH - 90);
+          boss.x = BOSS_X;
+          boss.vx = 0;
           if (boss.attackCooldownMs === 0) {
             const roll = Math.random();
-            if (roll < 0.38) {
+            if (roll < 0.34) {
               hazardsRef.current.push({ id: `slam-warning-${timestamp}`, kind: "slam-warning", x: player.x, y: FLOOR_Y + 2, radius: 46, ttlMs: 720 });
-              setStatus("Juggernaut marks a slam. Dash out.");
-            } else if (roll < 0.72) {
-              for (let shot = 0; shot < (boss.phase === 2 ? 7 : 5); shot += 1) {
-                const angle = -0.6 + (shot / Math.max(1, (boss.phase === 2 ? 6 : 4))) * 1.2;
-                hazardsRef.current.push({ id: `orb-${timestamp}-${shot}`, kind: "orb", x: boss.x, y: boss.y - 58, radius: 12, ttlMs: 2600, vx: (dir * 3.2 + angle * 1.4) * (boss.phase === 2 ? 1.24 : 1), vy: angle * 2.8 });
+              hazardsRef.current.push({ id: `slam-center-${timestamp}`, kind: "slam-warning", x: BOSS_X, y: FLOOR_Y + 2, radius: boss.phase === 2 ? 82 : 68, ttlMs: 860 });
+              setStatus("Core slam incoming. Punish the middle, then dash out.");
+            } else if (roll < 0.68) {
+              const shotCount = boss.phase === 2 ? 8 : 6;
+              for (let shot = 0; shot < shotCount; shot += 1) {
+                const angle = (-Math.PI / 2) + (shot / shotCount) * Math.PI * 2;
+                hazardsRef.current.push({
+                  id: `orb-${timestamp}-${shot}`,
+                  kind: "orb",
+                  x: BOSS_X,
+                  y: boss.y - 58,
+                  radius: 12,
+                  ttlMs: 2600,
+                  vx: Math.cos(angle) * (boss.phase === 2 ? 3.9 : 3.1),
+                  vy: Math.sin(angle) * (boss.phase === 2 ? 3.5 : 2.8)
+                });
               }
-              setStatus("Orb burst. Find the gap.");
+              setStatus("Radial burst. Move between the lanes.");
             } else {
-              hazardsRef.current.push({ id: `slam-warning-wide-${timestamp}`, kind: "slam-warning", x: player.x + dir * 74, y: FLOOR_Y + 2, radius: 64, ttlMs: 540 });
-              setStatus("Rush follow-up incoming.");
+              const laneOffset = boss.phase === 2 ? 170 : 150;
+              hazardsRef.current.push({ id: `lane-left-${timestamp}`, kind: "slam-warning", x: BOSS_X - laneOffset, y: FLOOR_Y + 2, radius: 60, ttlMs: 620 });
+              hazardsRef.current.push({ id: `lane-right-${timestamp}`, kind: "slam-warning", x: BOSS_X + laneOffset, y: FLOOR_Y + 2, radius: 60, ttlMs: 620 });
+              setStatus("Side lanes marked. Hold center or jump over the edge blasts.");
             }
             boss.attackCooldownMs = boss.phase === 2 ? 1120 : 1550;
           }
@@ -525,7 +535,7 @@ const BrawlPvE: React.FC = () => {
   const resetFight = () => {
     if (!selectedCharacter) return;
     playerRef.current = makePlayerState(selectedCharacter);
-    bossRef.current = { x: 700, y: FLOOR_Y, vx: 0, hp: 380, maxHp: 380, attackCooldownMs: 1800, phase: 1, weaknessMs: 0, hitFlashMs: 0 };
+    bossRef.current = { x: BOSS_X, y: FLOOR_Y, vx: 0, hp: 380, maxHp: 380, attackCooldownMs: 1800, phase: 1, weaknessMs: 0, hitFlashMs: 0 };
     hazardsRef.current = [];
     projectilesRef.current = [];
     effectsRef.current = [];
