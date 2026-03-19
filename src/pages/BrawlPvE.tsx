@@ -5,6 +5,7 @@ import NavBar from "../components/NavBar";
 import { completeBrawlPveBoss, loadBrawlPveProgress } from "../lib/brawlPveProgress";
 import { CHARACTER_CONFIGS, clamp, type CharacterId, drawBrawlCharacter, getDashProfile, normalizeVector } from "../lib/brawlShared";
 import { recordArcadeResult } from "../lib/progression";
+import { supabase } from "../lib/supabase";
 
 type BossDefinition = {
   id: string;
@@ -14,6 +15,40 @@ type BossDefinition = {
   maxHp: number;
   baseCooldownMs: number;
   style: "dragon" | "giant";
+};
+type PlayerPresence = {
+  userId: string;
+  username: string;
+  onlineAt: string;
+};
+type RemoteSnapshot = {
+  userId: string;
+  username: string;
+  x: number;
+  y: number;
+  facing: 1 | -1;
+  aimX: number;
+  aimY: number;
+  hp: number;
+  attackFlashMs: number;
+  invulnMs: number;
+  selectedCharacter: CharacterId;
+};
+type StartPayload = {
+  partySize: number;
+  bossId: string;
+  starterId: string;
+  seed: number;
+  startedAt: number;
+};
+type DamagePayload = {
+  eventId: string;
+  userId: string;
+  amount: number;
+  weaknessMs: number;
+  hitX: number;
+  hitY: number;
+  color: string;
 };
 type PlayerState = {
   x: number; y: number; vx: number; vy: number; hp: number; onGround: boolean; coyoteMs: number; jumpLockMs: number;
@@ -63,7 +98,8 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.95";
+const PVE_VERSION = "0.97";
+const MAX_PVE_PLAYERS = 4;
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
     id: "boss-1",
@@ -108,6 +144,34 @@ function drawPolygon(
     ctx.strokeStyle = strokeStyle;
     ctx.stroke();
   }
+}
+
+function getPlayersFromPresence(
+  rawPresence: Record<string, Array<{ userId: string; username: string; onlineAt: string }>>
+) {
+  const players = Object.values(rawPresence)
+    .flat()
+    .map((entry) => ({
+      userId: entry.userId,
+      username: entry.username,
+      onlineAt: entry.onlineAt
+    }));
+
+  const deduped = new Map<string, PlayerPresence>();
+  players.forEach((player) => {
+    if (!deduped.has(player.userId)) {
+      deduped.set(player.userId, player);
+    }
+  });
+
+  return Array.from(deduped.values())
+    .sort((a, b) => a.onlineAt.localeCompare(b.onlineAt))
+    .slice(0, MAX_PVE_PLAYERS);
+}
+
+function nextSeededValue(seed: number) {
+  const next = (seed * 1664525 + 1013904223) >>> 0;
+  return { seed: next, value: next / 4294967296 };
 }
 
 function drawCaveBackdrop(ctx: CanvasRenderingContext2D) {
@@ -232,13 +296,14 @@ function makePlayerState(characterId: CharacterId): PlayerState {
   };
 }
 
-function makeBossState(definition: BossDefinition): BossState {
+function makeBossState(definition: BossDefinition, partySize = 1): BossState {
+  const scaledMaxHp = definition.maxHp * Math.max(1, Math.min(MAX_PVE_PLAYERS, partySize));
   return {
     x: BOSS_X,
     y: FLOOR_Y,
     vx: 0,
-    hp: definition.maxHp,
-    maxHp: definition.maxHp,
+    hp: scaledMaxHp,
+    maxHp: scaledMaxHp,
     attackCooldownMs: definition.baseCooldownMs,
     phase: 1,
     weaknessMs: 0,
@@ -258,11 +323,17 @@ const BrawlPvE: React.FC = () => {
   const [status, setStatus] = useState("Choose a class and enter the arena.");
   const [won, setWon] = useState(false);
   const [lost, setLost] = useState(false);
+  const [players, setPlayers] = useState<PlayerPresence[]>([]);
+  const [connected, setConnected] = useState(false);
+  const [scaledPartySize, setScaledPartySize] = useState(1);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUsername, setCurrentUsername] = useState("Player");
+  const [remoteSelections, setRemoteSelections] = useState<Record<string, CharacterId>>({});
   const keysRef = useRef<Record<string, boolean>>({});
   const mouseRef = useRef({ x: WIDTH / 2, y: HEIGHT / 2 });
   const mouseDownRef = useRef(false);
   const playerRef = useRef<PlayerState | null>(null);
-  const bossRef = useRef<BossState>(makeBossState(BOSSES["boss-1"]));
+  const bossRef = useRef<BossState>(makeBossState(BOSSES["boss-1"], 1));
   const hazardsRef = useRef<Hazard[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const effectsRef = useRef<Effect[]>([]);
@@ -271,9 +342,19 @@ const BrawlPvE: React.FC = () => {
   const bossDef = BOSSES[bossId];
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [progressLoading, setProgressLoading] = useState(true);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const remoteSnapshotsRef = useRef<Record<string, RemoteSnapshot>>({});
+  const lastSnapshotAtRef = useRef(0);
+  const appliedDamageEventsRef = useRef<Set<string>>(new Set());
+  const encounterSeedRef = useRef(1);
+  const encounterStartedAtRef = useRef(0);
 
   useEffect(() => {
     let active = true;
+    if (session?.user.id) {
+      setCurrentUserId(session.user.id);
+      setCurrentUsername(session.user.user_metadata?.username ?? session.user.email?.split("@")[0] ?? "Player");
+    }
     void loadBrawlPveProgress(session?.user.id).then((progress) => {
       if (!active) return;
       setIsUnlocked(progress.unlockedBosses.includes(bossId));
@@ -287,6 +368,114 @@ const BrawlPvE: React.FC = () => {
   useEffect(() => {
     if (!progressLoading && (!bossDef || !isUnlocked)) navigate("/arena/pve");
   }, [bossDef, isUnlocked, navigate, progressLoading]);
+
+  useEffect(() => {
+    let isUnmounted = false;
+
+    const syncPresence = () => {
+      const channel = channelRef.current;
+      if (!channel) return;
+      const presenceState = channel.presenceState() as Record<string, PlayerPresence[]>;
+      setPlayers(getPlayersFromPresence(presenceState));
+    };
+
+    const setup = async () => {
+      if (!session) return;
+
+      const channel = supabase.channel(`focusland-pve-${bossId}`, {
+        config: { presence: { key: session.user.id } }
+      });
+      channelRef.current = channel;
+      channel.on("presence", { event: "sync" }, syncPresence);
+      channel.on("broadcast", { event: "pve-select" }, ({ payload }) => {
+        const nextPayload = payload as { userId: string; character: CharacterId };
+        setRemoteSelections((current) => ({ ...current, [nextPayload.userId]: nextPayload.character }));
+      });
+      channel.on("broadcast", { event: "pve-start" }, ({ payload }) => {
+        const nextPayload = payload as StartPayload;
+        if (nextPayload.bossId !== bossId || !selectedCharacter) return;
+        encounterSeedRef.current = nextPayload.seed >>> 0;
+        encounterStartedAtRef.current = nextPayload.startedAt;
+        playerRef.current = makePlayerState(selectedCharacter);
+        bossRef.current = makeBossState(bossDef ?? BOSSES["boss-1"], nextPayload.partySize);
+        hazardsRef.current = [];
+        projectilesRef.current = [];
+        effectsRef.current = [];
+        bossDeathStartedAtRef.current = null;
+        winOverlayStartedAtRef.current = null;
+        setScaledPartySize(nextPayload.partySize);
+        setWon(false);
+        setLost(false);
+        setFightStarted(true);
+        setStatus(`${bossDef?.name ?? "Boss"} awakens for a ${nextPayload.partySize} player hunt. Survive the telegraphs and punish the gaps.`);
+      });
+      channel.on("broadcast", { event: "pve-snapshot" }, ({ payload }) => {
+        const nextPayload = payload as RemoteSnapshot;
+        if (nextPayload.userId === session.user.id) return;
+        remoteSnapshotsRef.current[nextPayload.userId] = nextPayload;
+      });
+      channel.on("broadcast", { event: "pve-damage" }, ({ payload }) => {
+        const nextPayload = payload as DamagePayload;
+        if (appliedDamageEventsRef.current.has(nextPayload.eventId) || nextPayload.userId === session.user.id) return;
+        appliedDamageEventsRef.current.add(nextPayload.eventId);
+        const boss = bossRef.current;
+        if (boss.transitionMs > 0 || boss.hp <= 0) return;
+        const adjusted = boss.weaknessMs > 0 ? nextPayload.amount * 1.5 : nextPayload.amount;
+        boss.hp = Math.max(0, boss.hp - adjusted);
+        boss.hitFlashMs = 120;
+        if (nextPayload.weaknessMs > 0) boss.weaknessMs = Math.max(boss.weaknessMs, nextPayload.weaknessMs);
+        effectsRef.current.push(createEffect(nextPayload.hitX, nextPayload.hitY, nextPayload.color, 20, 180));
+        if (bossDef?.id === "boss-2" && boss.hp <= boss.maxHp * 0.5 && boss.phase === 1) {
+          boss.phase = 2;
+          boss.transitionMs = 5200;
+          boss.attackCooldownMs = 360;
+          hazardsRef.current = [];
+          projectilesRef.current = [];
+          effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 110, "#e2e8f0", 110, 500));
+          effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#67e8f9", 170, 760));
+        } else if (boss.hp <= boss.maxHp * 0.58 && boss.phase === 1) {
+          boss.phase = 2;
+          effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 84, "#fb923c", 86, 420));
+          effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#fef08a", 52, 280));
+        }
+      });
+      channel.on("broadcast", { event: "pve-clear" }, () => {
+        const boss = bossRef.current;
+        boss.hp = 0;
+        if (!won) {
+          bossDeathStartedAtRef.current = performance.now();
+          winOverlayStartedAtRef.current = performance.now() + 450;
+          setWon(true);
+          setStatus("Boss defeated. The next gate is open.");
+        }
+      });
+
+      channel.subscribe(async (subscriptionStatus) => {
+        if (subscriptionStatus !== "SUBSCRIBED" || isUnmounted) return;
+        const trackStatus = await channel.track({
+          userId: session.user.id,
+          username: session.user.user_metadata?.username ?? session.user.email?.split("@")[0] ?? "Player",
+          onlineAt: new Date().toISOString()
+        });
+
+        if (trackStatus === "ok") {
+          setConnected(true);
+          syncPresence();
+        }
+      });
+    };
+
+    void setup();
+
+    return () => {
+      isUnmounted = true;
+      const channel = channelRef.current;
+      if (channel) {
+        void supabase.removeChannel(channel);
+        channelRef.current = null;
+      }
+    };
+  }, [bossId, session]);
 
   useEffect(() => {
     const onDown = (event: KeyboardEvent) => {
@@ -308,6 +497,11 @@ const BrawlPvE: React.FC = () => {
     const ctx = canvasRef.current.getContext("2d");
     if (!ctx) return;
     let lastTime = performance.now();
+    const nextEncounterRoll = () => {
+      const next = nextSeededValue(encounterSeedRef.current);
+      encounterSeedRef.current = next.seed;
+      return next.value;
+    };
 
     const finishWin = () => {
       if (won) return;
@@ -330,6 +524,13 @@ const BrawlPvE: React.FC = () => {
       }
       setWon(true);
       setStatus("Boss defeated. The next gate is open.");
+      if (channelRef.current) {
+        void channelRef.current.send({
+          type: "broadcast",
+          event: "pve-clear",
+          payload: { bossId }
+        });
+      }
       if (bossDef) {
         void completeBrawlPveBoss(session?.user.id, bossDef.id, bossDef.nextBossId);
         void recordArcadeResult({ goldEarned: bossDef.goldReward });
@@ -347,6 +548,23 @@ const BrawlPvE: React.FC = () => {
       if (weaknessMs > 0) boss.weaknessMs = Math.max(boss.weaknessMs, weaknessMs);
       player.ultimateCharge = clamp(player.ultimateCharge + chargeGain, 0, ULTIMATE_CHARGE_MAX);
       effectsRef.current.push(createEffect(hitX, hitY, bossDef?.style === "giant" ? "#cbd5e1" : color, 20, 180));
+      const eventId = `${currentUserId ?? "local"}-${Date.now()}-${Math.random()}`;
+      appliedDamageEventsRef.current.add(eventId);
+      if (channelRef.current && currentUserId) {
+        void channelRef.current.send({
+          type: "broadcast",
+          event: "pve-damage",
+          payload: {
+            eventId,
+            userId: currentUserId,
+            amount,
+            weaknessMs,
+            hitX,
+            hitY,
+            color: bossDef?.style === "giant" ? "#cbd5e1" : color
+          } satisfies DamagePayload
+        });
+      }
       if (bossDef?.id === "boss-2" && boss.hp <= boss.maxHp * 0.5 && boss.phase === 1) {
         boss.phase = 2;
         boss.transitionMs = 5200;
@@ -569,7 +787,7 @@ const BrawlPvE: React.FC = () => {
           boss.vx = 0;
           if (bossDef?.id === "boss-2" && boss.phase === 2) {
             if (boss.attackCooldownMs === 0) {
-              const safeLane = 140 + Math.random() * (WIDTH - 280);
+              const safeLane = 140 + nextEncounterRoll() * (WIDTH - 280);
               const safeWidth = 120;
               hazardsRef.current.push({
                 id: `collapse-left-${timestamp}`,
@@ -595,7 +813,7 @@ const BrawlPvE: React.FC = () => {
                 hazardsRef.current.push({
                   id: `quake-${timestamp}-${quake}`,
                   kind: "ember-warning",
-                  x: 120 + quake * 220 + Math.random() * 60,
+                  x: 120 + quake * 220 + nextEncounterRoll() * 60,
                   y: FLOOR_Y + 2,
                   radius: 46,
                   ttlMs: 620 + quake * 90
@@ -605,7 +823,7 @@ const BrawlPvE: React.FC = () => {
               setStatus("Arena collapse. Read the lane early and rotate before the cave seals.");
             }
           } else if (boss.attackCooldownMs === 0) {
-            const roll = Math.random();
+            const roll = nextEncounterRoll();
             if (bossDef?.id === "boss-2") {
               if (roll < 0.28) {
                 hazardsRef.current.push({ id: `giant-center-${timestamp}`, kind: "slam-warning", x: BOSS_X, y: FLOOR_Y + 2, radius: boss.phase === 3 ? 104 : 86, ttlMs: 760 });
@@ -639,14 +857,14 @@ const BrawlPvE: React.FC = () => {
                 }
                 setStatus("Shard burst. The ring blooms first, then breaks outward.");
               } else if (roll < 0.76) {
-                const gapX = 180 + Math.random() * (WIDTH - 360);
+                const gapX = 180 + nextEncounterRoll() * (WIDTH - 360);
                 hazardsRef.current.push({ id: `giant-lane-left-${timestamp}`, kind: "flame-warning", x: 0, y: FLOOR_Y - 150, radius: 0, width: gapX - 70, height: 150, ttlMs: 2400 });
                 hazardsRef.current.push({ id: `giant-lane-right-${timestamp}`, kind: "flame-warning", x: gapX + 70, y: FLOOR_Y - 150, radius: 0, width: WIDTH - (gapX + 70), height: 150, ttlMs: 2400 });
                 setStatus("Rockfall lanes. Read the gap early and rotate across the room.");
               } else if (roll < 0.9) {
                 const pillarCount = boss.phase === 3 ? 3 : 2;
                 for (let pillar = 0; pillar < pillarCount; pillar += 1) {
-                  const pillarX = 150 + Math.random() * (WIDTH - 300);
+                  const pillarX = 150 + nextEncounterRoll() * (WIDTH - 300);
                   hazardsRef.current.push({
                     id: `giant-pillar-${timestamp}-${pillar}`,
                     kind: "pillar",
@@ -667,7 +885,7 @@ const BrawlPvE: React.FC = () => {
                   hazardsRef.current.push({
                     id: `giant-ember-${timestamp}-${ember}`,
                     kind: "ember-warning",
-                    x: 110 + Math.random() * (WIDTH - 220),
+                    x: 110 + nextEncounterRoll() * (WIDTH - 220),
                     y: FLOOR_Y + 2,
                     radius: boss.phase === 3 ? 58 : 46,
                     ttlMs: 560 + ember * 60
@@ -732,7 +950,7 @@ const BrawlPvE: React.FC = () => {
             } else {
               const emberCount = boss.phase === 2 ? 6 : 4;
               for (let ember = 0; ember < emberCount; ember += 1) {
-                const emberX = 140 + Math.random() * (WIDTH - 280);
+                const emberX = 140 + nextEncounterRoll() * (WIDTH - 280);
                 hazardsRef.current.push({
                   id: `ember-warning-${timestamp}-${ember}`,
                   kind: "ember-warning",
@@ -1166,6 +1384,47 @@ const BrawlPvE: React.FC = () => {
         height: PLAYER_HEIGHT
       });
 
+      Object.values(remoteSnapshotsRef.current).forEach((snapshot) => {
+        drawBrawlCharacter({
+          ctx,
+          characterId: snapshot.selectedCharacter,
+          x: snapshot.x,
+          y: snapshot.y,
+          facing: snapshot.facing,
+          aimX: snapshot.aimX,
+          aimY: snapshot.aimY,
+          attackFlashMs: snapshot.attackFlashMs,
+          invulnMs: snapshot.invulnMs,
+          username: snapshot.username,
+          width: PLAYER_WIDTH,
+          height: PLAYER_HEIGHT
+        });
+      });
+
+      if (currentUserId && channelRef.current) {
+        const now = performance.now();
+        if (now - lastSnapshotAtRef.current >= 66) {
+          lastSnapshotAtRef.current = now;
+          void channelRef.current.send({
+            type: "broadcast",
+            event: "pve-snapshot",
+            payload: {
+              userId: currentUserId,
+              username: currentUsername,
+              x: player.x,
+              y: player.y,
+              facing: player.facing,
+              aimX: mouseRef.current.x,
+              aimY: mouseRef.current.y,
+              hp: player.hp,
+              attackFlashMs: player.attackFlashMs,
+              invulnMs: player.invulnMs,
+              selectedCharacter: player.selectedCharacter
+            } satisfies RemoteSnapshot
+          });
+        }
+      }
+
       const bossBarWidth = 320;
       ctx.fillStyle = "rgba(15,23,42,0.84)";
       ctx.fillRect(WIDTH / 2 - bossBarWidth / 2 - 8, 18, bossBarWidth + 16, 32);
@@ -1236,21 +1495,45 @@ const BrawlPvE: React.FC = () => {
         animationRef.current = null;
       }
     };
-  }, [bossDef, fightStarted, lost, navigate, selectedCharacter, won]);
+  }, [bossDef, bossId, currentUserId, currentUsername, fightStarted, lost, navigate, selectedCharacter, won, session?.user.id]);
 
   const resetFight = () => {
     if (!selectedCharacter) return;
+    const partySize = Math.max(1, Math.min(MAX_PVE_PLAYERS, players.length || 1));
+    const startedAt = Date.now();
+    const seed = (startedAt ^ ((partySize + 17) * 2654435761)) >>> 0;
+    encounterSeedRef.current = seed;
+    encounterStartedAtRef.current = startedAt;
     playerRef.current = makePlayerState(selectedCharacter);
-    bossRef.current = makeBossState(bossDef ?? BOSSES["boss-1"]);
+    bossRef.current = makeBossState(bossDef ?? BOSSES["boss-1"], partySize);
     hazardsRef.current = [];
     projectilesRef.current = [];
     effectsRef.current = [];
     bossDeathStartedAtRef.current = null;
     winOverlayStartedAtRef.current = null;
+    setScaledPartySize(partySize);
     setWon(false);
     setLost(false);
     setFightStarted(true);
-    setStatus(`${bossDef?.name ?? "Boss"} awakens. Survive the telegraphs and punish the gaps.`);
+    setStatus(`${bossDef?.name ?? "Boss"} awakens for a ${partySize} player hunt. Survive the telegraphs and punish the gaps.`);
+    if (channelRef.current && currentUserId) {
+      void channelRef.current.send({
+        type: "broadcast",
+        event: "pve-start",
+        payload: { partySize, bossId, starterId: currentUserId, seed, startedAt } satisfies StartPayload
+      });
+    }
+  };
+
+  const selectCharacter = (characterId: CharacterId) => {
+    setSelectedCharacter(characterId);
+    if (currentUserId && channelRef.current) {
+      void channelRef.current.send({
+        type: "broadcast",
+        event: "pve-select",
+        payload: { userId: currentUserId, character: characterId }
+      });
+    }
   };
 
   return (
@@ -1259,12 +1542,28 @@ const BrawlPvE: React.FC = () => {
       <div className="content card" style={{ maxWidth: 980 }}>
         <h2>{bossDef?.name ?? "Boss Arena"} PvE v{PVE_VERSION}</h2>
         <p>Boss rooms now use the same class stats, dash profile, visuals, and core class abilities as PvP, with the boss acting as the target instead of another player.</p>
+        <p className="info">
+          Room: {connected ? `${Math.max(1, players.length || 1)}/4 hunters present` : "Connecting..."}.
+          Boss HP scales by party size, and the current pull is {scaledPartySize}x once the fight starts.
+        </p>
+        {players.length > 0 ? (
+          <p className="info">
+            Party:{" "}
+            {players
+              .map((player) =>
+                `${player.username}${player.userId === currentUserId ? " (You)" : ""}: ${
+                  player.userId === currentUserId ? (selectedCharacter ? CHARACTER_CONFIGS[selectedCharacter].name : "No class") : (remoteSelections[player.userId] ? CHARACTER_CONFIGS[remoteSelections[player.userId]].name : "No class")
+                }`
+              )
+              .join(" | ")}
+          </p>
+        ) : null}
         {!selectedCharacter && (
           <div className="brawl-pick-grid">
             {(Object.keys(CHARACTER_CONFIGS) as CharacterId[]).map((characterId) => {
               const character = CHARACTER_CONFIGS[characterId];
               return (
-                <button key={characterId} type="button" className="brawl-pick-card" onClick={() => setSelectedCharacter(characterId)} style={{ borderColor: character.color }}>
+                <button key={characterId} type="button" className="brawl-pick-card" onClick={() => selectCharacter(characterId)} style={{ borderColor: character.color }}>
                   <strong>{character.name}</strong>
                   <span>{character.title}</span>
                 </button>
