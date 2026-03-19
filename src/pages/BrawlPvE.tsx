@@ -5,14 +5,33 @@ import { completeBrawlPveBoss, getBrawlPveProgress } from "../lib/brawlPveProgre
 import { CHARACTER_CONFIGS, clamp, type CharacterId, drawBrawlCharacter, getDashProfile, normalizeVector } from "../lib/brawlShared";
 import { recordArcadeResult } from "../lib/progression";
 
-type BossDefinition = { id: string; name: string; nextBossId?: string; goldReward: number };
+type BossDefinition = {
+  id: string;
+  name: string;
+  nextBossId?: string;
+  goldReward: number;
+  maxHp: number;
+  baseCooldownMs: number;
+  style: "dragon" | "giant";
+};
 type PlayerState = {
   x: number; y: number; vx: number; vy: number; hp: number; onGround: boolean; coyoteMs: number; jumpLockMs: number;
   airJumpsRemaining: number; dashCooldownMs: number; attackCooldownMs: number; specialCooldownMs: number; invulnMs: number;
   ultimateCharge: number; facing: 1 | -1; attackFlashMs: number; dashReleased: boolean; specialReleased: boolean;
   selectedCharacter: CharacterId; assassinKnifeId: string | null;
 };
-type BossState = { x: number; y: number; vx: number; hp: number; maxHp: number; attackCooldownMs: number; phase: 1 | 2; weaknessMs: number; hitFlashMs: number };
+type BossState = {
+  x: number;
+  y: number;
+  vx: number;
+  hp: number;
+  maxHp: number;
+  attackCooldownMs: number;
+  phase: 1 | 2 | 3;
+  weaknessMs: number;
+  hitFlashMs: number;
+  transitionMs: number;
+};
 type ProjectileKind = "fireball" | "dagger" | "arrow" | "ultimate";
 type Projectile = { id: string; x: number; y: number; vx: number; vy: number; radius: number; damage: number; knockback: number; lift: number; color: string; kind: ProjectileKind; gravity: number; ttlMs: number; isUltimate: boolean; stuck?: boolean; spent?: boolean };
 type Effect = { id: string; x: number; y: number; radius: number; color: string; ttlMs: number; x2?: number; y2?: number };
@@ -37,15 +56,33 @@ const PLAYER_WIDTH = 28;
 const PLAYER_HEIGHT = 44;
 const BOSS_WIDTH = 110;
 const BOSS_HEIGHT = 140;
-const BOSS_MAX_HP = 920;
 const GRAVITY = 0.68;
 const MAX_FALL_SPEED = 12;
 const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "1.3";
-const BOSSES: Record<string, BossDefinition> = { "boss-1": { id: "boss-1", name: "Ashen Juggernaut", nextBossId: "boss-2", goldReward: 24 } };
+const PVE_VERSION = "1.4";
+const BOSSES: Record<string, BossDefinition> = {
+  "boss-1": {
+    id: "boss-1",
+    name: "Ashen Juggernaut",
+    nextBossId: "boss-2",
+    goldReward: 24,
+    maxHp: 920,
+    baseCooldownMs: 1200,
+    style: "dragon"
+  },
+  "boss-2": {
+    id: "boss-2",
+    name: "Stonebreak Giant",
+    nextBossId: "boss-3",
+    goldReward: 38,
+    maxHp: 1280,
+    baseCooldownMs: 980,
+    style: "giant"
+  }
+};
 
 function createEffect(x: number, y: number, color: string, radius: number, ttlMs: number): Effect {
   return { id: `${Date.now()}-${Math.random()}`, x, y, color, radius, ttlMs };
@@ -80,6 +117,21 @@ function makePlayerState(characterId: CharacterId): PlayerState {
   };
 }
 
+function makeBossState(definition: BossDefinition): BossState {
+  return {
+    x: BOSS_X,
+    y: FLOOR_Y,
+    vx: 0,
+    hp: definition.maxHp,
+    maxHp: definition.maxHp,
+    attackCooldownMs: definition.baseCooldownMs,
+    phase: 1,
+    weaknessMs: 0,
+    hitFlashMs: 0,
+    transitionMs: 0
+  };
+}
+
 const BrawlPvE: React.FC = () => {
   const { bossId = "boss-1" } = useParams();
   const navigate = useNavigate();
@@ -94,7 +146,7 @@ const BrawlPvE: React.FC = () => {
   const mouseRef = useRef({ x: WIDTH / 2, y: HEIGHT / 2 });
   const mouseDownRef = useRef(false);
   const playerRef = useRef<PlayerState | null>(null);
-  const bossRef = useRef<BossState>({ x: BOSS_X, y: FLOOR_Y, vx: 0, hp: BOSS_MAX_HP, maxHp: BOSS_MAX_HP, attackCooldownMs: 1200, phase: 1, weaknessMs: 0, hitFlashMs: 0 });
+  const bossRef = useRef<BossState>(makeBossState(BOSSES["boss-1"]));
   const hazardsRef = useRef<Hazard[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const effectsRef = useRef<Effect[]>([]);
@@ -159,13 +211,23 @@ const BrawlPvE: React.FC = () => {
       const player = playerRef.current;
       if (!player) return;
       const boss = bossRef.current;
+      if (boss.transitionMs > 0) return;
       const adjusted = boss.weaknessMs > 0 ? amount * 1.5 : amount;
       boss.hp = Math.max(0, boss.hp - adjusted);
       boss.hitFlashMs = 120;
       if (weaknessMs > 0) boss.weaknessMs = Math.max(boss.weaknessMs, weaknessMs);
       player.ultimateCharge = clamp(player.ultimateCharge + chargeGain, 0, ULTIMATE_CHARGE_MAX);
       effectsRef.current.push(createEffect(hitX, hitY, color, 20, 180));
-      if (boss.hp <= boss.maxHp * 0.58 && boss.phase === 1) {
+      if (bossDef?.id === "boss-2" && boss.hp <= boss.maxHp * 0.5 && boss.phase === 1) {
+        boss.phase = 2;
+        boss.transitionMs = 5200;
+        boss.attackCooldownMs = 360;
+        hazardsRef.current = [];
+        projectilesRef.current = [];
+        effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 110, "#e2e8f0", 110, 500));
+        effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#94a3b8", 170, 760));
+        setStatus("The giant leaps away. Survive the arena collapse.");
+      } else if (boss.hp <= boss.maxHp * 0.58 && boss.phase === 1) {
         boss.phase = 2;
         effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 84, "#fb923c", 86, 420));
         effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#fef08a", 52, 280));
@@ -212,6 +274,15 @@ const BrawlPvE: React.FC = () => {
         boss.attackCooldownMs = Math.max(0, boss.attackCooldownMs - dt);
         boss.weaknessMs = Math.max(0, boss.weaknessMs - dt);
         boss.hitFlashMs = Math.max(0, boss.hitFlashMs - dt);
+        boss.transitionMs = Math.max(0, boss.transitionMs - dt);
+
+        if (bossDef?.id === "boss-2" && boss.phase === 2 && boss.transitionMs === 0) {
+          boss.phase = 3;
+          boss.attackCooldownMs = 760;
+          effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#f8fafc", 110, 420));
+          effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 82, "#94a3b8", 70, 300));
+          setStatus("The giant crashes back in. Phase 3 begins.");
+        }
 
         let moveX = 0;
         if (keys.a || keys.arrowleft) moveX -= 1;
@@ -367,9 +438,88 @@ const BrawlPvE: React.FC = () => {
         if (boss.hp > 0) {
           boss.x = BOSS_X;
           boss.vx = 0;
-          if (boss.attackCooldownMs === 0) {
+          if (bossDef?.id === "boss-2" && boss.phase === 2) {
+            if (boss.attackCooldownMs === 0) {
+              const safeLane = 140 + Math.random() * (WIDTH - 280);
+              const safeWidth = 120;
+              hazardsRef.current.push({
+                id: `collapse-left-${timestamp}`,
+                kind: "flame-warning",
+                x: 0,
+                y: FLOOR_Y - 210,
+                radius: 0,
+                width: Math.max(0, safeLane - safeWidth / 2),
+                height: 210,
+                ttlMs: 460
+              });
+              hazardsRef.current.push({
+                id: `collapse-right-${timestamp}`,
+                kind: "flame-warning",
+                x: safeLane + safeWidth / 2,
+                y: FLOOR_Y - 210,
+                radius: 0,
+                width: Math.max(0, WIDTH - (safeLane + safeWidth / 2)),
+                height: 210,
+                ttlMs: 460
+              });
+              for (let quake = 0; quake < 4; quake += 1) {
+                hazardsRef.current.push({
+                  id: `quake-${timestamp}-${quake}`,
+                  kind: "ember-warning",
+                  x: 120 + quake * 220 + Math.random() * 60,
+                  y: FLOOR_Y + 2,
+                  radius: 46,
+                  ttlMs: 620 + quake * 90
+                });
+              }
+              boss.attackCooldownMs = 860;
+              setStatus("Arena collapse. Find the safe lane and keep moving.");
+            }
+          } else if (boss.attackCooldownMs === 0) {
             const roll = Math.random();
-            if (roll < 0.34) {
+            if (bossDef?.id === "boss-2") {
+              if (roll < 0.28) {
+                hazardsRef.current.push({ id: `giant-center-${timestamp}`, kind: "slam-warning", x: BOSS_X, y: FLOOR_Y + 2, radius: boss.phase === 3 ? 104 : 86, ttlMs: 760 });
+                hazardsRef.current.push({ id: `giant-player-${timestamp}`, kind: "slam-warning", x: player.x, y: FLOOR_Y + 2, radius: 54, ttlMs: 620 });
+                setStatus("Titan smash. Bait the hit, then punish the center.");
+              } else if (roll < 0.54) {
+                const shotCount = boss.phase === 3 ? 12 : 8;
+                const spawnRadius = boss.phase === 3 ? 132 : 110;
+                for (let shot = 0; shot < shotCount; shot += 1) {
+                  const angle = (-Math.PI / 2) + (shot / shotCount) * Math.PI * 2;
+                  hazardsRef.current.push({
+                    id: `giant-orb-${timestamp}-${shot}`,
+                    kind: "orb",
+                    x: BOSS_X + Math.cos(angle) * spawnRadius,
+                    y: boss.y - 76 + Math.sin(angle) * spawnRadius * 0.52,
+                    radius: boss.phase === 3 ? 16 : 13,
+                    ttlMs: 3000,
+                    vx: Math.cos(angle) * (boss.phase === 3 ? 5.1 : 4),
+                    vy: Math.sin(angle) * (boss.phase === 3 ? 4.4 : 3.5)
+                  });
+                }
+                setStatus("Shard burst. Step through the spiral.");
+              } else if (roll < 0.76) {
+                const gapX = 180 + Math.random() * (WIDTH - 360);
+                hazardsRef.current.push({ id: `giant-lane-left-${timestamp}`, kind: "flame-warning", x: 0, y: FLOOR_Y - 150, radius: 0, width: gapX - 70, height: 150, ttlMs: 500 });
+                hazardsRef.current.push({ id: `giant-lane-right-${timestamp}`, kind: "flame-warning", x: gapX + 70, y: FLOOR_Y - 150, radius: 0, width: WIDTH - (gapX + 70), height: 150, ttlMs: 500 });
+                setStatus("Rockfall lanes. Commit to the gap.");
+              } else {
+                const emberCount = boss.phase === 3 ? 7 : 5;
+                for (let ember = 0; ember < emberCount; ember += 1) {
+                  hazardsRef.current.push({
+                    id: `giant-ember-${timestamp}-${ember}`,
+                    kind: "ember-warning",
+                    x: 110 + Math.random() * (WIDTH - 220),
+                    y: FLOOR_Y + 2,
+                    radius: boss.phase === 3 ? 58 : 46,
+                    ttlMs: 560 + ember * 60
+                  });
+                }
+                setStatus("The giant rains rubble across the floor.");
+              }
+              boss.attackCooldownMs = boss.phase === 3 ? 680 : 900;
+            } else if (roll < 0.34) {
               hazardsRef.current.push({ id: `slam-warning-${timestamp}`, kind: "slam-warning", x: player.x, y: FLOOR_Y + 2, radius: 46, ttlMs: 720 });
               hazardsRef.current.push({ id: `slam-center-${timestamp}`, kind: "slam-warning", x: BOSS_X, y: FLOOR_Y + 2, radius: boss.phase === 2 ? 82 : 68, ttlMs: 860 });
               setStatus("Core slam incoming. Punish the heart, then get clear.");
@@ -427,8 +577,8 @@ const BrawlPvE: React.FC = () => {
                 });
               }
               setStatus("Meteor rain. Never stop moving.");
+              boss.attackCooldownMs = boss.phase === 2 ? 860 : 1260;
             }
-            boss.attackCooldownMs = boss.phase === 2 ? 860 : 1260;
           }
         }
 
@@ -657,45 +807,78 @@ const BrawlPvE: React.FC = () => {
       });
 
       const dragonBreathing = hazardsRef.current.some((hazard) => hazard.kind === "flame-warning" || hazard.kind === "flame-wall");
-      ctx.save();
-      ctx.translate(boss.x, boss.y - 98 + deathProgress * 120);
-      ctx.globalAlpha = 1 - deathProgress * 0.92;
-      ctx.rotate(deathProgress * 0.18);
-      const wingLift = 12 + Math.sin(performance.now() / 180) * 6;
-      const bodyFill = boss.hitFlashMs > 0 ? "#fff7ed" : boss.weaknessMs > 0 ? "#86efac" : "#5a1f18";
-      const scaleRidge = boss.phase === 2 ? "#f97316" : "#ef4444";
-      drawPolygon(ctx, [[-34, 70], [-90, 52], [-120, 12], [-98, -8], [-44, 8], [-14, 46]], "rgba(88,28,22,0.96)");
-      drawPolygon(ctx, [[22, 64], [86, 46], [122, 4], [98, -12], [38, 2], [8, 40]], "rgba(88,28,22,0.96)");
-      drawPolygon(ctx, [[-32, 64], [-12, 14], [22, -4], [72, 2], [88, 36], [54, 82], [-4, 94]], bodyFill, "rgba(255,255,255,0.08)");
-      drawPolygon(ctx, [[-82, 28], [-156, -18 - wingLift], [-90, 8], [-54, 30]], "rgba(127,29,29,0.92)");
-      drawPolygon(ctx, [[30, 18], [138, -28 - wingLift], [78, 18], [40, 30]], "rgba(127,29,29,0.92)");
-      drawPolygon(ctx, [[46, 14], [82, -12], [116, 0], [134, 18], [106, 34], [72, 30]], "rgba(55,65,81,0.95)");
-      drawPolygon(ctx, [[-12, -2], [8, -36], [34, -48], [52, -30], [58, -2], [30, 18], [-6, 16]], bodyFill, "rgba(255,255,255,0.08)");
-      drawPolygon(ctx, [[-6, 10], [12, -18], [26, -10], [14, 16]], scaleRidge);
-      drawPolygon(ctx, [[16, 6], [34, -24], [44, -14], [30, 20]], scaleRidge);
-      drawPolygon(ctx, [[4, -18], [14, -54], [26, -18]], "#fca5a5");
-      drawPolygon(ctx, [[26, -22], [40, -64], [50, -20]], "#fca5a5");
-      drawPolygon(ctx, [[-18, 92], [-86, 116], [-138, 136], [-70, 128], [-22, 108]], "rgba(127,29,29,0.85)");
-      ctx.fillStyle = dragonBreathing ? "#fb923c" : "#111827";
-      ctx.beginPath();
-      ctx.arc(34, -8, dragonBreathing ? 8 : 6, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = dragonBreathing ? "#fef08a" : "#f59e0b";
-      ctx.beginPath();
-      ctx.arc(34, -8, 3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "rgba(255,255,255,0.16)";
-      ctx.beginPath();
-      ctx.arc(-2, 34, 28, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = boss.phase === 2 ? "#fb923c" : "#fca5a5";
-      ctx.beginPath();
-      ctx.arc(-2, 34, 18, 0, Math.PI * 2);
-      ctx.fill();
-      if (dragonBreathing) {
-        drawPolygon(ctx, [[54, 0], [74, -10], [92, 0], [74, 10]], "rgba(255,237,213,0.55)");
+      const bossVisible = !(bossDef?.style === "giant" && boss.phase === 2 && boss.transitionMs > 0);
+      if (bossVisible) {
+        ctx.save();
+        ctx.translate(boss.x, boss.y - 98 + deathProgress * 120);
+        ctx.globalAlpha = 1 - deathProgress * 0.92;
+        ctx.rotate(deathProgress * 0.18);
+        if (bossDef?.style === "giant") {
+          const giantFill = boss.hitFlashMs > 0 ? "#fff7ed" : boss.weaknessMs > 0 ? "#86efac" : "#64748b";
+          const giantTrim = boss.phase === 3 ? "#e2e8f0" : "#cbd5e1";
+          drawPolygon(ctx, [[-72, 108], [-86, 18], [-46, -46], [8, -66], [58, -36], [84, 26], [72, 112]], giantFill, "rgba(255,255,255,0.08)");
+          drawPolygon(ctx, [[-40, -30], [-8, -82], [24, -36], [14, 18], [-20, 16]], "#94a3b8");
+          drawPolygon(ctx, [[12, -40], [40, -92], [74, -36], [54, 20], [20, 18]], "#94a3b8");
+          drawPolygon(ctx, [[-104, 8], [-154, 58], [-126, 72], [-70, 32]], giantTrim);
+          drawPolygon(ctx, [[90, 16], [152, 46], [134, 70], [78, 34]], giantTrim);
+          drawPolygon(ctx, [[-56, 106], [-86, 188], [-54, 188], [-18, 114]], "#475569");
+          drawPolygon(ctx, [[26, 108], [4, 188], [38, 188], [62, 114]], "#475569");
+          ctx.fillStyle = "#111827";
+          ctx.fillRect(-40, -6, 18, 14);
+          ctx.fillRect(10, -6, 18, 14);
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillRect(-34, -2, 6, 6);
+          ctx.fillRect(16, -2, 6, 6);
+          ctx.fillStyle = "#e2e8f0";
+          ctx.fillRect(-10, 28, 20, 30);
+          ctx.fillStyle = "#94a3b8";
+          ctx.fillRect(-4, 34, 8, 18);
+        } else {
+          const wingLift = 12 + Math.sin(performance.now() / 180) * 6;
+          const bodyFill = boss.hitFlashMs > 0 ? "#fff7ed" : boss.weaknessMs > 0 ? "#86efac" : "#5a1f18";
+          const scaleRidge = boss.phase === 2 ? "#f97316" : "#ef4444";
+          drawPolygon(ctx, [[-34, 70], [-90, 52], [-120, 12], [-98, -8], [-44, 8], [-14, 46]], "rgba(88,28,22,0.96)");
+          drawPolygon(ctx, [[22, 64], [86, 46], [122, 4], [98, -12], [38, 2], [8, 40]], "rgba(88,28,22,0.96)");
+          drawPolygon(ctx, [[-32, 64], [-12, 14], [22, -4], [72, 2], [88, 36], [54, 82], [-4, 94]], bodyFill, "rgba(255,255,255,0.08)");
+          drawPolygon(ctx, [[-82, 28], [-156, -18 - wingLift], [-90, 8], [-54, 30]], "rgba(127,29,29,0.92)");
+          drawPolygon(ctx, [[30, 18], [138, -28 - wingLift], [78, 18], [40, 30]], "rgba(127,29,29,0.92)");
+          drawPolygon(ctx, [[46, 14], [82, -12], [116, 0], [134, 18], [106, 34], [72, 30]], "rgba(55,65,81,0.95)");
+          drawPolygon(ctx, [[-12, -2], [8, -36], [34, -48], [52, -30], [58, -2], [30, 18], [-6, 16]], bodyFill, "rgba(255,255,255,0.08)");
+          drawPolygon(ctx, [[-6, 10], [12, -18], [26, -10], [14, 16]], scaleRidge);
+          drawPolygon(ctx, [[16, 6], [34, -24], [44, -14], [30, 20]], scaleRidge);
+          drawPolygon(ctx, [[4, -18], [14, -54], [26, -18]], "#fca5a5");
+          drawPolygon(ctx, [[26, -22], [40, -64], [50, -20]], "#fca5a5");
+          drawPolygon(ctx, [[-18, 92], [-86, 116], [-138, 136], [-70, 128], [-22, 108]], "rgba(127,29,29,0.85)");
+          ctx.fillStyle = dragonBreathing ? "#fb923c" : "#111827";
+          ctx.beginPath();
+          ctx.arc(34, -8, dragonBreathing ? 8 : 6, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = dragonBreathing ? "#fef08a" : "#f59e0b";
+          ctx.beginPath();
+          ctx.arc(34, -8, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "rgba(255,255,255,0.16)";
+          ctx.beginPath();
+          ctx.arc(-2, 34, 28, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = boss.phase === 2 ? "#fb923c" : "#fca5a5";
+          ctx.beginPath();
+          ctx.arc(-2, 34, 18, 0, Math.PI * 2);
+          ctx.fill();
+          if (dragonBreathing) {
+            drawPolygon(ctx, [[54, 0], [74, -10], [92, 0], [74, 10]], "rgba(255,237,213,0.55)");
+          }
+        }
+        ctx.restore();
+      } else {
+        ctx.save();
+        ctx.globalAlpha = 0.18 + Math.sin(performance.now() / 120) * 0.05;
+        ctx.fillStyle = "rgba(226,232,240,0.25)";
+        ctx.beginPath();
+        ctx.ellipse(BOSS_X, FLOOR_Y + 14, 118, 24, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
-      ctx.restore();
 
       if (deathProgress > 0 && deathProgress < 1) {
         ctx.save();
@@ -797,7 +980,7 @@ const BrawlPvE: React.FC = () => {
   const resetFight = () => {
     if (!selectedCharacter) return;
     playerRef.current = makePlayerState(selectedCharacter);
-    bossRef.current = { x: BOSS_X, y: FLOOR_Y, vx: 0, hp: BOSS_MAX_HP, maxHp: BOSS_MAX_HP, attackCooldownMs: 1200, phase: 1, weaknessMs: 0, hitFlashMs: 0 };
+    bossRef.current = makeBossState(bossDef ?? BOSSES["boss-1"]);
     hazardsRef.current = [];
     projectilesRef.current = [];
     effectsRef.current = [];

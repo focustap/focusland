@@ -25,12 +25,12 @@ const BOSSES: BossNode[] = [
   },
   {
     id: "boss-2",
-    name: "Moonblade Warden",
-    subtitle: "Locked",
-    difficulty: "Coming Soon",
+    name: "Stonebreak Giant",
+    subtitle: "A colossal brute with a full-arena collapse at half health.",
+    difficulty: "Very Hard",
     x: 340,
     y: 196,
-    accent: "#93c5fd"
+    accent: "#cbd5e1"
   },
   {
     id: "boss-3",
