@@ -38,7 +38,7 @@ type Projectile = { id: string; x: number; y: number; vx: number; vy: number; ra
 type Effect = { id: string; x: number; y: number; radius: number; color: string; ttlMs: number; x2?: number; y2?: number };
 type Hazard = {
   id: string;
-  kind: "slam-warning" | "slam-hit" | "orb" | "flame-warning" | "flame-wall" | "ember-warning" | "ember-hit";
+  kind: "slam-warning" | "slam-hit" | "orb" | "orb-warning" | "flame-warning" | "flame-wall" | "ember-warning" | "ember-hit";
   x: number;
   y: number;
   radius: number;
@@ -63,7 +63,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "1.7";
+const PVE_VERSION = "1.8";
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
     id: "boss-1",
@@ -579,7 +579,7 @@ const BrawlPvE: React.FC = () => {
                 radius: 0,
                 width: Math.max(0, safeLane - safeWidth / 2),
                 height: 210,
-                ttlMs: 460
+                ttlMs: 780
               });
               hazardsRef.current.push({
                 id: `collapse-right-${timestamp}`,
@@ -589,7 +589,7 @@ const BrawlPvE: React.FC = () => {
                 radius: 0,
                 width: Math.max(0, WIDTH - (safeLane + safeWidth / 2)),
                 height: 210,
-                ttlMs: 460
+                ttlMs: 780
               });
               for (let quake = 0; quake < 4; quake += 1) {
                 hazardsRef.current.push({
@@ -601,8 +601,8 @@ const BrawlPvE: React.FC = () => {
                   ttlMs: 620 + quake * 90
                 });
               }
-              boss.attackCooldownMs = 860;
-              setStatus("Arena collapse. Find the safe lane and keep moving.");
+              boss.attackCooldownMs = 1140;
+              setStatus("Arena collapse. Read the lane early and rotate before the cave seals.");
             }
           } else if (boss.attackCooldownMs === 0) {
             const roll = Math.random();
@@ -613,7 +613,16 @@ const BrawlPvE: React.FC = () => {
                 setStatus("Titan smash. Bait the hit, then punish the center.");
               } else if (roll < 0.54) {
                 const shotCount = boss.phase === 3 ? 12 : 8;
-                const spawnRadius = boss.phase === 3 ? 132 : 110;
+                const warningRadius = boss.phase === 3 ? 138 : 116;
+                const spawnRadius = boss.phase === 3 ? 184 : 156;
+                hazardsRef.current.push({
+                  id: `giant-orb-warning-${timestamp}`,
+                  kind: "orb-warning",
+                  x: BOSS_X,
+                  y: boss.y - 76,
+                  radius: warningRadius,
+                  ttlMs: 560
+                });
                 for (let shot = 0; shot < shotCount; shot += 1) {
                   const angle = (-Math.PI / 2) + (shot / shotCount) * Math.PI * 2;
                   hazardsRef.current.push({
@@ -624,10 +633,11 @@ const BrawlPvE: React.FC = () => {
                     radius: boss.phase === 3 ? 16 : 13,
                     ttlMs: 3000,
                     vx: Math.cos(angle) * (boss.phase === 3 ? 5.1 : 4),
-                    vy: Math.sin(angle) * (boss.phase === 3 ? 4.4 : 3.5)
+                    vy: Math.sin(angle) * (boss.phase === 3 ? 4.4 : 3.5),
+                    width: 560
                   });
                 }
-                setStatus("Shard burst. Step through the spiral.");
+                setStatus("Shard burst. The ring blooms first, then breaks outward.");
               } else if (roll < 0.76) {
                 const gapX = 180 + Math.random() * (WIDTH - 360);
                 hazardsRef.current.push({ id: `giant-lane-left-${timestamp}`, kind: "flame-warning", x: 0, y: FLOOR_Y - 150, radius: 0, width: gapX - 70, height: 150, ttlMs: 500 });
@@ -655,6 +665,14 @@ const BrawlPvE: React.FC = () => {
             } else if (roll < 0.68) {
               const shotCount = boss.phase === 2 ? 10 : 7;
               const spawnRadius = boss.phase === 2 ? 116 : 92;
+              hazardsRef.current.push({
+                id: `orb-warning-${timestamp}`,
+                kind: "orb-warning",
+                x: BOSS_X,
+                y: boss.y - 70,
+                radius: boss.phase === 2 ? 104 : 88,
+                ttlMs: 520
+              });
               for (let shot = 0; shot < shotCount; shot += 1) {
                 const angle = (-Math.PI / 2) + (shot / shotCount) * Math.PI * 2;
                 hazardsRef.current.push({
@@ -665,10 +683,11 @@ const BrawlPvE: React.FC = () => {
                   radius: boss.phase === 2 ? 14 : 12,
                   ttlMs: boss.phase === 2 ? 3100 : 2700,
                   vx: Math.cos(angle) * (boss.phase === 2 ? 4.6 : 3.5),
-                  vy: Math.sin(angle) * (boss.phase === 2 ? 4 : 3.1)
+                  vy: Math.sin(angle) * (boss.phase === 2 ? 4 : 3.1),
+                  width: 520
                 });
               }
-              setStatus("Starburst. The center is safe for a beat, then move through the lanes.");
+              setStatus("Starburst. The core flares first, then the ring pushes out.");
             } else if (roll < 0.86) {
               const laneOffset = boss.phase === 2 ? 180 : 155;
               hazardsRef.current.push({ id: `lane-left-${timestamp}`, kind: "slam-warning", x: BOSS_X - laneOffset, y: FLOOR_Y + 2, radius: boss.phase === 2 ? 74 : 64, ttlMs: 560 });
@@ -756,7 +775,15 @@ const BrawlPvE: React.FC = () => {
 
         hazardsRef.current = hazardsRef.current.flatMap((hazard) => {
           const next = { ...hazard, ttlMs: hazard.ttlMs - dt };
+          if (hazard.kind === "orb-warning" && next.ttlMs <= 0) {
+            return [];
+          }
           if (hazard.kind === "orb") {
+            const launchDelayMs = next.width ?? 0;
+            if (launchDelayMs > 0) {
+              next.width = Math.max(0, launchDelayMs - dt);
+              return [next];
+            }
             next.x += (next.vx ?? 0) * scale;
             next.y += (next.vy ?? 0) * scale;
             if (Math.hypot(next.x - player.x, next.y - (player.y - 24)) < next.radius + 16) {
@@ -844,6 +871,9 @@ const BrawlPvE: React.FC = () => {
         if (hazard.kind === "slam-warning") {
           ctx.fillStyle = giantEncounter ? `rgba(148,163,184,${0.12 + pulse * 0.18})` : `rgba(251,146,60,${0.12 + pulse * 0.18})`;
           ctx.strokeStyle = giantEncounter ? "rgba(226,232,240,0.9)" : "rgba(254,215,170,0.9)";
+        } else if (hazard.kind === "orb-warning") {
+          ctx.fillStyle = giantEncounter ? `rgba(103,232,249,${0.08 + pulse * 0.12})` : `rgba(251,191,36,${0.08 + pulse * 0.12})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(186,230,253,0.84)" : "rgba(254,240,138,0.84)";
         } else if (hazard.kind === "flame-warning") {
           ctx.fillStyle = giantEncounter ? `rgba(103,232,249,${0.12 + pulse * 0.16})` : `rgba(251,146,60,${0.14 + pulse * 0.16})`;
           ctx.strokeStyle = giantEncounter ? "rgba(186,230,253,0.92)" : "rgba(253,186,116,0.92)";
@@ -892,13 +922,22 @@ const BrawlPvE: React.FC = () => {
           }
         } else {
           ctx.beginPath();
-          ctx.arc(hazard.x, hazard.kind === "orb" ? hazard.y : FLOOR_Y - 10, hazard.radius, 0, Math.PI * 2);
+          ctx.arc(hazard.x, hazard.kind === "orb" || hazard.kind === "orb-warning" ? hazard.y : FLOOR_Y - 10, hazard.radius, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
           if (hazard.kind === "slam-warning" || hazard.kind === "ember-warning") {
             ctx.globalAlpha = 0.35;
             ctx.beginPath();
             ctx.arc(hazard.x, FLOOR_Y - 10, hazard.radius * 0.62, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          if (hazard.kind === "orb-warning") {
+            ctx.globalAlpha = 0.52;
+            ctx.beginPath();
+            ctx.arc(hazard.x, hazard.y, hazard.radius * 1.28, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(hazard.x, hazard.y, hazard.radius * 0.52, 0, Math.PI * 2);
             ctx.stroke();
           }
         }
