@@ -38,7 +38,7 @@ type Projectile = { id: string; x: number; y: number; vx: number; vy: number; ra
 type Effect = { id: string; x: number; y: number; radius: number; color: string; ttlMs: number; x2?: number; y2?: number };
 type Hazard = {
   id: string;
-  kind: "slam-warning" | "slam-hit" | "orb" | "orb-warning" | "flame-warning" | "flame-wall" | "ember-warning" | "ember-hit";
+  kind: "slam-warning" | "slam-hit" | "orb" | "orb-warning" | "flame-warning" | "flame-wall" | "ember-warning" | "ember-hit" | "pillar";
   x: number;
   y: number;
   radius: number;
@@ -63,7 +63,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "1.8";
+const PVE_VERSION = "2.0";
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
     id: "boss-1",
@@ -579,7 +579,7 @@ const BrawlPvE: React.FC = () => {
                 radius: 0,
                 width: Math.max(0, safeLane - safeWidth / 2),
                 height: 210,
-                ttlMs: 780
+                ttlMs: 2500
               });
               hazardsRef.current.push({
                 id: `collapse-right-${timestamp}`,
@@ -589,7 +589,7 @@ const BrawlPvE: React.FC = () => {
                 radius: 0,
                 width: Math.max(0, WIDTH - (safeLane + safeWidth / 2)),
                 height: 210,
-                ttlMs: 780
+                ttlMs: 2500
               });
               for (let quake = 0; quake < 4; quake += 1) {
                 hazardsRef.current.push({
@@ -643,6 +643,23 @@ const BrawlPvE: React.FC = () => {
                 hazardsRef.current.push({ id: `giant-lane-left-${timestamp}`, kind: "flame-warning", x: 0, y: FLOOR_Y - 150, radius: 0, width: gapX - 70, height: 150, ttlMs: 500 });
                 hazardsRef.current.push({ id: `giant-lane-right-${timestamp}`, kind: "flame-warning", x: gapX + 70, y: FLOOR_Y - 150, radius: 0, width: WIDTH - (gapX + 70), height: 150, ttlMs: 500 });
                 setStatus("Rockfall lanes. Commit to the gap.");
+              } else if (roll < 0.9) {
+                const pillarCount = boss.phase === 3 ? 3 : 2;
+                for (let pillar = 0; pillar < pillarCount; pillar += 1) {
+                  const pillarX = 150 + Math.random() * (WIDTH - 300);
+                  hazardsRef.current.push({
+                    id: `giant-pillar-${timestamp}-${pillar}`,
+                    kind: "pillar",
+                    x: pillarX,
+                    y: -160 - pillar * 34,
+                    radius: boss.phase === 3 ? 34 : 30,
+                    ttlMs: boss.phase === 3 ? 2550 : 2300,
+                    width: boss.phase === 3 ? 52 : 46,
+                    height: 0,
+                    vy: boss.phase === 3 ? 1.35 : 1.15
+                  });
+                }
+                setStatus("Ceiling pillars break loose. Move before they crush the floor.");
               } else {
                 const emberCount = boss.phase === 3 ? 7 : 5;
                 for (let ember = 0; ember < emberCount; ember += 1) {
@@ -775,6 +792,31 @@ const BrawlPvE: React.FC = () => {
 
         hazardsRef.current = hazardsRef.current.flatMap((hazard) => {
           const next = { ...hazard, ttlMs: hazard.ttlMs - dt };
+          if (hazard.kind === "pillar") {
+            const pillarWidth = next.width ?? 48;
+            const descendEnd = 1150;
+            const crushEnd = 1650;
+            const baseY = FLOOR_Y - 190;
+            if (next.ttlMs > descendEnd) {
+              const descendProgress = 1 - (next.ttlMs - descendEnd) / Math.max(1, (hazard.ttlMs - descendEnd));
+              next.height = 210 * clamp(descendProgress, 0, 1);
+              next.y = -170 + (baseY + 170) * clamp(descendProgress, 0, 1);
+            } else if (next.ttlMs > crushEnd) {
+              next.height = 210;
+              next.y = baseY;
+              if (Math.abs(player.x - next.x) < pillarWidth * 0.7 && player.y > FLOOR_Y - 56) {
+                damagePlayer(32, "A cave pillar crushed you.");
+              }
+            } else {
+              const retractProgress = 1 - next.ttlMs / crushEnd;
+              next.height = 210 * Math.max(0, 1 - retractProgress);
+              next.y = baseY - 190 * retractProgress;
+            }
+            if (next.ttlMs <= 0 || (next.height ?? 0) <= 0) {
+              return [];
+            }
+            return [next];
+          }
           if (hazard.kind === "orb-warning" && next.ttlMs <= 0) {
             return [];
           }
@@ -871,6 +913,9 @@ const BrawlPvE: React.FC = () => {
         if (hazard.kind === "slam-warning") {
           ctx.fillStyle = giantEncounter ? `rgba(148,163,184,${0.12 + pulse * 0.18})` : `rgba(251,146,60,${0.12 + pulse * 0.18})`;
           ctx.strokeStyle = giantEncounter ? "rgba(226,232,240,0.9)" : "rgba(254,215,170,0.9)";
+        } else if (hazard.kind === "pillar") {
+          ctx.fillStyle = giantEncounter ? `rgba(71,85,105,${0.26 + pulse * 0.12})` : `rgba(120,53,15,${0.22 + pulse * 0.12})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(203,213,225,0.84)" : "rgba(254,215,170,0.84)";
         } else if (hazard.kind === "orb-warning") {
           ctx.fillStyle = giantEncounter ? `rgba(103,232,249,${0.08 + pulse * 0.12})` : `rgba(251,191,36,${0.08 + pulse * 0.12})`;
           ctx.strokeStyle = giantEncounter ? "rgba(186,230,253,0.84)" : "rgba(254,240,138,0.84)";
@@ -894,7 +939,36 @@ const BrawlPvE: React.FC = () => {
           ctx.strokeStyle = giantEncounter ? "#ecfeff" : "#fff7ed";
         }
         ctx.lineWidth = 2;
-        if ((hazard.kind === "flame-warning" || hazard.kind === "flame-wall") && typeof hazard.width === "number" && typeof hazard.height === "number") {
+        if (hazard.kind === "pillar" && typeof hazard.width === "number" && typeof hazard.height === "number") {
+          const pillarWidth = hazard.width;
+          const pillarHeight = hazard.height;
+          const left = hazard.x - pillarWidth / 2;
+          const top = hazard.y;
+          const pillarGradient = ctx.createLinearGradient(left, top, left + pillarWidth, top);
+          pillarGradient.addColorStop(0, giantEncounter ? "rgba(30,41,59,0.96)" : "rgba(120,53,15,0.94)");
+          pillarGradient.addColorStop(0.5, giantEncounter ? "rgba(100,116,139,0.98)" : "rgba(180,83,9,0.96)");
+          pillarGradient.addColorStop(1, giantEncounter ? "rgba(30,41,59,0.96)" : "rgba(120,53,15,0.94)");
+          ctx.fillStyle = pillarGradient;
+          drawPolygon(
+            ctx,
+            [
+              [left, top + 8],
+              [left + pillarWidth * 0.18, top],
+              [left + pillarWidth * 0.82, top],
+              [left + pillarWidth, top + 8],
+              [left + pillarWidth, top + pillarHeight],
+              [left, top + pillarHeight]
+            ],
+            pillarGradient
+          );
+          ctx.strokeRect(left, top, pillarWidth, pillarHeight);
+          ctx.fillStyle = giantEncounter ? "rgba(226,232,240,0.16)" : "rgba(254,215,170,0.14)";
+          ctx.fillRect(left + pillarWidth * 0.22, top + 8, pillarWidth * 0.12, Math.max(0, pillarHeight - 16));
+          ctx.fillStyle = giantEncounter ? "rgba(15,23,42,0.34)" : "rgba(67,20,7,0.34)";
+          ctx.beginPath();
+          ctx.ellipse(hazard.x, FLOOR_Y + 8, pillarWidth * 0.8, 14, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if ((hazard.kind === "flame-warning" || hazard.kind === "flame-wall") && typeof hazard.width === "number" && typeof hazard.height === "number") {
           if (hazard.kind === "flame-wall") {
             const flameGradient = ctx.createLinearGradient(hazard.x, hazard.y, hazard.x, hazard.y + hazard.height);
             if (giantEncounter) {
