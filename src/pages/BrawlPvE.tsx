@@ -51,6 +51,20 @@ type DamagePayload = {
   hitY: number;
   color: string;
 };
+type RemoteProjectilePayload = {
+  userId: string;
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  color: string;
+  kind: ProjectileKind;
+  gravity: number;
+  ttlMs: number;
+  isUltimate: boolean;
+};
 type PlayerState = {
   x: number; y: number; vx: number; vy: number; hp: number; onGround: boolean; coyoteMs: number; jumpLockMs: number;
   airJumpsRemaining: number; dashCooldownMs: number; attackCooldownMs: number; specialCooldownMs: number; invulnMs: number;
@@ -99,7 +113,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.98";
+const PVE_VERSION = "0.99";
 const MAX_PVE_PLAYERS = 4;
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
@@ -337,6 +351,7 @@ const BrawlPvE: React.FC = () => {
   const bossRef = useRef<BossState>(makeBossState(BOSSES["boss-1"], 1));
   const hazardsRef = useRef<Hazard[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
+  const remoteProjectilesRef = useRef<RemoteProjectilePayload[]>([]);
   const effectsRef = useRef<Effect[]>([]);
   const bossDeathStartedAtRef = useRef<number | null>(null);
   const winOverlayStartedAtRef = useRef<number | null>(null);
@@ -430,6 +445,11 @@ const BrawlPvE: React.FC = () => {
         remoteSnapshotsRef.current[nextPayload.userId] = nextPayload;
         remoteRenderStatesRef.current[nextPayload.userId] ??= { ...nextPayload };
       });
+      channel.on("broadcast", { event: "pve-projectile" }, ({ payload }) => {
+        const nextPayload = payload as RemoteProjectilePayload;
+        if (nextPayload.userId === session.user.id) return;
+        remoteProjectilesRef.current.push(nextPayload);
+      });
       channel.on("broadcast", { event: "pve-damage" }, ({ payload }) => {
         const nextPayload = payload as DamagePayload;
         if (appliedDamageEventsRef.current.has(nextPayload.eventId) || nextPayload.userId === session.user.id) return;
@@ -519,6 +539,27 @@ const BrawlPvE: React.FC = () => {
       const next = nextSeededValue(encounterSeedRef.current);
       encounterSeedRef.current = next.seed;
       return next.value;
+    };
+    const broadcastProjectile = (projectile: Projectile) => {
+      if (!channelRef.current || !currentUserId) return;
+      void channelRef.current.send({
+        type: "broadcast",
+        event: "pve-projectile",
+        payload: {
+          userId: currentUserId,
+          id: projectile.id,
+          x: projectile.x,
+          y: projectile.y,
+          vx: projectile.vx,
+          vy: projectile.vy,
+          radius: projectile.radius,
+          color: projectile.color,
+          kind: projectile.kind,
+          gravity: projectile.gravity,
+          ttlMs: projectile.ttlMs,
+          isUltimate: projectile.isUltimate
+        } satisfies RemoteProjectilePayload
+      });
     };
 
     const finishWin = () => {
@@ -705,12 +746,14 @@ const BrawlPvE: React.FC = () => {
             player.vy += config.meleeLunge * 0.35 * aim.y;
             player.attackCooldownMs = player.selectedCharacter === "assassin" ? 190 : player.selectedCharacter === "monk" ? 220 : 280;
           } else {
-            projectilesRef.current.push({
+            const projectile: Projectile = {
               id: `attack-${Date.now()}-${Math.random()}`, x: player.x + aim.x * 24, y: player.y - 10 + aim.y * 10, vx: (player.selectedCharacter === "archer" ? 9.4 : 7.1) * aim.x,
               vy: (player.selectedCharacter === "archer" ? 9.4 : 7.1) * aim.y, radius: player.selectedCharacter === "archer" ? 5 : 9, damage: player.selectedCharacter === "archer" ? 5 : 6,
               knockback: player.selectedCharacter === "archer" ? 8.2 : 6.9, lift: player.selectedCharacter === "archer" ? 5.4 : 5.8, color: player.selectedCharacter === "archer" ? "#fef08a" : "#fb923c",
               kind: player.selectedCharacter === "archer" ? "arrow" : "fireball", gravity: player.selectedCharacter === "archer" ? 0.01 : 0.015, ttlMs: player.selectedCharacter === "archer" ? 1280 : 1350, isUltimate: false
-            });
+            };
+            projectilesRef.current.push(projectile);
+            broadcastProjectile(projectile);
             player.attackCooldownMs = player.selectedCharacter === "archer" ? 360 : 320;
           }
           player.attackFlashMs = 130;
@@ -765,10 +808,12 @@ const BrawlPvE: React.FC = () => {
               player.specialCooldownMs = config.specialCooldownMs;
             } else {
               const knifeId = `knife-${Date.now()}-${Math.random()}`;
-              projectilesRef.current.push({
+              const projectile: Projectile = {
                 id: knifeId, x: player.x + aim.x * 22, y: player.y - 8 + aim.y * 8, vx: config.specialSpeed * aim.x, vy: config.specialSpeed * aim.y, radius: config.specialRadius,
               damage: config.specialDamage, knockback: 6.9, lift: 5.4, color: config.specialColor, kind: "dagger", gravity: config.specialGravity, ttlMs: 1000, isUltimate: false
-              });
+              };
+              projectilesRef.current.push(projectile);
+              broadcastProjectile(projectile);
               player.assassinKnifeId = knifeId;
               player.specialCooldownMs = 0;
             }
@@ -793,10 +838,14 @@ const BrawlPvE: React.FC = () => {
             for (let shot = 0; shot < config.ultimateShots; shot += 1) {
               const spread = -0.32 + (shot / Math.max(1, config.ultimateShots - 1)) * 0.64;
               const dir = normalizeVector(aim.x + -aim.y * spread, aim.y + aim.x * spread);
-              projectilesRef.current.push({ id: `ult-arrow-${Date.now()}-${shot}-${Math.random()}`, x: player.x + dir.x * 28, y: player.y - 12 + dir.y * 12, vx: config.ultimateSpeed * dir.x, vy: config.ultimateSpeed * dir.y, radius: config.ultimateRadius, damage: config.ultimateDamage, knockback: 10.6, lift: 5.5, color: config.ultimateColor, kind: "ultimate", gravity: 0.006, ttlMs: 1100, isUltimate: true });
+              const projectile: Projectile = { id: `ult-arrow-${Date.now()}-${shot}-${Math.random()}`, x: player.x + dir.x * 28, y: player.y - 12 + dir.y * 12, vx: config.ultimateSpeed * dir.x, vy: config.ultimateSpeed * dir.y, radius: config.ultimateRadius, damage: config.ultimateDamage, knockback: 10.6, lift: 5.5, color: config.ultimateColor, kind: "ultimate", gravity: 0.006, ttlMs: 1100, isUltimate: true };
+              projectilesRef.current.push(projectile);
+              broadcastProjectile(projectile);
             }
           } else {
-            projectilesRef.current.push({ id: `ult-orb-${Date.now()}-${Math.random()}`, x: player.x + aim.x * 24, y: player.y - 12 + aim.y * 10, vx: config.ultimateSpeed * aim.x, vy: config.ultimateSpeed * aim.y, radius: config.ultimateRadius, damage: config.ultimateDamage, knockback: 10.8, lift: 7.2, color: config.ultimateColor, kind: "ultimate", gravity: 0.01, ttlMs: 1400, isUltimate: true });
+            const projectile: Projectile = { id: `ult-orb-${Date.now()}-${Math.random()}`, x: player.x + aim.x * 24, y: player.y - 12 + aim.y * 10, vx: config.ultimateSpeed * aim.x, vy: config.ultimateSpeed * aim.y, radius: config.ultimateRadius, damage: config.ultimateDamage, knockback: 10.8, lift: 7.2, color: config.ultimateColor, kind: "ultimate", gravity: 0.01, ttlMs: 1400, isUltimate: true };
+            projectilesRef.current.push(projectile);
+            broadcastProjectile(projectile);
           }
         }
 
@@ -1022,6 +1071,17 @@ const BrawlPvE: React.FC = () => {
               player.assassinKnifeId = null;
               player.specialCooldownMs = config.specialCooldownMs;
             }
+            return [];
+          }
+          return [next];
+        });
+
+        remoteProjectilesRef.current = remoteProjectilesRef.current.flatMap((projectile) => {
+          const next = { ...projectile, ttlMs: projectile.ttlMs - dt };
+          next.x += next.vx * scale;
+          next.y += next.vy * scale;
+          next.vy += next.gravity * scale;
+          if (next.ttlMs <= 0 || next.x < -24 || next.x > WIDTH + 24 || next.y < -24 || next.y > HEIGHT + 48) {
             return [];
           }
           return [next];
@@ -1302,6 +1362,25 @@ const BrawlPvE: React.FC = () => {
 
       projectilesRef.current.forEach((projectile) => {
         ctx.save();
+        ctx.shadowBlur = projectile.kind === "ultimate" ? 18 : 10;
+        ctx.shadowColor = projectile.color;
+        ctx.fillStyle = projectile.color;
+        if (projectile.kind === "arrow" || projectile.kind === "dagger") {
+          ctx.translate(projectile.x, projectile.y);
+          ctx.rotate(Math.atan2(projectile.vy || 0.001, projectile.vx || 1));
+          ctx.fillRect(-2, -2, projectile.kind === "arrow" ? 18 : 14, 4);
+          ctx.fillRect(projectile.kind === "arrow" ? 10 : 6, projectile.kind === "arrow" ? -5 : -8, 4, projectile.kind === "arrow" ? 10 : 16);
+        } else {
+          ctx.beginPath();
+          ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      });
+
+      remoteProjectilesRef.current.forEach((projectile) => {
+        ctx.save();
+        ctx.globalAlpha = 0.82;
         ctx.shadowBlur = projectile.kind === "ultimate" ? 18 : 10;
         ctx.shadowColor = projectile.color;
         ctx.fillStyle = projectile.color;
