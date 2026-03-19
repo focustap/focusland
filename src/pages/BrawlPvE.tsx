@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { AuthContext } from "../components/AuthProvider";
 import NavBar from "../components/NavBar";
-import { completeBrawlPveBoss, getBrawlPveProgress } from "../lib/brawlPveProgress";
+import { completeBrawlPveBoss, loadBrawlPveProgress } from "../lib/brawlPveProgress";
 import { CHARACTER_CONFIGS, clamp, type CharacterId, drawBrawlCharacter, getDashProfile, normalizeVector } from "../lib/brawlShared";
 import { recordArcadeResult } from "../lib/progression";
 
@@ -62,7 +63,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "1.5";
+const PVE_VERSION = "1.6";
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
     id: "boss-1",
@@ -135,6 +136,7 @@ function makeBossState(definition: BossDefinition): BossState {
 const BrawlPvE: React.FC = () => {
   const { bossId = "boss-1" } = useParams();
   const navigate = useNavigate();
+  const { session } = useContext(AuthContext);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
   const [selectedCharacter, setSelectedCharacter] = useState<CharacterId | null>(null);
@@ -153,11 +155,24 @@ const BrawlPvE: React.FC = () => {
   const bossDeathStartedAtRef = useRef<number | null>(null);
   const winOverlayStartedAtRef = useRef<number | null>(null);
   const bossDef = BOSSES[bossId];
-  const isUnlocked = useMemo(() => getBrawlPveProgress().unlockedBosses.includes(bossId), [bossId]);
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [progressLoading, setProgressLoading] = useState(true);
 
   useEffect(() => {
-    if (!bossDef || !isUnlocked) navigate("/arena/pve");
-  }, [bossDef, isUnlocked, navigate]);
+    let active = true;
+    void loadBrawlPveProgress(session?.user.id).then((progress) => {
+      if (!active) return;
+      setIsUnlocked(progress.unlockedBosses.includes(bossId));
+      setProgressLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [bossId, session?.user.id]);
+
+  useEffect(() => {
+    if (!progressLoading && (!bossDef || !isUnlocked)) navigate("/arena/pve");
+  }, [bossDef, isUnlocked, navigate, progressLoading]);
 
   useEffect(() => {
     const onDown = (event: KeyboardEvent) => {
@@ -202,7 +217,7 @@ const BrawlPvE: React.FC = () => {
       setWon(true);
       setStatus("Boss defeated. The next gate is open.");
       if (bossDef) {
-        completeBrawlPveBoss(bossDef.id, bossDef.nextBossId);
+        void completeBrawlPveBoss(session?.user.id, bossDef.id, bossDef.nextBossId);
         void recordArcadeResult({ goldEarned: bossDef.goldReward });
       }
     };

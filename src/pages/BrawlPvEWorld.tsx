@@ -1,7 +1,8 @@
-import React, { useMemo } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { AuthContext } from "../components/AuthProvider";
 import NavBar from "../components/NavBar";
-import { getBrawlPveProgress } from "../lib/brawlPveProgress";
+import { type BrawlPveProgress, loadBrawlPveProgress } from "../lib/brawlPveProgress";
 
 type BossNode = {
   id: string;
@@ -45,7 +46,12 @@ const BOSSES: BossNode[] = [
 
 const BrawlPvEWorld: React.FC = () => {
   const navigate = useNavigate();
-  const progress = useMemo(() => getBrawlPveProgress(), []);
+  const { session } = useContext(AuthContext);
+  const [progress, setProgress] = useState<BrawlPveProgress>({ unlockedBosses: ["boss-1"], clearedBosses: [] });
+
+  useEffect(() => {
+    void loadBrawlPveProgress(session?.user.id).then(setProgress);
+  }, [session?.user.id]);
 
   return (
     <div className="page">

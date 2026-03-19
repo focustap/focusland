@@ -5,6 +5,7 @@ type GameStatColumns = {
   catch_best_score?: number;
   invaders_best_wave?: number;
   brawl_wins?: number;
+  brawl_pve_highest_boss?: number;
 };
 
 type ArcadeResultInput = {
@@ -20,6 +21,7 @@ type GameStatsRow = {
   catch_best_score: number | null;
   invaders_best_wave: number | null;
   brawl_wins: number | null;
+  brawl_pve_highest_boss: number | null;
 };
 
 async function getCurrentUser() {
@@ -100,7 +102,7 @@ export async function recordArcadeResult(input: ArcadeResultInput) {
 
   const { data: currentStats, error: statsError } = await supabase
     .from("game_stats")
-    .select("user_id, dodge_best_score, catch_best_score, invaders_best_wave, brawl_wins")
+    .select("user_id, dodge_best_score, catch_best_score, invaders_best_wave, brawl_wins, brawl_pve_highest_boss")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -123,7 +125,11 @@ export async function recordArcadeResult(input: ArcadeResultInput) {
       existing?.invaders_best_wave ?? 0,
       input.stats.invaders_best_wave ?? existing?.invaders_best_wave ?? 0
     ),
-    brawl_wins: (existing?.brawl_wins ?? 0) + (input.stats.brawl_wins ?? 0)
+    brawl_wins: (existing?.brawl_wins ?? 0) + (input.stats.brawl_wins ?? 0),
+    brawl_pve_highest_boss: Math.max(
+      existing?.brawl_pve_highest_boss ?? 0,
+      input.stats.brawl_pve_highest_boss ?? existing?.brawl_pve_highest_boss ?? 0
+    )
   };
 
   const { error: upsertError } = await supabase

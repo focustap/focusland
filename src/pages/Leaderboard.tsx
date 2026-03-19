@@ -11,6 +11,7 @@ type LeaderboardEntry = {
   catchBestScore: number;
   invadersBestWave: number;
   brawlWins: number;
+  brawlPveHighestBoss: number;
 };
 
 const Leaderboard: React.FC = () => {
@@ -23,7 +24,7 @@ const Leaderboard: React.FC = () => {
       try {
         const { data: statsRows, error: statsError } = await supabase
           .from("game_stats")
-          .select("user_id, dodge_best_score, catch_best_score, invaders_best_wave, brawl_wins");
+          .select("user_id, dodge_best_score, catch_best_score, invaders_best_wave, brawl_wins, brawl_pve_highest_boss");
 
         if (statsError) {
           throw statsError;
@@ -66,7 +67,8 @@ const Leaderboard: React.FC = () => {
               dodgeBestScore: Number(row.dodge_best_score ?? 0),
               catchBestScore: Number(row.catch_best_score ?? 0),
               invadersBestWave: Number(row.invaders_best_wave ?? 0),
-              brawlWins: Number(row.brawl_wins ?? 0)
+              brawlWins: Number(row.brawl_wins ?? 0),
+              brawlPveHighestBoss: Number(row.brawl_pve_highest_boss ?? 0)
             };
           })
         );
@@ -84,7 +86,7 @@ const Leaderboard: React.FC = () => {
     title: string,
     keyName: keyof Pick<
       LeaderboardEntry,
-      "gold" | "dodgeBestScore" | "catchBestScore" | "invadersBestWave" | "brawlWins"
+      "gold" | "dodgeBestScore" | "catchBestScore" | "invadersBestWave" | "brawlWins" | "brawlPveHighestBoss"
     >,
     suffix = ""
   ) => {
@@ -128,6 +130,7 @@ const Leaderboard: React.FC = () => {
           <div className="leaderboard-grid">
             {renderBoard("Most Gold", "gold", "g")}
             {renderBoard("Brawl Wins", "brawlWins")}
+            {renderBoard("Highest PvE Stage", "brawlPveHighestBoss")}
             {renderBoard("Best Catch Score", "catchBestScore")}
             {renderBoard("Best Dodge Score", "dodgeBestScore")}
             {renderBoard("Best Invader Wave", "invadersBestWave")}
