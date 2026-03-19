@@ -25,7 +25,7 @@ type BossDefinition = {
   goldReward: number;
   maxHp: number;
   baseCooldownMs: number;
-  style: "dragon" | "giant";
+  style: "dragon" | "giant" | "reaper";
 };
 type PlayerPresence = {
   userId: string;
@@ -116,6 +116,7 @@ type Hazard = {
 type DemonSpriteKey = "attack" | "death" | "flying" | "hurt" | "idle";
 type DemonSpriteSheets = Record<DemonSpriteKey, HTMLImageElement>;
 type GiantSheetState = "attack" | "death" | "hurt" | "idle";
+type ReaperSheetState = "attack" | "cast" | "death" | "idle";
 
 const WIDTH = 920;
 const HEIGHT = 520;
@@ -131,12 +132,14 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.106";
+const PVE_VERSION = "0.107";
 const MAX_PVE_PLAYERS = 4;
 const DEMON_FRAME_WIDTH = 81;
 const DEMON_FRAME_HEIGHT = 71;
 const GIANT_SHEET_FRAME_WIDTH = 202;
 const GIANT_SHEET_FRAME_HEIGHT = 106;
+const REAPER_SHEET_FRAME_WIDTH = 96;
+const REAPER_SHEET_FRAME_HEIGHT = 96;
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
     id: "boss-1",
@@ -155,6 +158,14 @@ const BOSSES: Record<string, BossDefinition> = {
     maxHp: 1280,
     baseCooldownMs: 980,
     style: "giant"
+  },
+  "boss-3": {
+    id: "boss-3",
+    name: "Grim Sovereign",
+    goldReward: 54,
+    maxHp: 1580,
+    baseCooldownMs: 860,
+    style: "reaper"
   }
 };
 
@@ -288,6 +299,70 @@ function drawStonebreakSpriteBoss(
   ctx.restore();
 }
 
+function loadReaperSheet() {
+  const image = new Image();
+  image.src = `${import.meta.env.BASE_URL}assets/bosses/grim-sovereign/boss-sheet.png`;
+  image.decoding = "async";
+  return image;
+}
+
+function drawReaperSpriteBoss(
+  ctx: CanvasRenderingContext2D,
+  sheet: HTMLImageElement,
+  boss: BossState,
+  now: number,
+  casting: boolean,
+  deathProgress: number
+) {
+  if (!sheet.complete || sheet.naturalWidth < REAPER_SHEET_FRAME_WIDTH) return;
+
+  const state: ReaperSheetState =
+    deathProgress > 0 ? "death" : boss.hitFlashMs > 0 ? "cast" : casting ? "attack" : "idle";
+  const row =
+    state === "idle" ? 0 :
+    state === "attack" ? 1 :
+    state === "cast" ? 3 :
+    4;
+  const frameCount =
+    state === "death" ? 4 :
+    state === "cast" ? 8 :
+    9;
+  const frameDuration =
+    state === "attack" ? 72 :
+    state === "cast" ? 88 :
+    state === "death" ? 180 :
+    112;
+  const frameIndex =
+    state === "death"
+      ? Math.min(frameCount - 1, Math.floor(deathProgress * frameCount))
+      : Math.floor(now / frameDuration) % frameCount;
+
+  const floatBob = Math.sin(now / 180) * 6;
+  const drawWidth = REAPER_SHEET_FRAME_WIDTH * 2.6;
+  const drawHeight = REAPER_SHEET_FRAME_HEIGHT * 2.6;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "rgba(0,0,0,0.36)";
+  ctx.beginPath();
+  ctx.ellipse(0, 88, 104, 18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = boss.phase === 3 ? "#e9d5ff" : "#a78bfa";
+  ctx.drawImage(
+    sheet,
+    frameIndex * REAPER_SHEET_FRAME_WIDTH,
+    row * REAPER_SHEET_FRAME_HEIGHT,
+    REAPER_SHEET_FRAME_WIDTH,
+    REAPER_SHEET_FRAME_HEIGHT,
+    -drawWidth / 2,
+    -drawHeight / 2 + floatBob,
+    drawWidth,
+    drawHeight
+  );
+  ctx.restore();
+}
+
 function drawPolygon(
   ctx: CanvasRenderingContext2D,
   points: Array<[number, number]>,
@@ -397,6 +472,46 @@ function drawCaveBackdrop(ctx: CanvasRenderingContext2D) {
   drawPolygon(ctx, [[774, FLOOR_Y], [790, FLOOR_Y - 42], [808, FLOOR_Y]], "rgba(125,211,252,0.16)");
 }
 
+function drawReaperBackdrop(ctx: CanvasRenderingContext2D) {
+  const bg = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+  bg.addColorStop(0, "#05030a");
+  bg.addColorStop(0.45, "#140f23");
+  bg.addColorStop(1, "#221437");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  const moonGlow = ctx.createRadialGradient(WIDTH * 0.76, 88, 18, WIDTH * 0.76, 88, 150);
+  moonGlow.addColorStop(0, "rgba(226,232,240,0.18)");
+  moonGlow.addColorStop(0.38, "rgba(196,181,253,0.12)");
+  moonGlow.addColorStop(1, "rgba(15,23,42,0)");
+  ctx.fillStyle = moonGlow;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  for (let spire = 0; spire < WIDTH; spire += 110) {
+    drawPolygon(
+      ctx,
+      [
+        [spire, FLOOR_Y],
+        [spire + 16, FLOOR_Y - 84],
+        [spire + 42, FLOOR_Y - 20],
+        [spire + 66, FLOOR_Y - 122],
+        [spire + 92, FLOOR_Y]
+      ],
+      "rgba(15, 23, 42, 0.88)"
+    );
+  }
+
+  ctx.fillStyle = "#171124";
+  ctx.fillRect(0, FLOOR_Y, WIDTH, HEIGHT - FLOOR_Y);
+  ctx.fillStyle = "rgba(196,181,253,0.1)";
+  for (let grave = 40; grave < WIDTH; grave += 84) {
+    ctx.fillRect(grave, FLOOR_Y - 18, 16, 20);
+    ctx.beginPath();
+    ctx.arc(grave + 8, FLOOR_Y - 18, 8, Math.PI, 0);
+    ctx.fill();
+  }
+}
+
 function drawGiantBoss(ctx: CanvasRenderingContext2D, boss: BossState, now: number, swinging: boolean) {
   const giantFill = boss.hitFlashMs > 0 ? "#f8fafc" : boss.weaknessMs > 0 ? "#86efac" : "#6b7280";
   const giantTrim = boss.phase === 3 ? "#e5e7eb" : "#cbd5e1";
@@ -463,7 +578,7 @@ function makeBossState(definition: BossDefinition, partySize = 1): BossState {
   const scaledMaxHp = definition.maxHp * Math.max(1, Math.min(MAX_PVE_PLAYERS, partySize));
   return {
     x: BOSS_X,
-    y: FLOOR_Y,
+    y: definition.style === "reaper" ? FLOOR_Y - 22 : FLOOR_Y,
     vx: 0,
     hp: scaledMaxHp,
     maxHp: scaledMaxHp,
@@ -515,6 +630,7 @@ const BrawlPvE: React.FC = () => {
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const demonSpritesRef = useRef<DemonSpriteSheets | null>(null);
   const giantSheetRef = useRef<HTMLImageElement | null>(null);
+  const reaperSheetRef = useRef<HTMLImageElement | null>(null);
   const bossDef = BOSSES[bossId];
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [progressLoading, setProgressLoading] = useState(true);
@@ -533,6 +649,7 @@ const BrawlPvE: React.FC = () => {
     particleImagesRef.current = loadKenneyParticleImages();
     demonSpritesRef.current = loadDemonSpriteSheets();
     giantSheetRef.current = loadStonebreakSheet();
+    reaperSheetRef.current = loadReaperSheet();
   }, []);
 
   useEffect(() => {
@@ -688,6 +805,14 @@ const BrawlPvE: React.FC = () => {
           projectilesRef.current = [];
           effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 110, "#e2e8f0", 110, 500));
           effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#67e8f9", 170, 760));
+        } else if (bossDef?.id === "boss-3" && boss.hp <= boss.maxHp * 0.55 && boss.phase === 1) {
+          boss.phase = 2;
+          boss.transitionMs = 2600;
+          boss.attackCooldownMs = 2800;
+          hazardsRef.current = [];
+          projectilesRef.current = [];
+          effectsRef.current.push(createEffect(boss.x, FLOOR_Y - 102, "#c4b5fd", 96, 420));
+          effectsRef.current.push(createEffect(boss.x, FLOOR_Y - 84, "#e9d5ff", 56, 280));
         } else if (boss.hp <= boss.maxHp * 0.58 && boss.phase === 1) {
           boss.phase = 2;
           effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 84, "#fb923c", 86, 420));
@@ -836,7 +961,7 @@ const BrawlPvE: React.FC = () => {
       boss.hitFlashMs = 120;
       if (weaknessMs > 0) boss.weaknessMs = Math.max(boss.weaknessMs, weaknessMs);
       player.ultimateCharge = clamp(player.ultimateCharge + chargeGain, 0, ULTIMATE_CHARGE_MAX);
-      effectsRef.current.push(createEffect(hitX, hitY, bossDef?.style === "giant" ? "#cbd5e1" : color, 20, 180));
+      effectsRef.current.push(createEffect(hitX, hitY, bossDef?.style === "giant" ? "#cbd5e1" : bossDef?.style === "reaper" ? "#c4b5fd" : color, 20, 180));
       if (audioUnlockedRef.current) {
         audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
         playKenneySfx(audioPoolsRef.current, chargeGain === 0 ? "ult" : "hit", chargeGain === 0 ? 0.5 : 0.36);
@@ -867,6 +992,15 @@ const BrawlPvE: React.FC = () => {
         effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 110, "#e2e8f0", 110, 500));
         effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#67e8f9", 170, 760));
         setStatus("The giant leaps away. Survive the arena collapse.");
+      } else if (bossDef?.id === "boss-3" && boss.hp <= boss.maxHp * 0.55 && boss.phase === 1) {
+        boss.phase = 2;
+        boss.transitionMs = 2600;
+        boss.attackCooldownMs = 2800;
+        hazardsRef.current = [];
+        projectilesRef.current = [];
+        effectsRef.current.push(createEffect(boss.x, FLOOR_Y - 102, "#c4b5fd", 96, 420));
+        effectsRef.current.push(createEffect(boss.x, FLOOR_Y - 84, "#e9d5ff", 56, 280));
+        setStatus("The reaper snuffs the lanterns. Endure the nightfall.");
       } else if (boss.hp <= boss.maxHp * 0.58 && boss.phase === 1) {
         boss.phase = 2;
         effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 84, "#fb923c", 86, 420));
@@ -930,6 +1064,12 @@ const BrawlPvE: React.FC = () => {
           effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#f8fafc", 110, 420));
           effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 82, "#22d3ee", 70, 300));
           setStatus("The giant crashes back in. Phase 3 begins.");
+        } else if (bossDef?.id === "boss-3" && boss.phase === 2 && boss.transitionMs === 0) {
+          boss.phase = 3;
+          boss.attackCooldownMs = 620;
+          effectsRef.current.push(createEffect(boss.x, FLOOR_Y - 96, "#e9d5ff", 110, 360));
+          effectsRef.current.push(createEffect(boss.x, FLOOR_Y - 90, "#c4b5fd", 62, 240));
+          setStatus("The Grim Sovereign returns. The scythe hunt begins.");
         }
 
         if (!lost) {
@@ -1094,7 +1234,9 @@ const BrawlPvE: React.FC = () => {
         }
 
         if (boss.hp > 0) {
-          boss.x = BOSS_X;
+          if (bossDef?.id !== "boss-3") {
+            boss.x = BOSS_X;
+          }
           boss.vx = 0;
           if (bossDef?.id === "boss-2" && boss.phase === 2) {
             if (boss.attackCooldownMs === 0) {
@@ -1205,6 +1347,63 @@ const BrawlPvE: React.FC = () => {
                 setStatus("The giant rains rubble across the floor.");
               }
               boss.attackCooldownMs = boss.phase === 3 ? 680 : 900;
+            } else if (bossDef?.id === "boss-3") {
+              const anchors = [148, 332, 588, 772];
+              const nextAnchor = anchors[Math.floor(nextEncounterRoll() * anchors.length)] ?? BOSS_X;
+              effectsRef.current.push(createEffect(boss.x, FLOOR_Y - 92, "#c4b5fd", 26, 160));
+              boss.x = nextAnchor;
+              boss.y = FLOOR_Y - 22;
+              effectsRef.current.push(createEffect(boss.x, FLOOR_Y - 92, "#e9d5ff", 30, 180));
+              if (roll < 0.24) {
+                const safeX = 170 + nextEncounterRoll() * (WIDTH - 340);
+                hazardsRef.current.push({ id: `reaper-left-${timestamp}`, kind: "flame-warning", x: 0, y: FLOOR_Y - 220, radius: 0, width: Math.max(0, safeX - 66), height: 220, ttlMs: boss.phase === 3 ? 920 : 1080 });
+                hazardsRef.current.push({ id: `reaper-right-${timestamp}`, kind: "flame-warning", x: safeX + 66, y: FLOOR_Y - 220, radius: 0, width: Math.max(0, WIDTH - (safeX + 66)), height: 220, ttlMs: boss.phase === 3 ? 920 : 1080 });
+                setStatus("Death veil. Find the single lantern lane.");
+              } else if (roll < 0.48) {
+                const strikeXs = [player.x, clamp(player.x - 160, 72, WIDTH - 72), clamp(player.x + 160, 72, WIDTH - 72), boss.x];
+                strikeXs.forEach((strikeX, index) => {
+                  hazardsRef.current.push({
+                    id: `reaper-scythe-${timestamp}-${index}`,
+                    kind: "slam-warning",
+                    x: strikeX,
+                    y: FLOOR_Y + 2,
+                    radius: boss.phase === 3 ? 58 : 48,
+                    ttlMs: 620 + index * 80
+                  });
+                });
+                setStatus("Marked for harvest. The scythe falls in sequence.");
+              } else if (roll < 0.74) {
+                const laneYs = [148, 220, 292, 364];
+                laneYs.forEach((laneY, index) => {
+                  const fromLeft = index % 2 === 0;
+                  hazardsRef.current.push({
+                    id: `reaper-orb-${timestamp}-${index}`,
+                    kind: "orb",
+                    x: fromLeft ? -24 : WIDTH + 24,
+                    y: laneY,
+                    radius: boss.phase === 3 ? 16 : 14,
+                    ttlMs: 3200,
+                    vx: fromLeft ? (boss.phase === 3 ? 4.8 : 4) : (boss.phase === 3 ? -4.8 : -4),
+                    vy: 0,
+                    width: 540 + index * 80
+                  });
+                });
+                setStatus("Soul procession. Read the lanes before they cross.");
+              } else {
+                const centerX = clamp(200 + nextEncounterRoll() * (WIDTH - 400), 180, WIDTH - 180);
+                [centerX - 90, centerX, centerX + 90].forEach((graveX, index) => {
+                  hazardsRef.current.push({
+                    id: `reaper-grave-${timestamp}-${index}`,
+                    kind: "ember-warning",
+                    x: graveX,
+                    y: FLOOR_Y + 2,
+                    radius: boss.phase === 3 ? 56 : 48,
+                    ttlMs: 620 + index * 110
+                  });
+                });
+                setStatus("Grave bloom. Bait the marks, then cut back in.");
+              }
+              boss.attackCooldownMs = boss.phase === 3 ? 560 : 760;
             } else if (roll < 0.34) {
               hazardsRef.current.push({ id: `slam-warning-${timestamp}`, kind: "slam-warning", x: player.x, y: FLOOR_Y + 2, radius: 46, ttlMs: 720 });
               hazardsRef.current.push({ id: `slam-center-${timestamp}`, kind: "slam-warning", x: BOSS_X, y: FLOOR_Y + 2, radius: boss.phase === 2 ? 82 : 68, ttlMs: 860 });
@@ -1447,6 +1646,8 @@ const BrawlPvE: React.FC = () => {
 
       if (bossDef?.style === "giant") {
         drawCaveBackdrop(ctx);
+      } else if (bossDef?.style === "reaper") {
+        drawReaperBackdrop(ctx);
       } else {
         const bg = ctx.createLinearGradient(0, 0, 0, HEIGHT);
         bg.addColorStop(0, "#16080a");
@@ -1471,33 +1672,34 @@ const BrawlPvE: React.FC = () => {
         ctx.save();
         const pulse = 0.55 + Math.sin((performance.now() + hazard.x) / 80) * 0.18;
         const giantEncounter = bossDef?.style === "giant";
+        const reaperEncounter = bossDef?.style === "reaper";
         if (hazard.kind === "slam-warning") {
-          ctx.fillStyle = giantEncounter ? `rgba(148,163,184,${0.12 + pulse * 0.18})` : `rgba(251,146,60,${0.12 + pulse * 0.18})`;
-          ctx.strokeStyle = giantEncounter ? "rgba(226,232,240,0.9)" : "rgba(254,215,170,0.9)";
+          ctx.fillStyle = giantEncounter ? `rgba(148,163,184,${0.12 + pulse * 0.18})` : reaperEncounter ? `rgba(196,181,253,${0.12 + pulse * 0.18})` : `rgba(251,146,60,${0.12 + pulse * 0.18})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(226,232,240,0.9)" : reaperEncounter ? "rgba(233,213,255,0.92)" : "rgba(254,215,170,0.9)";
         } else if (hazard.kind === "pillar") {
-          ctx.fillStyle = giantEncounter ? `rgba(71,85,105,${0.26 + pulse * 0.12})` : `rgba(120,53,15,${0.22 + pulse * 0.12})`;
-          ctx.strokeStyle = giantEncounter ? "rgba(203,213,225,0.84)" : "rgba(254,215,170,0.84)";
+          ctx.fillStyle = giantEncounter ? `rgba(71,85,105,${0.26 + pulse * 0.12})` : reaperEncounter ? `rgba(76,29,149,${0.24 + pulse * 0.12})` : `rgba(120,53,15,${0.22 + pulse * 0.12})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(203,213,225,0.84)" : reaperEncounter ? "rgba(221,214,254,0.86)" : "rgba(254,215,170,0.84)";
         } else if (hazard.kind === "orb-warning") {
-          ctx.fillStyle = giantEncounter ? `rgba(103,232,249,${0.08 + pulse * 0.12})` : `rgba(251,191,36,${0.08 + pulse * 0.12})`;
-          ctx.strokeStyle = giantEncounter ? "rgba(186,230,253,0.84)" : "rgba(254,240,138,0.84)";
+          ctx.fillStyle = giantEncounter ? `rgba(103,232,249,${0.08 + pulse * 0.12})` : reaperEncounter ? `rgba(167,139,250,${0.09 + pulse * 0.12})` : `rgba(251,191,36,${0.08 + pulse * 0.12})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(186,230,253,0.84)" : reaperEncounter ? "rgba(233,213,255,0.84)" : "rgba(254,240,138,0.84)";
         } else if (hazard.kind === "flame-warning") {
-          ctx.fillStyle = giantEncounter ? `rgba(103,232,249,${0.12 + pulse * 0.16})` : `rgba(251,146,60,${0.14 + pulse * 0.16})`;
-          ctx.strokeStyle = giantEncounter ? "rgba(186,230,253,0.92)" : "rgba(253,186,116,0.92)";
+          ctx.fillStyle = giantEncounter ? `rgba(103,232,249,${0.12 + pulse * 0.16})` : reaperEncounter ? `rgba(139,92,246,${0.14 + pulse * 0.16})` : `rgba(251,146,60,${0.14 + pulse * 0.16})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(186,230,253,0.92)" : reaperEncounter ? "rgba(233,213,255,0.94)" : "rgba(253,186,116,0.92)";
         } else if (hazard.kind === "flame-wall") {
-          ctx.fillStyle = giantEncounter ? `rgba(71,85,105,${0.28 + pulse * 0.16})` : `rgba(249,115,22,${0.28 + pulse * 0.16})`;
-          ctx.strokeStyle = giantEncounter ? "rgba(224,242,254,0.88)" : "rgba(255,237,213,0.9)";
+          ctx.fillStyle = giantEncounter ? `rgba(71,85,105,${0.28 + pulse * 0.16})` : reaperEncounter ? `rgba(88,28,135,${0.28 + pulse * 0.16})` : `rgba(249,115,22,${0.28 + pulse * 0.16})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(224,242,254,0.88)" : reaperEncounter ? "rgba(243,232,255,0.9)" : "rgba(255,237,213,0.9)";
         } else if (hazard.kind === "ember-warning") {
-          ctx.fillStyle = giantEncounter ? `rgba(156,163,175,${0.12 + pulse * 0.14})` : `rgba(253,224,71,${0.12 + pulse * 0.14})`;
-          ctx.strokeStyle = giantEncounter ? "rgba(229,231,235,0.85)" : "rgba(254,240,138,0.85)";
+          ctx.fillStyle = giantEncounter ? `rgba(156,163,175,${0.12 + pulse * 0.14})` : reaperEncounter ? `rgba(192,132,252,${0.12 + pulse * 0.14})` : `rgba(253,224,71,${0.12 + pulse * 0.14})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(229,231,235,0.85)" : reaperEncounter ? "rgba(233,213,255,0.88)" : "rgba(254,240,138,0.85)";
         } else if (hazard.kind === "ember-hit") {
-          ctx.fillStyle = giantEncounter ? `rgba(34,211,238,${0.18 + pulse * 0.1})` : `rgba(239,68,68,${0.22 + pulse * 0.12})`;
-          ctx.strokeStyle = giantEncounter ? "rgba(224,242,254,0.8)" : "rgba(254,202,202,0.85)";
+          ctx.fillStyle = giantEncounter ? `rgba(34,211,238,${0.18 + pulse * 0.1})` : reaperEncounter ? `rgba(139,92,246,${0.22 + pulse * 0.12})` : `rgba(239,68,68,${0.22 + pulse * 0.12})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(224,242,254,0.8)" : reaperEncounter ? "rgba(243,232,255,0.86)" : "rgba(254,202,202,0.85)";
         } else if (hazard.kind === "slam-hit") {
-          ctx.fillStyle = giantEncounter ? `rgba(56,189,248,${0.2 + pulse * 0.14})` : `rgba(239,68,68,${0.25 + pulse * 0.16})`;
-          ctx.strokeStyle = giantEncounter ? "rgba(224,242,254,0.82)" : "rgba(254,202,202,0.85)";
+          ctx.fillStyle = giantEncounter ? `rgba(56,189,248,${0.2 + pulse * 0.14})` : reaperEncounter ? `rgba(167,139,250,${0.25 + pulse * 0.16})` : `rgba(239,68,68,${0.25 + pulse * 0.16})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(224,242,254,0.82)" : reaperEncounter ? "rgba(243,232,255,0.88)" : "rgba(254,202,202,0.85)";
         } else {
-          ctx.fillStyle = giantEncounter ? "#67e8f9" : "#fb923c";
-          ctx.strokeStyle = giantEncounter ? "#ecfeff" : "#fff7ed";
+          ctx.fillStyle = giantEncounter ? "#67e8f9" : reaperEncounter ? "#c4b5fd" : "#fb923c";
+          ctx.strokeStyle = giantEncounter ? "#ecfeff" : reaperEncounter ? "#f5f3ff" : "#fff7ed";
         }
         ctx.lineWidth = 2;
         if (hazard.kind === "pillar" && typeof hazard.width === "number" && typeof hazard.height === "number") {
@@ -1592,7 +1794,7 @@ const BrawlPvE: React.FC = () => {
           ctx.lineTo(effect.x2, effect.y2);
           ctx.stroke();
         } else {
-          if (giantEncounter && effect.radius >= 18) {
+          if ((giantEncounter || reaperEncounter) && effect.radius >= 18) {
             drawPolygon(
               ctx,
               [
@@ -1661,7 +1863,11 @@ const BrawlPvE: React.FC = () => {
       const giantSwinging = hazardsRef.current.some((hazard) =>
         hazard.kind === "slam-warning" || hazard.kind === "slam-hit" || hazard.id.includes("giant-center") || hazard.id.includes("giant-player")
       );
-      const bossVisible = !(bossDef?.style === "giant" && boss.phase === 2 && boss.transitionMs > 0);
+      const reaperCasting = hazardsRef.current.some((hazard) => hazard.id.includes("reaper-") || hazard.kind === "flame-warning");
+      const bossVisible = !(
+        (bossDef?.style === "giant" && boss.phase === 2 && boss.transitionMs > 0) ||
+        (bossDef?.style === "reaper" && boss.phase === 2 && boss.transitionMs > 0)
+      );
       if (bossVisible) {
         ctx.save();
         ctx.translate(boss.x, boss.y - 98 + deathProgress * 120);
@@ -1673,6 +1879,11 @@ const BrawlPvE: React.FC = () => {
             drawStonebreakSpriteBoss(ctx, giantSheet, boss, performance.now(), giantSwinging, deathProgress);
           } else {
             drawGiantBoss(ctx, boss, performance.now(), giantSwinging);
+          }
+        } else if (bossDef?.style === "reaper") {
+          const reaperSheet = reaperSheetRef.current;
+          if (reaperSheet) {
+            drawReaperSpriteBoss(ctx, reaperSheet, boss, performance.now(), reaperCasting, deathProgress);
           }
         } else {
           const demonSprites = demonSpritesRef.current;

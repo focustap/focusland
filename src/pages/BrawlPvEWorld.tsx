@@ -35,12 +35,12 @@ const BOSSES: BossNode[] = [
   },
   {
     id: "boss-3",
-    name: "Thorn Saint",
-    subtitle: "Locked",
-    difficulty: "Coming Soon",
+    name: "Grim Sovereign",
+    subtitle: "A teleporting reaper that turns the arena into a death puzzle.",
+    difficulty: "Nightmare",
     x: 570,
     y: 248,
-    accent: "#86efac"
+    accent: "#c4b5fd"
   }
 ];
 
@@ -142,7 +142,7 @@ const BrawlPvEWorld: React.FC = () => {
         </div>
 
         <p className="info">
-          First slice: one hard boss fight, world-map progression, and local unlock persistence. Next bosses are stubbed so the path already exists.
+          First slice: three escalating boss fights, world-map progression, and persistent unlocks. Each gate is meant to feel mechanically distinct, not just harder numbers.
         </p>
       </div>
     </div>
