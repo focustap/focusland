@@ -115,6 +115,7 @@ type Hazard = {
 
 type DemonSpriteKey = "attack" | "death" | "flying" | "hurt" | "idle";
 type DemonSpriteSheets = Record<DemonSpriteKey, HTMLImageElement>;
+type GiantSheetState = "attack" | "death" | "hurt" | "idle";
 
 const WIDTH = 920;
 const HEIGHT = 520;
@@ -130,10 +131,12 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.105";
+const PVE_VERSION = "0.106";
 const MAX_PVE_PLAYERS = 4;
 const DEMON_FRAME_WIDTH = 81;
 const DEMON_FRAME_HEIGHT = 71;
+const GIANT_SHEET_FRAME_WIDTH = 202;
+const GIANT_SHEET_FRAME_HEIGHT = 106;
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
     id: "boss-1",
@@ -213,6 +216,70 @@ function drawFlyingDemonBoss(
     0,
     DEMON_FRAME_WIDTH,
     DEMON_FRAME_HEIGHT,
+    -drawWidth / 2,
+    -drawHeight / 2,
+    drawWidth,
+    drawHeight
+  );
+  ctx.restore();
+}
+
+function loadStonebreakSheet() {
+  const image = new Image();
+  image.src = `${import.meta.env.BASE_URL}assets/bosses/stonebreak-giant/boss-sheet.png`;
+  image.decoding = "async";
+  return image;
+}
+
+function drawStonebreakSpriteBoss(
+  ctx: CanvasRenderingContext2D,
+  sheet: HTMLImageElement,
+  boss: BossState,
+  now: number,
+  swinging: boolean,
+  deathProgress: number
+) {
+  if (!sheet.complete || sheet.naturalWidth < GIANT_SHEET_FRAME_WIDTH) return;
+
+  const state: GiantSheetState =
+    deathProgress > 0 ? "death" : boss.hitFlashMs > 0 ? "hurt" : swinging ? "attack" : "idle";
+  const row =
+    state === "idle" ? 0 :
+    state === "attack" ? 1 :
+    state === "hurt" ? 2 :
+    3;
+  const frameCount =
+    state === "idle" ? 10 :
+    state === "attack" ? 10 :
+    state === "hurt" ? 10 :
+    4;
+  const frameDuration =
+    state === "attack" ? 80 :
+    state === "hurt" ? 70 :
+    state === "death" ? 140 :
+    110;
+  const frameIndex =
+    state === "death"
+      ? Math.min(frameCount - 1, Math.floor(deathProgress * frameCount))
+      : Math.floor(now / frameDuration) % frameCount;
+
+  const drawWidth = GIANT_SHEET_FRAME_WIDTH * 2.45;
+  const drawHeight = GIANT_SHEET_FRAME_HEIGHT * 2.45;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "rgba(0,0,0,0.34)";
+  ctx.beginPath();
+  ctx.ellipse(0, 92, 154, 28, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = boss.phase === 3 ? 18 : 10;
+  ctx.shadowColor = boss.hitFlashMs > 0 ? "#e2e8f0" : "#a3e635";
+  ctx.drawImage(
+    sheet,
+    frameIndex * GIANT_SHEET_FRAME_WIDTH,
+    row * GIANT_SHEET_FRAME_HEIGHT,
+    GIANT_SHEET_FRAME_WIDTH,
+    GIANT_SHEET_FRAME_HEIGHT,
     -drawWidth / 2,
     -drawHeight / 2,
     drawWidth,
@@ -447,6 +514,7 @@ const BrawlPvE: React.FC = () => {
   const particleImagesRef = useRef<Record<KenneyParticleKey, HTMLImageElement> | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const demonSpritesRef = useRef<DemonSpriteSheets | null>(null);
+  const giantSheetRef = useRef<HTMLImageElement | null>(null);
   const bossDef = BOSSES[bossId];
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [progressLoading, setProgressLoading] = useState(true);
@@ -464,6 +532,7 @@ const BrawlPvE: React.FC = () => {
   useEffect(() => {
     particleImagesRef.current = loadKenneyParticleImages();
     demonSpritesRef.current = loadDemonSpriteSheets();
+    giantSheetRef.current = loadStonebreakSheet();
   }, []);
 
   useEffect(() => {
@@ -1599,7 +1668,12 @@ const BrawlPvE: React.FC = () => {
         ctx.globalAlpha = 1 - deathProgress * 0.92;
         ctx.rotate(deathProgress * 0.18);
         if (bossDef?.style === "giant") {
-          drawGiantBoss(ctx, boss, performance.now(), giantSwinging);
+          const giantSheet = giantSheetRef.current;
+          if (giantSheet) {
+            drawStonebreakSpriteBoss(ctx, giantSheet, boss, performance.now(), giantSwinging, deathProgress);
+          } else {
+            drawGiantBoss(ctx, boss, performance.now(), giantSwinging);
+          }
         } else {
           const demonSprites = demonSpritesRef.current;
           if (demonSprites) {
