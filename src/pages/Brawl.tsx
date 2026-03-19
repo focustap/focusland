@@ -97,6 +97,7 @@ type Projectile = {
   gravity: number;
   ttlMs: number;
   isUltimate: boolean;
+  spent?: boolean;
 };
 
 type Effect = {
@@ -154,7 +155,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const NETWORK_RENDER_WINDOW_MS = 60;
-const BRAWL_VERSION = "1.0";
+const BRAWL_VERSION = "1.1";
 const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
 const LAVA_LANES = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72];
@@ -1623,6 +1624,11 @@ const Brawl: React.FC = () => {
           return;
         }
 
+        if (isAssassinKnife && projectile.spent) {
+          survivingProjectiles.push(projectile);
+          return;
+        }
+
         applyHit(
           targetId!,
           projectile.ownerId,
@@ -1643,7 +1649,8 @@ const Brawl: React.FC = () => {
             vx: 0,
             vy: 0,
             gravity: 0,
-            ttlMs: Math.min(projectile.ttlMs, 1000)
+            ttlMs: Math.min(projectile.ttlMs, 1000),
+            spent: true
           });
           nextMessage = "Shadow knife stuck. Recast now.";
           return;
