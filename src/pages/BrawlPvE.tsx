@@ -30,7 +30,8 @@ const MAX_FALL_SPEED = 12;
 const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
-const PVE_VERSION = "0.4";
+const FRAME_MS = 1000 / 60;
+const PVE_VERSION = "0.5";
 const BOSSES: Record<string, BossDefinition> = { "boss-1": { id: "boss-1", name: "Ashen Juggernaut", nextBossId: "boss-2", goldReward: 24 } };
 
 function createEffect(x: number, y: number, color: string, radius: number, ttlMs: number): Effect {
@@ -132,6 +133,7 @@ const BrawlPvE: React.FC = () => {
     const update = (timestamp: number) => {
       const dt = Math.min(33, timestamp - lastTime);
       lastTime = timestamp;
+      const scale = dt / FRAME_MS;
       const player = playerRef.current;
       if (!player) return;
       const boss = bossRef.current;
@@ -188,9 +190,9 @@ const BrawlPvE: React.FC = () => {
           }
         }
 
-        player.vy = Math.min(MAX_FALL_SPEED, player.vy + GRAVITY);
-        player.x = clamp(player.x + player.vx, 34, WIDTH - 34);
-        player.y += player.vy;
+        player.vy = Math.min(MAX_FALL_SPEED, player.vy + GRAVITY * scale);
+        player.x = clamp(player.x + player.vx * scale, 34, WIDTH - 34);
+        player.y += player.vy * scale;
         if (player.y >= FLOOR_Y) {
           player.y = FLOOR_Y;
           player.vy = 0;
@@ -274,7 +276,7 @@ const BrawlPvE: React.FC = () => {
               const knifeId = `knife-${Date.now()}-${Math.random()}`;
               projectilesRef.current.push({
                 id: knifeId, x: player.x + aim.x * 22, y: player.y - 8 + aim.y * 8, vx: config.specialSpeed * aim.x, vy: config.specialSpeed * aim.y, radius: config.specialRadius,
-                damage: config.specialDamage, knockback: 6.9, lift: 5.4, color: config.specialColor, kind: "dagger", gravity: config.specialGravity, ttlMs: 1000, isUltimate: false
+              damage: config.specialDamage, knockback: 6.9, lift: 5.4, color: config.specialColor, kind: "dagger", gravity: config.specialGravity, ttlMs: 1000, isUltimate: false
               });
               player.assassinKnifeId = knifeId;
               player.specialCooldownMs = 0;
@@ -309,7 +311,7 @@ const BrawlPvE: React.FC = () => {
 
         if (boss.hp > 0) {
           const dir = Math.sign(player.x - boss.x) || 1;
-          boss.vx = boss.vx * 0.92 + dir * (boss.phase === 2 ? 0.78 : 0.56);
+          boss.vx = boss.vx * Math.pow(0.92, scale) + dir * (boss.phase === 2 ? 0.78 : 0.56) * scale;
           boss.x = clamp(boss.x + boss.vx, 90, WIDTH - 90);
           if (boss.attackCooldownMs === 0) {
             const roll = Math.random();
@@ -333,9 +335,9 @@ const BrawlPvE: React.FC = () => {
         projectilesRef.current = projectilesRef.current.flatMap((projectile) => {
           const next = { ...projectile, ttlMs: projectile.ttlMs - dt };
           if (!next.stuck) {
-            next.x += next.vx;
-            next.y += next.vy;
-            next.vy += next.gravity;
+            next.x += next.vx * scale;
+            next.y += next.vy * scale;
+            next.vy += next.gravity * scale;
           }
           const hitBoss = Math.abs(next.x - boss.x) <= BOSS_WIDTH / 2 + next.radius && Math.abs(next.y - (boss.y - BOSS_HEIGHT / 2)) <= BOSS_HEIGHT / 2 + next.radius;
           if (hitBoss) {
@@ -363,8 +365,8 @@ const BrawlPvE: React.FC = () => {
         hazardsRef.current = hazardsRef.current.flatMap((hazard) => {
           const next = { ...hazard, ttlMs: hazard.ttlMs - dt };
           if (hazard.kind === "orb") {
-            next.x += next.vx ?? 0;
-            next.y += next.vy ?? 0;
+            next.x += (next.vx ?? 0) * scale;
+            next.y += (next.vy ?? 0) * scale;
             if (Math.hypot(next.x - player.x, next.y - (player.y - 24)) < next.radius + 16) {
               damagePlayer(14, "An orb clipped you.");
               return [];
