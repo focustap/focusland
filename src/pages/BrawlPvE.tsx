@@ -44,7 +44,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "1.2";
+const PVE_VERSION = "1.3";
 const BOSSES: Record<string, BossDefinition> = { "boss-1": { id: "boss-1", name: "Ashen Juggernaut", nextBossId: "boss-2", goldReward: 24 } };
 
 function createEffect(x: number, y: number, color: string, radius: number, ttlMs: number): Effect {
@@ -375,20 +375,21 @@ const BrawlPvE: React.FC = () => {
               setStatus("Core slam incoming. Punish the heart, then get clear.");
             } else if (roll < 0.68) {
               const shotCount = boss.phase === 2 ? 10 : 7;
+              const spawnRadius = boss.phase === 2 ? 116 : 92;
               for (let shot = 0; shot < shotCount; shot += 1) {
                 const angle = (-Math.PI / 2) + (shot / shotCount) * Math.PI * 2;
                 hazardsRef.current.push({
                   id: `orb-${timestamp}-${shot}`,
                   kind: "orb",
-                  x: BOSS_X,
-                  y: boss.y - 58,
+                  x: BOSS_X + Math.cos(angle) * spawnRadius,
+                  y: boss.y - 70 + Math.sin(angle) * spawnRadius * 0.55,
                   radius: boss.phase === 2 ? 14 : 12,
                   ttlMs: boss.phase === 2 ? 3100 : 2700,
                   vx: Math.cos(angle) * (boss.phase === 2 ? 4.6 : 3.5),
                   vy: Math.sin(angle) * (boss.phase === 2 ? 4 : 3.1)
                 });
               }
-              setStatus("Starburst. Thread the gaps.");
+              setStatus("Starburst. The center is safe for a beat, then move through the lanes.");
             } else if (roll < 0.86) {
               const laneOffset = boss.phase === 2 ? 180 : 155;
               hazardsRef.current.push({ id: `lane-left-${timestamp}`, kind: "slam-warning", x: BOSS_X - laneOffset, y: FLOOR_Y + 2, radius: boss.phase === 2 ? 74 : 64, ttlMs: 560 });
