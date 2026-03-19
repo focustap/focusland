@@ -37,17 +37,39 @@ const PLAYER_WIDTH = 28;
 const PLAYER_HEIGHT = 44;
 const BOSS_WIDTH = 110;
 const BOSS_HEIGHT = 140;
+const BOSS_MAX_HP = 920;
 const GRAVITY = 0.68;
 const MAX_FALL_SPEED = 12;
 const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.7";
+const PVE_VERSION = "0.8";
 const BOSSES: Record<string, BossDefinition> = { "boss-1": { id: "boss-1", name: "Ashen Juggernaut", nextBossId: "boss-2", goldReward: 24 } };
 
 function createEffect(x: number, y: number, color: string, radius: number, ttlMs: number): Effect {
   return { id: `${Date.now()}-${Math.random()}`, x, y, color, radius, ttlMs };
+}
+
+function drawPolygon(
+  ctx: CanvasRenderingContext2D,
+  points: Array<[number, number]>,
+  fillStyle: string,
+  strokeStyle?: string
+) {
+  if (points.length === 0) return;
+  ctx.beginPath();
+  ctx.moveTo(points[0][0], points[0][1]);
+  for (let index = 1; index < points.length; index += 1) {
+    ctx.lineTo(points[index][0], points[index][1]);
+  }
+  ctx.closePath();
+  ctx.fillStyle = fillStyle;
+  ctx.fill();
+  if (strokeStyle) {
+    ctx.strokeStyle = strokeStyle;
+    ctx.stroke();
+  }
 }
 
 function makePlayerState(characterId: CharacterId): PlayerState {
@@ -72,7 +94,7 @@ const BrawlPvE: React.FC = () => {
   const mouseRef = useRef({ x: WIDTH / 2, y: HEIGHT / 2 });
   const mouseDownRef = useRef(false);
   const playerRef = useRef<PlayerState | null>(null);
-  const bossRef = useRef<BossState>({ x: BOSS_X, y: FLOOR_Y, vx: 0, hp: 380, maxHp: 380, attackCooldownMs: 1800, phase: 1, weaknessMs: 0, hitFlashMs: 0 });
+  const bossRef = useRef<BossState>({ x: BOSS_X, y: FLOOR_Y, vx: 0, hp: BOSS_MAX_HP, maxHp: BOSS_MAX_HP, attackCooldownMs: 1200, phase: 1, weaknessMs: 0, hitFlashMs: 0 });
   const hazardsRef = useRef<Hazard[]>([]);
   const projectilesRef = useRef<Projectile[]>([]);
   const effectsRef = useRef<Effect[]>([]);
@@ -124,7 +146,12 @@ const BrawlPvE: React.FC = () => {
       if (weaknessMs > 0) boss.weaknessMs = Math.max(boss.weaknessMs, weaknessMs);
       player.ultimateCharge = clamp(player.ultimateCharge + chargeGain, 0, ULTIMATE_CHARGE_MAX);
       effectsRef.current.push(createEffect(hitX, hitY, color, 20, 180));
-      if (boss.hp <= boss.maxHp / 2) boss.phase = 2;
+      if (boss.hp <= boss.maxHp * 0.58 && boss.phase === 1) {
+        boss.phase = 2;
+        effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 84, "#fb923c", 86, 420));
+        effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#fef08a", 52, 280));
+        setStatus("The dragon enrages. The arena ignites.");
+      }
       if (boss.hp <= 0) finishWin();
       boss.x = BOSS_X;
       boss.y = clamp(boss.y - lift * 0.25, FLOOR_Y - 6, FLOOR_Y);
@@ -326,9 +353,9 @@ const BrawlPvE: React.FC = () => {
             if (roll < 0.34) {
               hazardsRef.current.push({ id: `slam-warning-${timestamp}`, kind: "slam-warning", x: player.x, y: FLOOR_Y + 2, radius: 46, ttlMs: 720 });
               hazardsRef.current.push({ id: `slam-center-${timestamp}`, kind: "slam-warning", x: BOSS_X, y: FLOOR_Y + 2, radius: boss.phase === 2 ? 82 : 68, ttlMs: 860 });
-              setStatus("Core slam incoming. Punish the middle, then dash out.");
+              setStatus("Core slam incoming. Punish the heart, then get clear.");
             } else if (roll < 0.68) {
-              const shotCount = boss.phase === 2 ? 8 : 6;
+              const shotCount = boss.phase === 2 ? 10 : 7;
               for (let shot = 0; shot < shotCount; shot += 1) {
                 const angle = (-Math.PI / 2) + (shot / shotCount) * Math.PI * 2;
                 hazardsRef.current.push({
@@ -336,35 +363,38 @@ const BrawlPvE: React.FC = () => {
                   kind: "orb",
                   x: BOSS_X,
                   y: boss.y - 58,
-                  radius: 12,
-                  ttlMs: 2600,
-                  vx: Math.cos(angle) * (boss.phase === 2 ? 3.9 : 3.1),
-                  vy: Math.sin(angle) * (boss.phase === 2 ? 3.5 : 2.8)
+                  radius: boss.phase === 2 ? 14 : 12,
+                  ttlMs: boss.phase === 2 ? 3100 : 2700,
+                  vx: Math.cos(angle) * (boss.phase === 2 ? 4.6 : 3.5),
+                  vy: Math.sin(angle) * (boss.phase === 2 ? 4 : 3.1)
                 });
               }
-              setStatus("Radial burst. Move between the lanes.");
+              setStatus("Starburst. Thread the gaps.");
             } else if (roll < 0.86) {
-              const laneOffset = boss.phase === 2 ? 170 : 150;
-              hazardsRef.current.push({ id: `lane-left-${timestamp}`, kind: "slam-warning", x: BOSS_X - laneOffset, y: FLOOR_Y + 2, radius: 60, ttlMs: 620 });
-              hazardsRef.current.push({ id: `lane-right-${timestamp}`, kind: "slam-warning", x: BOSS_X + laneOffset, y: FLOOR_Y + 2, radius: 60, ttlMs: 620 });
-              setStatus("Side lanes marked. Hold center or jump over the edge blasts.");
+              const laneOffset = boss.phase === 2 ? 180 : 155;
+              hazardsRef.current.push({ id: `lane-left-${timestamp}`, kind: "slam-warning", x: BOSS_X - laneOffset, y: FLOOR_Y + 2, radius: boss.phase === 2 ? 74 : 64, ttlMs: 560 });
+              hazardsRef.current.push({ id: `lane-right-${timestamp}`, kind: "slam-warning", x: BOSS_X + laneOffset, y: FLOOR_Y + 2, radius: boss.phase === 2 ? 74 : 64, ttlMs: 560 });
+              if (boss.phase === 2) {
+                hazardsRef.current.push({ id: `lane-mid-${timestamp}`, kind: "slam-warning", x: BOSS_X, y: FLOOR_Y + 2, radius: 58, ttlMs: 700 });
+              }
+              setStatus("Blast lanes marked. Read the safe pocket.");
             } else if (roll < 0.94) {
-              const flameWidth = boss.phase === 2 ? 280 : 220;
-              const flameHeight = boss.phase === 2 ? 78 : 62;
+              const flameWidth = boss.phase === 2 ? 340 : 250;
+              const flameHeight = boss.phase === 2 ? 96 : 72;
               const flameLeft = player.x < BOSS_X ? BOSS_X - 22 : BOSS_X - flameWidth + 22;
               hazardsRef.current.push({
                 id: `flame-warning-${timestamp}`,
                 kind: "flame-warning",
                 x: flameLeft,
-                y: FLOOR_Y - 120,
+                y: FLOOR_Y - 144,
                 radius: 0,
                 width: flameWidth,
                 height: flameHeight,
-                ttlMs: 560
+                ttlMs: boss.phase === 2 ? 480 : 560
               });
-              setStatus("Dragon breath charging. Cross the head or clear the lane.");
+              setStatus("Inferno breath charging. Hard commit to one side.");
             } else {
-              const emberCount = boss.phase === 2 ? 4 : 3;
+              const emberCount = boss.phase === 2 ? 6 : 4;
               for (let ember = 0; ember < emberCount; ember += 1) {
                 const emberX = 140 + Math.random() * (WIDTH - 280);
                 hazardsRef.current.push({
@@ -372,13 +402,13 @@ const BrawlPvE: React.FC = () => {
                   kind: "ember-warning",
                   x: emberX,
                   y: FLOOR_Y + 2,
-                  radius: boss.phase === 2 ? 42 : 34,
-                  ttlMs: 760 + ember * 90
+                  radius: boss.phase === 2 ? 52 : 38,
+                  ttlMs: 620 + ember * 70
                 });
               }
-              setStatus("Embers rain down. Keep moving.");
+              setStatus("Meteor rain. Never stop moving.");
             }
-            boss.attackCooldownMs = boss.phase === 2 ? 1120 : 1550;
+            boss.attackCooldownMs = boss.phase === 2 ? 860 : 1260;
           }
         }
 
@@ -429,19 +459,24 @@ const BrawlPvE: React.FC = () => {
               player.y > next.y &&
               player.y - PLAYER_HEIGHT < next.y + next.height
             ) {
-              damagePlayer(20, "Dragonfire scorched you.");
+              damagePlayer(24, "Dragonfire scorched you.");
               return [];
             }
           }
           if (hazard.kind === "slam-warning" && next.ttlMs <= 0) {
-            if (Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 60) damagePlayer(22, "The slam connected.");
+            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 22, "#fb923c", next.radius * 0.95, 220));
+            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 24, "#fff7ed", next.radius * 0.48, 120));
+            if (Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 60) damagePlayer(28, "The slam connected.");
             return [{ id: hazard.id.replace("warning", "hit"), kind: "slam-hit", x: next.x, y: next.y, radius: next.radius, ttlMs: 180 }];
           }
           if (hazard.kind === "ember-warning" && next.ttlMs <= 0) {
-            if (Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 92) damagePlayer(16, "A falling ember blasted you.");
+            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 28, "#f97316", next.radius * 0.85, 220));
+            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 34, "#fef08a", next.radius * 0.42, 140));
+            if (Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 92) damagePlayer(20, "A falling ember blasted you.");
             return [{ id: hazard.id.replace("warning", "hit"), kind: "ember-hit", x: next.x, y: next.y, radius: next.radius + 10, ttlMs: 220 }];
           }
           if (hazard.kind === "flame-warning" && next.ttlMs <= 0) {
+            effectsRef.current.push(createEffect(BOSS_X + ((next.x + (next.width ?? 0) / 2 < BOSS_X) ? -24 : 24), FLOOR_Y - 118, "#fb923c", 38, 180));
             return [{
               id: hazard.id.replace("warning", "wall"),
               kind: "flame-wall",
@@ -453,8 +488,8 @@ const BrawlPvE: React.FC = () => {
               ttlMs: boss.phase === 2 ? 520 : 420
             }];
           }
-          if (hazard.kind === "slam-hit" && Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 60) damagePlayer(18, "Shockwave hit.");
-          if (hazard.kind === "ember-hit" && Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 84) damagePlayer(14, "The blast zone caught you.");
+          if (hazard.kind === "slam-hit" && Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 60) damagePlayer(22, "Shockwave hit.");
+          if (hazard.kind === "ember-hit" && Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 84) damagePlayer(18, "The blast zone caught you.");
           return next.ttlMs > 0 ? [next] : [];
         });
 
@@ -466,32 +501,43 @@ const BrawlPvE: React.FC = () => {
 
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
       const bg = ctx.createLinearGradient(0, 0, 0, HEIGHT);
-      bg.addColorStop(0, "#2b1608");
-      bg.addColorStop(1, "#5b2a07");
+      bg.addColorStop(0, "#16080a");
+      bg.addColorStop(0.45, "#311115");
+      bg.addColorStop(1, "#6f2a10");
       ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      const skyGlow = ctx.createRadialGradient(BOSS_X, FLOOR_Y - 210, 20, BOSS_X, FLOOR_Y - 210, 260);
+      skyGlow.addColorStop(0, "rgba(251,146,60,0.28)");
+      skyGlow.addColorStop(1, "rgba(15,23,42,0)");
+      ctx.fillStyle = skyGlow;
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
       ctx.fillStyle = "#3b1a0a";
       ctx.fillRect(0, FLOOR_Y, WIDTH, HEIGHT - FLOOR_Y);
+      ctx.fillStyle = "rgba(255,255,255,0.04)";
+      for (let spike = 0; spike < WIDTH; spike += 60) {
+        drawPolygon(ctx, [[spike, FLOOR_Y], [spike + 16, FLOOR_Y - 22], [spike + 32, FLOOR_Y]], "rgba(255,255,255,0.04)");
+      }
 
       hazardsRef.current.forEach((hazard) => {
         ctx.save();
+        const pulse = 0.55 + Math.sin((performance.now() + hazard.x) / 80) * 0.18;
         if (hazard.kind === "slam-warning") {
-          ctx.fillStyle = "rgba(251,146,60,0.28)";
-          ctx.strokeStyle = "rgba(254,215,170,0.8)";
+          ctx.fillStyle = `rgba(251,146,60,${0.12 + pulse * 0.18})`;
+          ctx.strokeStyle = "rgba(254,215,170,0.9)";
         } else if (hazard.kind === "flame-warning") {
-          ctx.fillStyle = "rgba(251,146,60,0.18)";
+          ctx.fillStyle = `rgba(251,146,60,${0.14 + pulse * 0.16})`;
           ctx.strokeStyle = "rgba(253,186,116,0.92)";
         } else if (hazard.kind === "flame-wall") {
-          ctx.fillStyle = "rgba(249,115,22,0.4)";
+          ctx.fillStyle = `rgba(249,115,22,${0.28 + pulse * 0.16})`;
           ctx.strokeStyle = "rgba(255,237,213,0.9)";
         } else if (hazard.kind === "ember-warning") {
-          ctx.fillStyle = "rgba(253,224,71,0.18)";
+          ctx.fillStyle = `rgba(253,224,71,${0.12 + pulse * 0.14})`;
           ctx.strokeStyle = "rgba(254,240,138,0.85)";
         } else if (hazard.kind === "ember-hit") {
-          ctx.fillStyle = "rgba(239,68,68,0.3)";
+          ctx.fillStyle = `rgba(239,68,68,${0.22 + pulse * 0.12})`;
           ctx.strokeStyle = "rgba(254,202,202,0.85)";
         } else if (hazard.kind === "slam-hit") {
-          ctx.fillStyle = "rgba(239,68,68,0.35)";
+          ctx.fillStyle = `rgba(239,68,68,${0.25 + pulse * 0.16})`;
           ctx.strokeStyle = "rgba(254,202,202,0.85)";
         } else {
           ctx.fillStyle = "#fb923c";
@@ -499,13 +545,40 @@ const BrawlPvE: React.FC = () => {
         }
         ctx.lineWidth = 2;
         if ((hazard.kind === "flame-warning" || hazard.kind === "flame-wall") && typeof hazard.width === "number" && typeof hazard.height === "number") {
+          if (hazard.kind === "flame-wall") {
+            const flameGradient = ctx.createLinearGradient(hazard.x, hazard.y, hazard.x, hazard.y + hazard.height);
+            flameGradient.addColorStop(0, "rgba(255,237,213,0.18)");
+            flameGradient.addColorStop(0.4, "rgba(249,115,22,0.72)");
+            flameGradient.addColorStop(1, "rgba(127,29,29,0.34)");
+            ctx.fillStyle = flameGradient;
+          }
           ctx.fillRect(hazard.x, hazard.y, hazard.width, hazard.height);
           ctx.strokeRect(hazard.x, hazard.y, hazard.width, hazard.height);
+          if (hazard.kind === "flame-wall") {
+            for (let flame = 0; flame < 6; flame += 1) {
+              const flameX = hazard.x + (hazard.width / 5) * flame + ((performance.now() / 45) % 12);
+              drawPolygon(
+                ctx,
+                [
+                  [flameX, hazard.y + hazard.height],
+                  [flameX + 10, hazard.y + hazard.height - 24 - flame * 2],
+                  [flameX + 22, hazard.y + hazard.height]
+                ],
+                "rgba(255,237,213,0.22)"
+              );
+            }
+          }
         } else {
           ctx.beginPath();
           ctx.arc(hazard.x, hazard.kind === "orb" ? hazard.y : FLOOR_Y - 10, hazard.radius, 0, Math.PI * 2);
           ctx.fill();
           ctx.stroke();
+          if (hazard.kind === "slam-warning" || hazard.kind === "ember-warning") {
+            ctx.globalAlpha = 0.35;
+            ctx.beginPath();
+            ctx.arc(hazard.x, FLOOR_Y - 10, hazard.radius * 0.62, 0, Math.PI * 2);
+            ctx.stroke();
+          }
         }
         ctx.restore();
       });
@@ -531,6 +604,8 @@ const BrawlPvE: React.FC = () => {
 
       projectilesRef.current.forEach((projectile) => {
         ctx.save();
+        ctx.shadowBlur = projectile.kind === "ultimate" ? 18 : 10;
+        ctx.shadowColor = projectile.color;
         ctx.fillStyle = projectile.color;
         if (projectile.kind === "arrow" || projectile.kind === "dagger") {
           ctx.translate(projectile.x, projectile.y);
@@ -545,70 +620,43 @@ const BrawlPvE: React.FC = () => {
         ctx.restore();
       });
 
+      const dragonBreathing = hazardsRef.current.some((hazard) => hazard.kind === "flame-warning" || hazard.kind === "flame-wall");
       ctx.save();
-      ctx.translate(boss.x, boss.y - 86);
-      ctx.fillStyle = boss.hitFlashMs > 0 ? "#fff7ed" : boss.weaknessMs > 0 ? "#86efac" : "#4a1d10";
+      ctx.translate(boss.x, boss.y - 98);
+      const wingLift = 12 + Math.sin(performance.now() / 180) * 6;
+      const bodyFill = boss.hitFlashMs > 0 ? "#fff7ed" : boss.weaknessMs > 0 ? "#86efac" : "#5a1f18";
+      const scaleRidge = boss.phase === 2 ? "#f97316" : "#ef4444";
+      drawPolygon(ctx, [[-34, 70], [-90, 52], [-120, 12], [-98, -8], [-44, 8], [-14, 46]], "rgba(88,28,22,0.96)");
+      drawPolygon(ctx, [[22, 64], [86, 46], [122, 4], [98, -12], [38, 2], [8, 40]], "rgba(88,28,22,0.96)");
+      drawPolygon(ctx, [[-32, 64], [-12, 14], [22, -4], [72, 2], [88, 36], [54, 82], [-4, 94]], bodyFill, "rgba(255,255,255,0.08)");
+      drawPolygon(ctx, [[-82, 28], [-156, -18 - wingLift], [-90, 8], [-54, 30]], "rgba(127,29,29,0.92)");
+      drawPolygon(ctx, [[30, 18], [138, -28 - wingLift], [78, 18], [40, 30]], "rgba(127,29,29,0.92)");
+      drawPolygon(ctx, [[46, 14], [82, -12], [116, 0], [134, 18], [106, 34], [72, 30]], "rgba(55,65,81,0.95)");
+      drawPolygon(ctx, [[-12, -2], [8, -36], [34, -48], [52, -30], [58, -2], [30, 18], [-6, 16]], bodyFill, "rgba(255,255,255,0.08)");
+      drawPolygon(ctx, [[-6, 10], [12, -18], [26, -10], [14, 16]], scaleRidge);
+      drawPolygon(ctx, [[16, 6], [34, -24], [44, -14], [30, 20]], scaleRidge);
+      drawPolygon(ctx, [[4, -18], [14, -54], [26, -18]], "#fca5a5");
+      drawPolygon(ctx, [[26, -22], [40, -64], [50, -20]], "#fca5a5");
+      drawPolygon(ctx, [[-18, 92], [-86, 116], [-138, 136], [-70, 128], [-22, 108]], "rgba(127,29,29,0.85)");
+      ctx.fillStyle = dragonBreathing ? "#fb923c" : "#111827";
       ctx.beginPath();
-      ctx.moveTo(-84, 34);
-      ctx.lineTo(-26, -8);
-      ctx.lineTo(26, -16);
-      ctx.lineTo(74, 12);
-      ctx.lineTo(62, 58);
-      ctx.lineTo(14, 82);
-      ctx.lineTo(-42, 78);
-      ctx.closePath();
+      ctx.arc(34, -8, dragonBreathing ? 8 : 6, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "rgba(127,29,29,0.92)";
+      ctx.fillStyle = dragonBreathing ? "#fef08a" : "#f59e0b";
       ctx.beginPath();
-      ctx.moveTo(-22, 0);
-      ctx.lineTo(-92, -46);
-      ctx.lineTo(-44, 22);
-      ctx.closePath();
+      ctx.arc(34, -8, 3, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,0.16)";
       ctx.beginPath();
-      ctx.moveTo(24, -6);
-      ctx.lineTo(98, -54);
-      ctx.lineTo(56, 18);
-      ctx.closePath();
+      ctx.arc(-2, 34, 28, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#7c2d12";
+      ctx.fillStyle = boss.phase === 2 ? "#fb923c" : "#fca5a5";
       ctx.beginPath();
-      ctx.moveTo(52, 22);
-      ctx.lineTo(104, 10);
-      ctx.lineTo(124, 26);
-      ctx.lineTo(80, 42);
-      ctx.closePath();
+      ctx.arc(-2, 34, 18, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#fb923c";
-      ctx.beginPath();
-      ctx.moveTo(62, 24);
-      ctx.lineTo(118, 18);
-      ctx.lineTo(94, 34);
-      ctx.lineTo(118, 48);
-      ctx.lineTo(62, 42);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = "#fca5a5";
-      ctx.beginPath();
-      ctx.moveTo(-32, -10);
-      ctx.lineTo(-18, -32);
-      ctx.lineTo(-4, -8);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(2, -12);
-      ctx.lineTo(18, -38);
-      ctx.lineTo(28, -8);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = "#111827";
-      ctx.beginPath();
-      ctx.arc(18, 10, 7, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#fef08a";
-      ctx.beginPath();
-      ctx.arc(18, 10, 3, 0, Math.PI * 2);
-      ctx.fill();
+      if (dragonBreathing) {
+        drawPolygon(ctx, [[54, 0], [74, -10], [92, 0], [74, 10]], "rgba(255,237,213,0.55)");
+      }
       ctx.restore();
 
       drawBrawlCharacter({
@@ -673,7 +721,7 @@ const BrawlPvE: React.FC = () => {
   const resetFight = () => {
     if (!selectedCharacter) return;
     playerRef.current = makePlayerState(selectedCharacter);
-    bossRef.current = { x: BOSS_X, y: FLOOR_Y, vx: 0, hp: 380, maxHp: 380, attackCooldownMs: 1800, phase: 1, weaknessMs: 0, hitFlashMs: 0 };
+    bossRef.current = { x: BOSS_X, y: FLOOR_Y, vx: 0, hp: BOSS_MAX_HP, maxHp: BOSS_MAX_HP, attackCooldownMs: 1200, phase: 1, weaknessMs: 0, hitFlashMs: 0 };
     hazardsRef.current = [];
     projectilesRef.current = [];
     effectsRef.current = [];
