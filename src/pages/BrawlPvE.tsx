@@ -63,7 +63,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "1.6";
+const PVE_VERSION = "1.7";
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
     id: "boss-1",
@@ -108,6 +108,120 @@ function drawPolygon(
     ctx.strokeStyle = strokeStyle;
     ctx.stroke();
   }
+}
+
+function drawCaveBackdrop(ctx: CanvasRenderingContext2D) {
+  const bg = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+  bg.addColorStop(0, "#050608");
+  bg.addColorStop(0.48, "#111827");
+  bg.addColorStop(1, "#1f2937");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  const caveGlow = ctx.createRadialGradient(BOSS_X, FLOOR_Y - 170, 30, BOSS_X, FLOOR_Y - 170, 260);
+  caveGlow.addColorStop(0, "rgba(103,232,249,0.14)");
+  caveGlow.addColorStop(0.55, "rgba(59,130,246,0.08)");
+  caveGlow.addColorStop(1, "rgba(15,23,42,0)");
+  ctx.fillStyle = caveGlow;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  ctx.fillStyle = "#2b2118";
+  for (let x = 0; x < WIDTH; x += 72) {
+    drawPolygon(
+      ctx,
+      [[x, 0], [x + 18, 46 + (x % 3) * 8], [x + 34, 0]],
+      "rgba(55,65,81,0.9)"
+    );
+  }
+
+  for (let ridge = 0; ridge < 4; ridge += 1) {
+    const baseY = 120 + ridge * 46;
+    ctx.fillStyle = `rgba(17,24,39,${0.22 + ridge * 0.08})`;
+    drawPolygon(
+      ctx,
+      [
+        [0, baseY + 44],
+        [120, baseY - 8],
+        [280, baseY + 34],
+        [440, baseY - 14],
+        [620, baseY + 26],
+        [780, baseY - 10],
+        [WIDTH, baseY + 36],
+        [WIDTH, HEIGHT],
+        [0, HEIGHT]
+      ],
+      `rgba(17,24,39,${0.2 + ridge * 0.08})`
+    );
+  }
+
+  ctx.fillStyle = "#2f241c";
+  ctx.fillRect(0, FLOOR_Y, WIDTH, HEIGHT - FLOOR_Y);
+  ctx.fillStyle = "rgba(148,163,184,0.08)";
+  for (let rock = 0; rock < WIDTH; rock += 54) {
+    drawPolygon(
+      ctx,
+      [[rock, FLOOR_Y], [rock + 10, FLOOR_Y - 12], [rock + 26, FLOOR_Y - 4], [rock + 36, FLOOR_Y]],
+      "rgba(148,163,184,0.08)"
+    );
+  }
+
+  ctx.fillStyle = "rgba(103,232,249,0.18)";
+  drawPolygon(ctx, [[118, FLOOR_Y], [132, FLOOR_Y - 34], [148, FLOOR_Y]], "rgba(103,232,249,0.18)");
+  drawPolygon(ctx, [[774, FLOOR_Y], [790, FLOOR_Y - 42], [808, FLOOR_Y]], "rgba(125,211,252,0.16)");
+}
+
+function drawGiantBoss(ctx: CanvasRenderingContext2D, boss: BossState, now: number, swinging: boolean) {
+  const giantFill = boss.hitFlashMs > 0 ? "#f8fafc" : boss.weaknessMs > 0 ? "#86efac" : "#6b7280";
+  const giantTrim = boss.phase === 3 ? "#e5e7eb" : "#cbd5e1";
+  const armorDark = "#374151";
+  const leather = "#7c5a3b";
+  const clubSwing = swinging ? Math.sin(now / 70) * 0.34 + 0.24 : Math.sin(now / 260) * 0.08 - 0.1;
+  const bob = Math.sin(now / 220) * 3;
+
+  ctx.save();
+  ctx.translate(0, bob);
+  ctx.fillStyle = "rgba(15,23,42,0.28)";
+  ctx.beginPath();
+  ctx.ellipse(0, 126, 96, 20, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  drawPolygon(ctx, [[-66, 110], [-80, 12], [-40, -42], [12, -62], [64, -26], [86, 24], [72, 112]], giantFill, "rgba(255,255,255,0.1)");
+  drawPolygon(ctx, [[-48, -20], [-6, -92], [34, -46], [28, 8], [-24, 8]], armorDark);
+  drawPolygon(ctx, [[-12, -102], [14, -132], [42, -116], [34, -88], [0, -84]], "#9ca3af");
+  drawPolygon(ctx, [[-22, -112], [-8, -132], [8, -110], [-4, -92]], "#d1d5db");
+  drawPolygon(ctx, [[14, -114], [26, -132], [46, -114], [32, -92]], "#d1d5db");
+
+  drawPolygon(ctx, [[-94, 4], [-134, 36], [-120, 58], [-72, 22]], giantTrim);
+
+  ctx.save();
+  ctx.translate(74, 12);
+  ctx.rotate(clubSwing);
+  drawPolygon(ctx, [[-8, -8], [8, -8], [12, 76], [-10, 76]], leather);
+  drawPolygon(ctx, [[-24, 70], [24, 66], [30, 116], [-30, 120]], "#4b5563");
+  drawPolygon(ctx, [[-30, 90], [32, 84], [42, 126], [-40, 132]], "#6b7280");
+  for (let band = 0; band < 3; band += 1) {
+    ctx.fillStyle = "#d6d3d1";
+    ctx.fillRect(-12, 72 + band * 16, 24, 4);
+  }
+  ctx.restore();
+
+  drawPolygon(ctx, [[-58, 108], [-86, 190], [-48, 190], [-20, 114]], "#4b5563");
+  drawPolygon(ctx, [[24, 108], [2, 192], [40, 192], [64, 114]], "#4b5563");
+  ctx.fillStyle = "#111827";
+  ctx.fillRect(-28, -18, 14, 10);
+  ctx.fillRect(12, -18, 14, 10);
+  ctx.fillStyle = boss.phase === 3 ? "#67e8f9" : "#f8fafc";
+  ctx.fillRect(-24, -14, 5, 5);
+  ctx.fillRect(16, -14, 5, 5);
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  ctx.beginPath();
+  ctx.arc(0, 30, 28, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = boss.phase === 3 ? "#22d3ee" : "#cbd5e1";
+  ctx.beginPath();
+  ctx.arc(0, 30, 16, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function makePlayerState(characterId: CharacterId): PlayerState {
@@ -232,7 +346,7 @@ const BrawlPvE: React.FC = () => {
       boss.hitFlashMs = 120;
       if (weaknessMs > 0) boss.weaknessMs = Math.max(boss.weaknessMs, weaknessMs);
       player.ultimateCharge = clamp(player.ultimateCharge + chargeGain, 0, ULTIMATE_CHARGE_MAX);
-      effectsRef.current.push(createEffect(hitX, hitY, color, 20, 180));
+      effectsRef.current.push(createEffect(hitX, hitY, bossDef?.style === "giant" ? "#cbd5e1" : color, 20, 180));
       if (bossDef?.id === "boss-2" && boss.hp <= boss.maxHp * 0.5 && boss.phase === 1) {
         boss.phase = 2;
         boss.transitionMs = 5200;
@@ -240,7 +354,7 @@ const BrawlPvE: React.FC = () => {
         hazardsRef.current = [];
         projectilesRef.current = [];
         effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 110, "#e2e8f0", 110, 500));
-        effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#94a3b8", 170, 760));
+        effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#67e8f9", 170, 760));
         setStatus("The giant leaps away. Survive the arena collapse.");
       } else if (boss.hp <= boss.maxHp * 0.58 && boss.phase === 1) {
         boss.phase = 2;
@@ -295,7 +409,7 @@ const BrawlPvE: React.FC = () => {
           boss.phase = 3;
           boss.attackCooldownMs = 760;
           effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 90, "#f8fafc", 110, 420));
-          effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 82, "#94a3b8", 70, 300));
+          effectsRef.current.push(createEffect(BOSS_X, FLOOR_Y - 82, "#22d3ee", 70, 300));
           setStatus("The giant crashes back in. Phase 3 begins.");
         }
 
@@ -662,19 +776,19 @@ const BrawlPvE: React.FC = () => {
             }
           }
           if (hazard.kind === "slam-warning" && next.ttlMs <= 0) {
-            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 22, "#fb923c", next.radius * 0.95, 220));
-            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 24, "#fff7ed", next.radius * 0.48, 120));
+            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 22, bossDef?.style === "giant" ? "#cbd5e1" : "#fb923c", next.radius * 0.95, 220));
+            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 24, bossDef?.style === "giant" ? "#67e8f9" : "#fff7ed", next.radius * 0.48, 120));
             if (Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 60) damagePlayer(28, "The slam connected.");
             return [{ id: hazard.id.replace("warning", "hit"), kind: "slam-hit", x: next.x, y: next.y, radius: next.radius, ttlMs: 180 }];
           }
           if (hazard.kind === "ember-warning" && next.ttlMs <= 0) {
-            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 28, "#f97316", next.radius * 0.85, 220));
-            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 34, "#fef08a", next.radius * 0.42, 140));
+            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 28, bossDef?.style === "giant" ? "#94a3b8" : "#f97316", next.radius * 0.85, 220));
+            effectsRef.current.push(createEffect(next.x, FLOOR_Y - 34, bossDef?.style === "giant" ? "#e2e8f0" : "#fef08a", next.radius * 0.42, 140));
             if (Math.abs(player.x - next.x) < next.radius && Math.abs(player.y - next.y) < 92) damagePlayer(20, "A falling ember blasted you.");
             return [{ id: hazard.id.replace("warning", "hit"), kind: "ember-hit", x: next.x, y: next.y, radius: next.radius + 10, ttlMs: 220 }];
           }
           if (hazard.kind === "flame-warning" && next.ttlMs <= 0) {
-            effectsRef.current.push(createEffect(BOSS_X + ((next.x + (next.width ?? 0) / 2 < BOSS_X) ? -24 : 24), FLOOR_Y - 118, "#fb923c", 38, 180));
+            effectsRef.current.push(createEffect(BOSS_X + ((next.x + (next.width ?? 0) / 2 < BOSS_X) ? -24 : 24), FLOOR_Y - 118, bossDef?.style === "giant" ? "#67e8f9" : "#fb923c", 38, 180));
             return [{
               id: hazard.id.replace("warning", "wall"),
               kind: "flame-wall",
@@ -701,56 +815,67 @@ const BrawlPvE: React.FC = () => {
       const deathProgress = bossDeathStartedAtRef.current
         ? clamp((performance.now() - bossDeathStartedAtRef.current) / 1200, 0, 1)
         : 0;
-      const bg = ctx.createLinearGradient(0, 0, 0, HEIGHT);
-      bg.addColorStop(0, "#16080a");
-      bg.addColorStop(0.45, "#311115");
-      bg.addColorStop(1, "#6f2a10");
-      ctx.fillStyle = bg;
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      const skyGlow = ctx.createRadialGradient(BOSS_X, FLOOR_Y - 210, 20, BOSS_X, FLOOR_Y - 210, 260);
-      skyGlow.addColorStop(0, "rgba(251,146,60,0.28)");
-      skyGlow.addColorStop(1, "rgba(15,23,42,0)");
-      ctx.fillStyle = skyGlow;
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      ctx.fillStyle = "#3b1a0a";
-      ctx.fillRect(0, FLOOR_Y, WIDTH, HEIGHT - FLOOR_Y);
-      ctx.fillStyle = "rgba(255,255,255,0.04)";
-      for (let spike = 0; spike < WIDTH; spike += 60) {
-        drawPolygon(ctx, [[spike, FLOOR_Y], [spike + 16, FLOOR_Y - 22], [spike + 32, FLOOR_Y]], "rgba(255,255,255,0.04)");
+      if (bossDef?.style === "giant") {
+        drawCaveBackdrop(ctx);
+      } else {
+        const bg = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+        bg.addColorStop(0, "#16080a");
+        bg.addColorStop(0.45, "#311115");
+        bg.addColorStop(1, "#6f2a10");
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        const skyGlow = ctx.createRadialGradient(BOSS_X, FLOOR_Y - 210, 20, BOSS_X, FLOOR_Y - 210, 260);
+        skyGlow.addColorStop(0, "rgba(251,146,60,0.28)");
+        skyGlow.addColorStop(1, "rgba(15,23,42,0)");
+        ctx.fillStyle = skyGlow;
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        ctx.fillStyle = "#3b1a0a";
+        ctx.fillRect(0, FLOOR_Y, WIDTH, HEIGHT - FLOOR_Y);
+        ctx.fillStyle = "rgba(255,255,255,0.04)";
+        for (let spike = 0; spike < WIDTH; spike += 60) {
+          drawPolygon(ctx, [[spike, FLOOR_Y], [spike + 16, FLOOR_Y - 22], [spike + 32, FLOOR_Y]], "rgba(255,255,255,0.04)");
+        }
       }
 
       hazardsRef.current.forEach((hazard) => {
         ctx.save();
         const pulse = 0.55 + Math.sin((performance.now() + hazard.x) / 80) * 0.18;
+        const giantEncounter = bossDef?.style === "giant";
         if (hazard.kind === "slam-warning") {
-          ctx.fillStyle = `rgba(251,146,60,${0.12 + pulse * 0.18})`;
-          ctx.strokeStyle = "rgba(254,215,170,0.9)";
+          ctx.fillStyle = giantEncounter ? `rgba(148,163,184,${0.12 + pulse * 0.18})` : `rgba(251,146,60,${0.12 + pulse * 0.18})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(226,232,240,0.9)" : "rgba(254,215,170,0.9)";
         } else if (hazard.kind === "flame-warning") {
-          ctx.fillStyle = `rgba(251,146,60,${0.14 + pulse * 0.16})`;
-          ctx.strokeStyle = "rgba(253,186,116,0.92)";
+          ctx.fillStyle = giantEncounter ? `rgba(103,232,249,${0.12 + pulse * 0.16})` : `rgba(251,146,60,${0.14 + pulse * 0.16})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(186,230,253,0.92)" : "rgba(253,186,116,0.92)";
         } else if (hazard.kind === "flame-wall") {
-          ctx.fillStyle = `rgba(249,115,22,${0.28 + pulse * 0.16})`;
-          ctx.strokeStyle = "rgba(255,237,213,0.9)";
+          ctx.fillStyle = giantEncounter ? `rgba(71,85,105,${0.28 + pulse * 0.16})` : `rgba(249,115,22,${0.28 + pulse * 0.16})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(224,242,254,0.88)" : "rgba(255,237,213,0.9)";
         } else if (hazard.kind === "ember-warning") {
-          ctx.fillStyle = `rgba(253,224,71,${0.12 + pulse * 0.14})`;
-          ctx.strokeStyle = "rgba(254,240,138,0.85)";
+          ctx.fillStyle = giantEncounter ? `rgba(156,163,175,${0.12 + pulse * 0.14})` : `rgba(253,224,71,${0.12 + pulse * 0.14})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(229,231,235,0.85)" : "rgba(254,240,138,0.85)";
         } else if (hazard.kind === "ember-hit") {
-          ctx.fillStyle = `rgba(239,68,68,${0.22 + pulse * 0.12})`;
-          ctx.strokeStyle = "rgba(254,202,202,0.85)";
+          ctx.fillStyle = giantEncounter ? `rgba(34,211,238,${0.18 + pulse * 0.1})` : `rgba(239,68,68,${0.22 + pulse * 0.12})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(224,242,254,0.8)" : "rgba(254,202,202,0.85)";
         } else if (hazard.kind === "slam-hit") {
-          ctx.fillStyle = `rgba(239,68,68,${0.25 + pulse * 0.16})`;
-          ctx.strokeStyle = "rgba(254,202,202,0.85)";
+          ctx.fillStyle = giantEncounter ? `rgba(56,189,248,${0.2 + pulse * 0.14})` : `rgba(239,68,68,${0.25 + pulse * 0.16})`;
+          ctx.strokeStyle = giantEncounter ? "rgba(224,242,254,0.82)" : "rgba(254,202,202,0.85)";
         } else {
-          ctx.fillStyle = "#fb923c";
-          ctx.strokeStyle = "#fff7ed";
+          ctx.fillStyle = giantEncounter ? "#67e8f9" : "#fb923c";
+          ctx.strokeStyle = giantEncounter ? "#ecfeff" : "#fff7ed";
         }
         ctx.lineWidth = 2;
         if ((hazard.kind === "flame-warning" || hazard.kind === "flame-wall") && typeof hazard.width === "number" && typeof hazard.height === "number") {
           if (hazard.kind === "flame-wall") {
             const flameGradient = ctx.createLinearGradient(hazard.x, hazard.y, hazard.x, hazard.y + hazard.height);
-            flameGradient.addColorStop(0, "rgba(255,237,213,0.18)");
-            flameGradient.addColorStop(0.4, "rgba(249,115,22,0.72)");
-            flameGradient.addColorStop(1, "rgba(127,29,29,0.34)");
+            if (giantEncounter) {
+              flameGradient.addColorStop(0, "rgba(224,242,254,0.12)");
+              flameGradient.addColorStop(0.4, "rgba(71,85,105,0.72)");
+              flameGradient.addColorStop(1, "rgba(17,24,39,0.4)");
+            } else {
+              flameGradient.addColorStop(0, "rgba(255,237,213,0.18)");
+              flameGradient.addColorStop(0.4, "rgba(249,115,22,0.72)");
+              flameGradient.addColorStop(1, "rgba(127,29,29,0.34)");
+            }
             ctx.fillStyle = flameGradient;
           }
           ctx.fillRect(hazard.x, hazard.y, hazard.width, hazard.height);
@@ -758,15 +883,11 @@ const BrawlPvE: React.FC = () => {
           if (hazard.kind === "flame-wall") {
             for (let flame = 0; flame < 6; flame += 1) {
               const flameX = hazard.x + (hazard.width / 5) * flame + ((performance.now() / 45) % 12);
-              drawPolygon(
-                ctx,
-                [
-                  [flameX, hazard.y + hazard.height],
-                  [flameX + 10, hazard.y + hazard.height - 24 - flame * 2],
-                  [flameX + 22, hazard.y + hazard.height]
-                ],
-                "rgba(255,237,213,0.22)"
-              );
+              drawPolygon(ctx, [
+                [flameX, hazard.y + hazard.height],
+                [flameX + 10, hazard.y + hazard.height - 24 - flame * 2],
+                [flameX + 22, hazard.y + hazard.height]
+              ], giantEncounter ? "rgba(224,242,254,0.18)" : "rgba(255,237,213,0.22)");
             }
           }
         } else {
@@ -786,6 +907,7 @@ const BrawlPvE: React.FC = () => {
 
       effectsRef.current.forEach((effect) => {
         ctx.save();
+        const giantEncounter = bossDef?.style === "giant";
         ctx.globalAlpha = Math.max(0.16, effect.ttlMs / 260);
         ctx.strokeStyle = effect.color;
         ctx.fillStyle = effect.color;
@@ -796,9 +918,24 @@ const BrawlPvE: React.FC = () => {
           ctx.lineTo(effect.x2, effect.y2);
           ctx.stroke();
         } else {
-          ctx.beginPath();
-          ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2);
-          ctx.fill();
+          if (giantEncounter && effect.radius >= 18) {
+            drawPolygon(
+              ctx,
+              [
+                [effect.x - effect.radius * 0.9, effect.y + effect.radius * 0.2],
+                [effect.x - effect.radius * 0.3, effect.y - effect.radius],
+                [effect.x + effect.radius * 0.35, effect.y - effect.radius * 0.5],
+                [effect.x + effect.radius, effect.y + effect.radius * 0.18],
+                [effect.x + effect.radius * 0.08, effect.y + effect.radius],
+                [effect.x - effect.radius * 0.72, effect.y + effect.radius * 0.72]
+              ],
+              effect.color
+            );
+          } else {
+            ctx.beginPath();
+            ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
         ctx.restore();
       });
@@ -822,6 +959,9 @@ const BrawlPvE: React.FC = () => {
       });
 
       const dragonBreathing = hazardsRef.current.some((hazard) => hazard.kind === "flame-warning" || hazard.kind === "flame-wall");
+      const giantSwinging = hazardsRef.current.some((hazard) =>
+        hazard.kind === "slam-warning" || hazard.kind === "slam-hit" || hazard.id.includes("giant-center") || hazard.id.includes("giant-player")
+      );
       const bossVisible = !(bossDef?.style === "giant" && boss.phase === 2 && boss.transitionMs > 0);
       if (bossVisible) {
         ctx.save();
@@ -829,25 +969,7 @@ const BrawlPvE: React.FC = () => {
         ctx.globalAlpha = 1 - deathProgress * 0.92;
         ctx.rotate(deathProgress * 0.18);
         if (bossDef?.style === "giant") {
-          const giantFill = boss.hitFlashMs > 0 ? "#fff7ed" : boss.weaknessMs > 0 ? "#86efac" : "#64748b";
-          const giantTrim = boss.phase === 3 ? "#e2e8f0" : "#cbd5e1";
-          drawPolygon(ctx, [[-72, 108], [-86, 18], [-46, -46], [8, -66], [58, -36], [84, 26], [72, 112]], giantFill, "rgba(255,255,255,0.08)");
-          drawPolygon(ctx, [[-40, -30], [-8, -82], [24, -36], [14, 18], [-20, 16]], "#94a3b8");
-          drawPolygon(ctx, [[12, -40], [40, -92], [74, -36], [54, 20], [20, 18]], "#94a3b8");
-          drawPolygon(ctx, [[-104, 8], [-154, 58], [-126, 72], [-70, 32]], giantTrim);
-          drawPolygon(ctx, [[90, 16], [152, 46], [134, 70], [78, 34]], giantTrim);
-          drawPolygon(ctx, [[-56, 106], [-86, 188], [-54, 188], [-18, 114]], "#475569");
-          drawPolygon(ctx, [[26, 108], [4, 188], [38, 188], [62, 114]], "#475569");
-          ctx.fillStyle = "#111827";
-          ctx.fillRect(-40, -6, 18, 14);
-          ctx.fillRect(10, -6, 18, 14);
-          ctx.fillStyle = "#f8fafc";
-          ctx.fillRect(-34, -2, 6, 6);
-          ctx.fillRect(16, -2, 6, 6);
-          ctx.fillStyle = "#e2e8f0";
-          ctx.fillRect(-10, 28, 20, 30);
-          ctx.fillStyle = "#94a3b8";
-          ctx.fillRect(-4, 34, 8, 18);
+          drawGiantBoss(ctx, boss, performance.now(), giantSwinging);
         } else {
           const wingLift = 12 + Math.sin(performance.now() / 180) * 6;
           const bodyFill = boss.hitFlashMs > 0 ? "#fff7ed" : boss.weaknessMs > 0 ? "#86efac" : "#5a1f18";
