@@ -63,7 +63,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "2.1";
+const PVE_VERSION = "0.95";
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
     id: "boss-1",
@@ -640,9 +640,9 @@ const BrawlPvE: React.FC = () => {
                 setStatus("Shard burst. The ring blooms first, then breaks outward.");
               } else if (roll < 0.76) {
                 const gapX = 180 + Math.random() * (WIDTH - 360);
-                hazardsRef.current.push({ id: `giant-lane-left-${timestamp}`, kind: "flame-warning", x: 0, y: FLOOR_Y - 150, radius: 0, width: gapX - 70, height: 150, ttlMs: 500 });
-                hazardsRef.current.push({ id: `giant-lane-right-${timestamp}`, kind: "flame-warning", x: gapX + 70, y: FLOOR_Y - 150, radius: 0, width: WIDTH - (gapX + 70), height: 150, ttlMs: 500 });
-                setStatus("Rockfall lanes. Commit to the gap.");
+                hazardsRef.current.push({ id: `giant-lane-left-${timestamp}`, kind: "flame-warning", x: 0, y: FLOOR_Y - 150, radius: 0, width: gapX - 70, height: 150, ttlMs: 2400 });
+                hazardsRef.current.push({ id: `giant-lane-right-${timestamp}`, kind: "flame-warning", x: gapX + 70, y: FLOOR_Y - 150, radius: 0, width: WIDTH - (gapX + 70), height: 150, ttlMs: 2400 });
+                setStatus("Rockfall lanes. Read the gap early and rotate across the room.");
               } else if (roll < 0.9) {
                 const pillarCount = boss.phase === 3 ? 3 : 2;
                 for (let pillar = 0; pillar < pillarCount; pillar += 1) {
@@ -651,13 +651,13 @@ const BrawlPvE: React.FC = () => {
                     id: `giant-pillar-${timestamp}-${pillar}`,
                     kind: "pillar",
                     x: pillarX,
-                    y: -320 - pillar * 40,
+                    y: -36,
                     radius: boss.phase === 3 ? 34 : 30,
                     ttlMs: boss.phase === 3 ? 3900 : 3600,
                     width: boss.phase === 3 ? 52 : 46,
                     height: 0,
                     vx: boss.phase === 3 ? 3900 : 3600,
-                    vy: -320 - pillar * 40
+                    vy: -260 - pillar * 48
                   });
                 }
                 setStatus("Ceiling pillars break loose. Move before they crush the floor.");
@@ -796,9 +796,10 @@ const BrawlPvE: React.FC = () => {
           if (hazard.kind === "pillar") {
             const pillarWidth = next.width ?? 48;
             const totalMs = hazard.vx ?? 3600;
-            const startY = hazard.vy ?? -320;
-            const topY = -22;
-            const fullHeight = FLOOR_Y - topY + 8;
+            const startBottom = hazard.vy ?? -260;
+            const topY = hazard.y;
+            const targetBottom = FLOOR_Y + 8;
+            const fullHeight = targetBottom - topY;
             const descendMs = 1600;
             const holdMs = 700;
             const retractMs = Math.max(600, totalMs - descendMs - holdMs);
@@ -806,8 +807,9 @@ const BrawlPvE: React.FC = () => {
 
             if (elapsedMs <= descendMs) {
               const descendProgress = clamp(elapsedMs / descendMs, 0, 1);
-              next.y = startY + (topY - startY) * descendProgress;
-              next.height = Math.max(0, FLOOR_Y - next.y + 8);
+              const bottom = startBottom + (targetBottom - startBottom) * descendProgress;
+              next.y = topY;
+              next.height = Math.max(0, bottom - topY);
             } else if (elapsedMs <= descendMs + holdMs) {
               next.y = topY;
               next.height = fullHeight;
@@ -817,8 +819,9 @@ const BrawlPvE: React.FC = () => {
             } else {
               const retractElapsed = elapsedMs - descendMs - holdMs;
               const retractProgress = clamp(retractElapsed / retractMs, 0, 1);
-              next.y = topY + (startY - topY) * retractProgress;
-              next.height = Math.max(0, FLOOR_Y - next.y + 8);
+              const bottom = targetBottom + (startBottom - targetBottom) * retractProgress;
+              next.y = topY;
+              next.height = Math.max(0, bottom - topY);
             }
             if (next.ttlMs <= 0 || (next.height ?? 0) <= 0) {
               return [];
