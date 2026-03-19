@@ -62,7 +62,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "1.4";
+const PVE_VERSION = "1.5";
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
     id: "boss-1",
@@ -577,8 +577,8 @@ const BrawlPvE: React.FC = () => {
                 });
               }
               setStatus("Meteor rain. Never stop moving.");
-              boss.attackCooldownMs = boss.phase === 2 ? 860 : 1260;
             }
+            boss.attackCooldownMs = boss.phase === 2 ? 860 : 1260;
           }
         }
 
