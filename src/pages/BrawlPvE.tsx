@@ -113,6 +113,9 @@ type Hazard = {
   height?: number;
 };
 
+type DemonSpriteKey = "attack" | "death" | "flying" | "hurt" | "idle";
+type DemonSpriteSheets = Record<DemonSpriteKey, HTMLImageElement>;
+
 const WIDTH = 920;
 const HEIGHT = 520;
 const FLOOR_Y = 430;
@@ -127,8 +130,10 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.104";
+const PVE_VERSION = "0.105";
 const MAX_PVE_PLAYERS = 4;
+const DEMON_FRAME_WIDTH = 81;
+const DEMON_FRAME_HEIGHT = 71;
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
     id: "boss-1",
@@ -152,6 +157,68 @@ const BOSSES: Record<string, BossDefinition> = {
 
 function createEffect(x: number, y: number, color: string, radius: number, ttlMs: number): Effect {
   return { id: `${Date.now()}-${Math.random()}`, x, y, color, radius, ttlMs };
+}
+
+function loadDemonSpriteSheets() {
+  const base = `${import.meta.env.BASE_URL}assets/bosses/flying-demon`;
+  return {
+    attack: Object.assign(new Image(), { src: `${base}/ATTACK.png`, decoding: "async" as const }),
+    death: Object.assign(new Image(), { src: `${base}/DEATH.png`, decoding: "async" as const }),
+    flying: Object.assign(new Image(), { src: `${base}/FLYING.png`, decoding: "async" as const }),
+    hurt: Object.assign(new Image(), { src: `${base}/HURT.png`, decoding: "async" as const }),
+    idle: Object.assign(new Image(), { src: `${base}/IDLE.png`, decoding: "async" as const })
+  } satisfies DemonSpriteSheets;
+}
+
+function drawFlyingDemonBoss(
+  ctx: CanvasRenderingContext2D,
+  sheets: DemonSpriteSheets,
+  boss: BossState,
+  now: number,
+  dragonBreathing: boolean,
+  deathProgress: number
+) {
+  const useDeath = deathProgress > 0;
+  const spriteKey: DemonSpriteKey = useDeath
+    ? "death"
+    : boss.hitFlashMs > 0
+      ? "hurt"
+      : dragonBreathing
+        ? "attack"
+        : boss.phase === 2
+          ? "flying"
+          : "idle";
+  const sheet = sheets[spriteKey];
+  if (!sheet.complete || sheet.naturalWidth < DEMON_FRAME_WIDTH) return;
+
+  const frameCount = spriteKey === "attack" ? 8 : spriteKey === "death" ? 7 : 4;
+  const frameDuration = spriteKey === "attack" ? 80 : spriteKey === "hurt" ? 90 : spriteKey === "death" ? 150 : 130;
+  const frameIndex = useDeath
+    ? Math.min(frameCount - 1, Math.floor(deathProgress * frameCount))
+    : Math.floor(now / frameDuration) % frameCount;
+  const drawWidth = DEMON_FRAME_WIDTH * 3.2;
+  const drawHeight = DEMON_FRAME_HEIGHT * 3.2;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = "rgba(0,0,0,0.32)";
+  ctx.beginPath();
+  ctx.ellipse(0, 74, 112, 22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = boss.phase === 2 ? 22 : 14;
+  ctx.shadowColor = boss.hitFlashMs > 0 ? "#fff7ed" : boss.phase === 2 ? "#fb923c" : "#ef4444";
+  ctx.drawImage(
+    sheet,
+    frameIndex * DEMON_FRAME_WIDTH,
+    0,
+    DEMON_FRAME_WIDTH,
+    DEMON_FRAME_HEIGHT,
+    -drawWidth / 2,
+    -drawHeight / 2,
+    drawWidth,
+    drawHeight
+  );
+  ctx.restore();
 }
 
 function drawPolygon(
@@ -379,6 +446,7 @@ const BrawlPvE: React.FC = () => {
   const audioUnlockedRef = useRef(false);
   const particleImagesRef = useRef<Record<KenneyParticleKey, HTMLImageElement> | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
+  const demonSpritesRef = useRef<DemonSpriteSheets | null>(null);
   const bossDef = BOSSES[bossId];
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [progressLoading, setProgressLoading] = useState(true);
@@ -395,6 +463,7 @@ const BrawlPvE: React.FC = () => {
 
   useEffect(() => {
     particleImagesRef.current = loadKenneyParticleImages();
+    demonSpritesRef.current = loadDemonSpriteSheets();
   }, []);
 
   useEffect(() => {
@@ -1532,39 +1601,9 @@ const BrawlPvE: React.FC = () => {
         if (bossDef?.style === "giant") {
           drawGiantBoss(ctx, boss, performance.now(), giantSwinging);
         } else {
-          const wingLift = 12 + Math.sin(performance.now() / 180) * 6;
-          const bodyFill = boss.hitFlashMs > 0 ? "#fff7ed" : boss.weaknessMs > 0 ? "#86efac" : "#5a1f18";
-          const scaleRidge = boss.phase === 2 ? "#f97316" : "#ef4444";
-          drawPolygon(ctx, [[-34, 70], [-90, 52], [-120, 12], [-98, -8], [-44, 8], [-14, 46]], "rgba(88,28,22,0.96)");
-          drawPolygon(ctx, [[22, 64], [86, 46], [122, 4], [98, -12], [38, 2], [8, 40]], "rgba(88,28,22,0.96)");
-          drawPolygon(ctx, [[-32, 64], [-12, 14], [22, -4], [72, 2], [88, 36], [54, 82], [-4, 94]], bodyFill, "rgba(255,255,255,0.08)");
-          drawPolygon(ctx, [[-82, 28], [-156, -18 - wingLift], [-90, 8], [-54, 30]], "rgba(127,29,29,0.92)");
-          drawPolygon(ctx, [[30, 18], [138, -28 - wingLift], [78, 18], [40, 30]], "rgba(127,29,29,0.92)");
-          drawPolygon(ctx, [[46, 14], [82, -12], [116, 0], [134, 18], [106, 34], [72, 30]], "rgba(55,65,81,0.95)");
-          drawPolygon(ctx, [[-12, -2], [8, -36], [34, -48], [52, -30], [58, -2], [30, 18], [-6, 16]], bodyFill, "rgba(255,255,255,0.08)");
-          drawPolygon(ctx, [[-6, 10], [12, -18], [26, -10], [14, 16]], scaleRidge);
-          drawPolygon(ctx, [[16, 6], [34, -24], [44, -14], [30, 20]], scaleRidge);
-          drawPolygon(ctx, [[4, -18], [14, -54], [26, -18]], "#fca5a5");
-          drawPolygon(ctx, [[26, -22], [40, -64], [50, -20]], "#fca5a5");
-          drawPolygon(ctx, [[-18, 92], [-86, 116], [-138, 136], [-70, 128], [-22, 108]], "rgba(127,29,29,0.85)");
-          ctx.fillStyle = dragonBreathing ? "#fb923c" : "#111827";
-          ctx.beginPath();
-          ctx.arc(34, -8, dragonBreathing ? 8 : 6, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = dragonBreathing ? "#fef08a" : "#f59e0b";
-          ctx.beginPath();
-          ctx.arc(34, -8, 3, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = "rgba(255,255,255,0.16)";
-          ctx.beginPath();
-          ctx.arc(-2, 34, 28, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = boss.phase === 2 ? "#fb923c" : "#fca5a5";
-          ctx.beginPath();
-          ctx.arc(-2, 34, 18, 0, Math.PI * 2);
-          ctx.fill();
-          if (dragonBreathing) {
-            drawPolygon(ctx, [[54, 0], [74, -10], [92, 0], [74, 10]], "rgba(255,237,213,0.55)");
+          const demonSprites = demonSpritesRef.current;
+          if (demonSprites) {
+            drawFlyingDemonBoss(ctx, demonSprites, boss, performance.now(), dragonBreathing, deathProgress);
           }
         }
         ctx.restore();
