@@ -113,7 +113,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.99";
+const PVE_VERSION = "0.101";
 const MAX_PVE_PLAYERS = 4;
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
@@ -353,8 +353,10 @@ const BrawlPvE: React.FC = () => {
   const projectilesRef = useRef<Projectile[]>([]);
   const remoteProjectilesRef = useRef<RemoteProjectilePayload[]>([]);
   const effectsRef = useRef<Effect[]>([]);
+  const deathStartedAtRef = useRef<number | null>(null);
   const bossDeathStartedAtRef = useRef<number | null>(null);
   const winOverlayStartedAtRef = useRef<number | null>(null);
+  const clearRewardGrantedRef = useRef(false);
   const bossDef = BOSSES[bossId];
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [progressLoading, setProgressLoading] = useState(true);
@@ -431,8 +433,10 @@ const BrawlPvE: React.FC = () => {
         hazardsRef.current = [];
         projectilesRef.current = [];
         effectsRef.current = [];
+        deathStartedAtRef.current = null;
         bossDeathStartedAtRef.current = null;
         winOverlayStartedAtRef.current = null;
+        clearRewardGrantedRef.current = false;
         setScaledPartySize(nextPayload.partySize);
         setWon(false);
         setLost(false);
@@ -478,11 +482,17 @@ const BrawlPvE: React.FC = () => {
       channel.on("broadcast", { event: "pve-clear" }, () => {
         const boss = bossRef.current;
         boss.hp = 0;
-        if (!won) {
-          bossDeathStartedAtRef.current = performance.now();
-          winOverlayStartedAtRef.current = performance.now() + 450;
+        if (!bossDeathStartedAtRef.current) {
+          const now = performance.now();
+          bossDeathStartedAtRef.current = now;
+          winOverlayStartedAtRef.current = now + 450;
           setWon(true);
           setStatus("Boss defeated. The next gate is open.");
+          if (!clearRewardGrantedRef.current && bossDef) {
+            clearRewardGrantedRef.current = true;
+            void completeBrawlPveBoss(session?.user.id, bossDef.id, bossDef.nextBossId);
+            void recordArcadeResult({ goldEarned: bossDef.goldReward });
+          }
         }
       });
 
@@ -583,16 +593,17 @@ const BrawlPvE: React.FC = () => {
       }
       setWon(true);
       setStatus("Boss defeated. The next gate is open.");
+      if (!clearRewardGrantedRef.current && bossDef) {
+        clearRewardGrantedRef.current = true;
+        void completeBrawlPveBoss(session?.user.id, bossDef.id, bossDef.nextBossId);
+        void recordArcadeResult({ goldEarned: bossDef.goldReward });
+      }
       if (channelRef.current) {
         void channelRef.current.send({
           type: "broadcast",
           event: "pve-clear",
           payload: { bossId }
         });
-      }
-      if (bossDef) {
-        void completeBrawlPveBoss(session?.user.id, bossDef.id, bossDef.nextBossId);
-        void recordArcadeResult({ goldEarned: bossDef.goldReward });
       }
     };
 
@@ -651,8 +662,12 @@ const BrawlPvE: React.FC = () => {
       player.invulnMs = 700;
       setStatus(message);
       if (player.hp <= 0) {
+        const now = performance.now();
+        deathStartedAtRef.current = now;
+        effectsRef.current.push(createEffect(player.x, player.y - 8, "#e2e8f0", 28, 220));
+        effectsRef.current.push(createEffect(player.x, player.y - 8, "#94a3b8", 44, 360));
         setLost(true);
-        setStatus("The Juggernaut crushed the run.");
+        setStatus("You are down. Spectating the hunt.");
       }
     };
 
@@ -669,7 +684,7 @@ const BrawlPvE: React.FC = () => {
       const aim = rawAim.length < 10 ? { x: player.facing, y: 0, length: 1 } : rawAim;
       const toBoss = normalizeVector(boss.x - player.x, (boss.y - 48) - (player.y - 18));
 
-      if (!won && !lost) {
+      if (!won) {
         player.attackCooldownMs = Math.max(0, player.attackCooldownMs - dt);
         player.dashCooldownMs = Math.max(0, player.dashCooldownMs - dt);
         player.specialCooldownMs = Math.max(0, player.specialCooldownMs - dt);
@@ -690,78 +705,79 @@ const BrawlPvE: React.FC = () => {
           setStatus("The giant crashes back in. Phase 3 begins.");
         }
 
-        let moveX = 0;
-        if (keys.a || keys.arrowleft) moveX -= 1;
-        if (keys.d || keys.arrowright) moveX += 1;
-        player.vx = moveX * config.moveSpeed;
-        if (moveX !== 0) player.facing = moveX > 0 ? 1 : -1;
+        if (!lost) {
+          let moveX = 0;
+          if (keys.a || keys.arrowleft) moveX -= 1;
+          if (keys.d || keys.arrowright) moveX += 1;
+          player.vx = moveX * config.moveSpeed;
+          if (moveX !== 0) player.facing = moveX > 0 ? 1 : -1;
 
-        if (!keys.shift) {
-          player.dashReleased = true;
-        } else if (player.dashReleased && player.dashCooldownMs === 0) {
-          const dashDirection = Math.abs(aim.x) > 0.18 ? (aim.x > 0 ? 1 : -1) : player.facing;
-          const dashProfile = getDashProfile(player.selectedCharacter);
-          player.vx = dashDirection * dashProfile.power;
-          player.vy = player.onGround ? Math.min(player.vy, -0.5) : player.vy * 0.72;
-          player.facing = dashDirection;
-          player.dashCooldownMs = dashProfile.cooldownMs;
-          player.dashReleased = false;
-          effectsRef.current.push(createEffect(player.x, player.y + 8, config.accent, 14, 140));
-        }
-
-        if (!keys.e) player.specialReleased = true;
-        if (player.onGround) player.coyoteMs = COYOTE_MS;
-
-        if ((keys.w || keys.arrowup || keys[" "]) && player.jumpLockMs === 0) {
-          if (player.onGround || player.coyoteMs > 0) {
-            player.vy = config.jumpVelocity;
-            player.onGround = false;
-            player.jumpLockMs = JUMP_LOCK_MS;
-            player.coyoteMs = 0;
-          } else if (player.airJumpsRemaining > 0) {
-            player.vy = config.jumpVelocity * 0.96;
-            player.airJumpsRemaining -= 1;
-            player.jumpLockMs = JUMP_LOCK_MS;
+          if (!keys.shift) {
+            player.dashReleased = true;
+          } else if (player.dashReleased && player.dashCooldownMs === 0) {
+            const dashDirection = Math.abs(aim.x) > 0.18 ? (aim.x > 0 ? 1 : -1) : player.facing;
+            const dashProfile = getDashProfile(player.selectedCharacter);
+            player.vx = dashDirection * dashProfile.power;
+            player.vy = player.onGround ? Math.min(player.vy, -0.5) : player.vy * 0.72;
+            player.facing = dashDirection;
+            player.dashCooldownMs = dashProfile.cooldownMs;
+            player.dashReleased = false;
+            effectsRef.current.push(createEffect(player.x, player.y + 8, config.accent, 14, 140));
           }
-        }
 
-        player.vy = Math.min(MAX_FALL_SPEED, player.vy + GRAVITY * scale);
-        player.x = clamp(player.x + player.vx * scale, 34, WIDTH - 34);
-        player.y += player.vy * scale;
-        if (player.y >= FLOOR_Y) {
-          player.y = FLOOR_Y;
-          player.vy = 0;
-          player.onGround = true;
-          player.airJumpsRemaining = config.airJumps;
-        } else {
-          player.onGround = false;
-        }
+          if (!keys.e) player.specialReleased = true;
+          if (player.onGround) player.coyoteMs = COYOTE_MS;
 
-        if (mouseDownRef.current && player.attackCooldownMs === 0) {
-          if (player.selectedCharacter === "fighter" || player.selectedCharacter === "assassin" || player.selectedCharacter === "monk") {
-            if (Math.hypot(boss.x - player.x, (boss.y - 48) - (player.y - 18)) <= config.meleeRange + BOSS_WIDTH * 0.35 && aim.x * toBoss.x + aim.y * toBoss.y > -0.05) {
-              damageBoss(config.meleeDamage, config.meleeKnockback, config.meleeLift, (player.x + boss.x) / 2, (player.y + boss.y) / 2, config.color, 0, player.selectedCharacter === "assassin" ? 7 : 8);
+          if ((keys.w || keys.arrowup || keys[" "]) && player.jumpLockMs === 0) {
+            if (player.onGround || player.coyoteMs > 0) {
+              player.vy = config.jumpVelocity;
+              player.onGround = false;
+              player.jumpLockMs = JUMP_LOCK_MS;
+              player.coyoteMs = 0;
+            } else if (player.airJumpsRemaining > 0) {
+              player.vy = config.jumpVelocity * 0.96;
+              player.airJumpsRemaining -= 1;
+              player.jumpLockMs = JUMP_LOCK_MS;
             }
-            player.vx += config.meleeLunge * aim.x;
-            player.vy += config.meleeLunge * 0.35 * aim.y;
-            player.attackCooldownMs = player.selectedCharacter === "assassin" ? 190 : player.selectedCharacter === "monk" ? 220 : 280;
-          } else {
-            const projectile: Projectile = {
-              id: `attack-${Date.now()}-${Math.random()}`, x: player.x + aim.x * 24, y: player.y - 10 + aim.y * 10, vx: (player.selectedCharacter === "archer" ? 9.4 : 7.1) * aim.x,
-              vy: (player.selectedCharacter === "archer" ? 9.4 : 7.1) * aim.y, radius: player.selectedCharacter === "archer" ? 5 : 9, damage: player.selectedCharacter === "archer" ? 5 : 6,
-              knockback: player.selectedCharacter === "archer" ? 8.2 : 6.9, lift: player.selectedCharacter === "archer" ? 5.4 : 5.8, color: player.selectedCharacter === "archer" ? "#fef08a" : "#fb923c",
-              kind: player.selectedCharacter === "archer" ? "arrow" : "fireball", gravity: player.selectedCharacter === "archer" ? 0.01 : 0.015, ttlMs: player.selectedCharacter === "archer" ? 1280 : 1350, isUltimate: false
-            };
-            projectilesRef.current.push(projectile);
-            broadcastProjectile(projectile);
-            player.attackCooldownMs = player.selectedCharacter === "archer" ? 360 : 320;
           }
-          player.attackFlashMs = 130;
-        }
 
-        if (keys.e && player.specialReleased && (player.specialCooldownMs === 0 || (player.selectedCharacter === "assassin" && Boolean(player.assassinKnifeId)))) {
-          player.specialReleased = false;
-          if (player.selectedCharacter === "fighter") {
+          player.vy = Math.min(MAX_FALL_SPEED, player.vy + GRAVITY * scale);
+          player.x = clamp(player.x + player.vx * scale, 34, WIDTH - 34);
+          player.y += player.vy * scale;
+          if (player.y >= FLOOR_Y) {
+            player.y = FLOOR_Y;
+            player.vy = 0;
+            player.onGround = true;
+            player.airJumpsRemaining = config.airJumps;
+          } else {
+            player.onGround = false;
+          }
+
+          if (mouseDownRef.current && player.attackCooldownMs === 0) {
+            if (player.selectedCharacter === "fighter" || player.selectedCharacter === "assassin" || player.selectedCharacter === "monk") {
+              if (Math.hypot(boss.x - player.x, (boss.y - 48) - (player.y - 18)) <= config.meleeRange + BOSS_WIDTH * 0.35 && aim.x * toBoss.x + aim.y * toBoss.y > -0.05) {
+                damageBoss(config.meleeDamage, config.meleeKnockback, config.meleeLift, (player.x + boss.x) / 2, (player.y + boss.y) / 2, config.color, 0, player.selectedCharacter === "assassin" ? 7 : 8);
+              }
+              player.vx += config.meleeLunge * aim.x;
+              player.vy += config.meleeLunge * 0.35 * aim.y;
+              player.attackCooldownMs = player.selectedCharacter === "assassin" ? 190 : player.selectedCharacter === "monk" ? 220 : 280;
+            } else {
+              const projectile: Projectile = {
+                id: `attack-${Date.now()}-${Math.random()}`, x: player.x + aim.x * 24, y: player.y - 10 + aim.y * 10, vx: (player.selectedCharacter === "archer" ? 9.4 : 7.1) * aim.x,
+                vy: (player.selectedCharacter === "archer" ? 9.4 : 7.1) * aim.y, radius: player.selectedCharacter === "archer" ? 5 : 9, damage: player.selectedCharacter === "archer" ? 5 : 6,
+                knockback: player.selectedCharacter === "archer" ? 8.2 : 6.9, lift: player.selectedCharacter === "archer" ? 5.4 : 5.8, color: player.selectedCharacter === "archer" ? "#fef08a" : "#fb923c",
+                kind: player.selectedCharacter === "archer" ? "arrow" : "fireball", gravity: player.selectedCharacter === "archer" ? 0.01 : 0.015, ttlMs: player.selectedCharacter === "archer" ? 1280 : 1350, isUltimate: false
+              };
+              projectilesRef.current.push(projectile);
+              broadcastProjectile(projectile);
+              player.attackCooldownMs = player.selectedCharacter === "archer" ? 360 : 320;
+            }
+            player.attackFlashMs = 130;
+          }
+
+          if (keys.e && player.specialReleased && (player.specialCooldownMs === 0 || (player.selectedCharacter === "assassin" && Boolean(player.assassinKnifeId)))) {
+            player.specialReleased = false;
+            if (player.selectedCharacter === "fighter") {
             const startX = player.x + aim.x * 18;
             const startY = player.y - 4 + aim.y * 10;
             effectsRef.current.push({ id: `chain-${Date.now()}`, x: startX, y: startY, x2: clamp(startX + aim.x * 132, 16, WIDTH - 16), y2: clamp(startY + aim.y * 132, 18, FLOOR_Y - 12), radius: 3, color: config.specialColor, ttlMs: 120 });
@@ -818,12 +834,12 @@ const BrawlPvE: React.FC = () => {
               player.specialCooldownMs = 0;
             }
           }
-          if (player.selectedCharacter !== "assassin") player.specialCooldownMs = config.specialCooldownMs;
-        }
+            if (player.selectedCharacter !== "assassin") player.specialCooldownMs = config.specialCooldownMs;
+          }
 
-        if (keys.r && player.ultimateCharge >= ULTIMATE_CHARGE_MAX) {
-          player.ultimateCharge = 0;
-          if (player.selectedCharacter === "fighter") {
+          if (keys.r && player.ultimateCharge >= ULTIMATE_CHARGE_MAX) {
+            player.ultimateCharge = 0;
+            if (player.selectedCharacter === "fighter") {
             effectsRef.current.push(createEffect(player.x, player.y, config.ultimateColor, 42, 260));
             effectsRef.current.push(createEffect(player.x, player.y, config.trim, 58, 320));
             if (Math.abs(boss.x - player.x) <= 82 && Math.abs(boss.y - player.y) <= 64) damageBoss(config.ultimateDamage, 11.6, 7.2, (player.x + boss.x) / 2, (player.y + boss.y) / 2, config.ultimateColor);
@@ -842,10 +858,11 @@ const BrawlPvE: React.FC = () => {
               projectilesRef.current.push(projectile);
               broadcastProjectile(projectile);
             }
-          } else {
-            const projectile: Projectile = { id: `ult-orb-${Date.now()}-${Math.random()}`, x: player.x + aim.x * 24, y: player.y - 12 + aim.y * 10, vx: config.ultimateSpeed * aim.x, vy: config.ultimateSpeed * aim.y, radius: config.ultimateRadius, damage: config.ultimateDamage, knockback: 10.8, lift: 7.2, color: config.ultimateColor, kind: "ultimate", gravity: 0.01, ttlMs: 1400, isUltimate: true };
-            projectilesRef.current.push(projectile);
-            broadcastProjectile(projectile);
+            } else {
+              const projectile: Projectile = { id: `ult-orb-${Date.now()}-${Math.random()}`, x: player.x + aim.x * 24, y: player.y - 12 + aim.y * 10, vx: config.ultimateSpeed * aim.x, vy: config.ultimateSpeed * aim.y, radius: config.ultimateRadius, damage: config.ultimateDamage, knockback: 10.8, lift: 7.2, color: config.ultimateColor, kind: "ultimate", gravity: 0.01, ttlMs: 1400, isUltimate: true };
+              projectilesRef.current.push(projectile);
+              broadcastProjectile(projectile);
+            }
           }
         }
 
@@ -1191,6 +1208,16 @@ const BrawlPvE: React.FC = () => {
       const deathProgress = bossDeathStartedAtRef.current
         ? clamp((performance.now() - bossDeathStartedAtRef.current) / 1200, 0, 1)
         : 0;
+      const spectating = lost && !won;
+      const downProgress = deathStartedAtRef.current
+        ? clamp((performance.now() - deathStartedAtRef.current) / 480, 0, 1)
+        : 0;
+
+      ctx.save();
+      if (spectating) {
+        ctx.filter = "grayscale(1)";
+      }
+
       if (bossDef?.style === "giant") {
         drawCaveBackdrop(ctx);
       } else {
@@ -1510,6 +1537,25 @@ const BrawlPvE: React.FC = () => {
         });
       });
 
+      ctx.restore();
+
+      if (spectating) {
+        const overlayAlpha = 0.18 + downProgress * 0.26;
+        const vignette = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+        vignette.addColorStop(0, `rgba(148,163,184,${overlayAlpha * 0.7})`);
+        vignette.addColorStop(0.55, `rgba(30,41,59,${overlayAlpha * 0.25})`);
+        vignette.addColorStop(1, `rgba(15,23,42,${overlayAlpha})`);
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        ctx.fillStyle = "rgba(226,232,240,0.9)";
+        ctx.font = "bold 18px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("YOU ARE DOWN", WIDTH / 2, HEIGHT - 42);
+        ctx.font = "13px monospace";
+        ctx.fillStyle = "rgba(226,232,240,0.78)";
+        ctx.fillText("Spectating the hunt. Clear credit still counts.", WIDTH / 2, HEIGHT - 20);
+      }
+
       if (currentUserId && channelRef.current) {
         const now = performance.now();
         if (now - lastSnapshotAtRef.current >= 66) {
@@ -1618,8 +1664,10 @@ const BrawlPvE: React.FC = () => {
     hazardsRef.current = [];
     projectilesRef.current = [];
     effectsRef.current = [];
+    deathStartedAtRef.current = null;
     bossDeathStartedAtRef.current = null;
     winOverlayStartedAtRef.current = null;
+    clearRewardGrantedRef.current = false;
     setScaledPartySize(partySize);
     setWon(false);
     setLost(false);
