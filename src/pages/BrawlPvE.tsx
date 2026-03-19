@@ -132,7 +132,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.107";
+const PVE_VERSION = "0.108";
 const MAX_PVE_PLAYERS = 4;
 const DEMON_FRAME_WIDTH = 81;
 const DEMON_FRAME_HEIGHT = 71;
@@ -360,6 +360,70 @@ function drawReaperSpriteBoss(
     drawWidth,
     drawHeight
   );
+  ctx.restore();
+}
+
+function drawReaperFallbackBoss(
+  ctx: CanvasRenderingContext2D,
+  boss: BossState,
+  now: number,
+  casting: boolean,
+  deathProgress: number
+) {
+  const floatOffset = Math.sin(now / 180) * 5;
+  const robeColor = boss.hitFlashMs > 0 ? "#e9d5ff" : boss.phase >= 3 ? "#1f1638" : "#111827";
+  const accentColor = casting ? "#c4b5fd" : "#e5e7eb";
+
+  ctx.save();
+  ctx.translate(0, floatOffset);
+  ctx.fillStyle = "rgba(0,0,0,0.34)";
+  ctx.beginPath();
+  ctx.ellipse(0, 78, 76, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  drawPolygon(
+    ctx,
+    [
+      [-52, 26],
+      [-24, -24],
+      [20, -34],
+      [46, 16],
+      [34, 86],
+      [10, 76],
+      [-4, 92],
+      [-22, 72],
+      [-44, 86]
+    ],
+    robeColor
+  );
+
+  ctx.fillStyle = "#f8fafc";
+  ctx.beginPath();
+  ctx.ellipse(4, -34, 18, 22, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#0f172a";
+  ctx.beginPath();
+  ctx.arc(0, -38, 3, 0, Math.PI * 2);
+  ctx.arc(10, -38, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 8;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(14, -14);
+  ctx.lineTo(62, -44);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(78, -46, 24, Math.PI * 0.18, Math.PI * 1.28, true);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.42 * (1 - deathProgress);
+  ctx.strokeStyle = "#8b5cf6";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(0, 14, 40 + Math.sin(now / 90) * 4, 0, Math.PI * 2);
+  ctx.stroke();
   ctx.restore();
 }
 
@@ -1784,6 +1848,7 @@ const BrawlPvE: React.FC = () => {
       effectsRef.current.forEach((effect) => {
         ctx.save();
         const giantEncounter = bossDef?.style === "giant";
+        const reaperEncounter = bossDef?.style === "reaper";
         ctx.globalAlpha = Math.max(0.16, effect.ttlMs / 260);
         ctx.strokeStyle = effect.color;
         ctx.fillStyle = effect.color;
@@ -1882,8 +1947,10 @@ const BrawlPvE: React.FC = () => {
           }
         } else if (bossDef?.style === "reaper") {
           const reaperSheet = reaperSheetRef.current;
-          if (reaperSheet) {
+          if (reaperSheet && reaperSheet.complete && reaperSheet.naturalWidth >= REAPER_SHEET_FRAME_WIDTH) {
             drawReaperSpriteBoss(ctx, reaperSheet, boss, performance.now(), reaperCasting, deathProgress);
+          } else {
+            drawReaperFallbackBoss(ctx, boss, performance.now(), reaperCasting, deathProgress);
           }
         } else {
           const demonSprites = demonSpritesRef.current;
