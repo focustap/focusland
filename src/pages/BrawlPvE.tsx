@@ -99,7 +99,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.97";
+const PVE_VERSION = "0.98";
 const MAX_PVE_PLAYERS = 4;
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
@@ -350,7 +350,17 @@ const BrawlPvE: React.FC = () => {
   const appliedDamageEventsRef = useRef<Set<string>>(new Set());
   const encounterSeedRef = useRef(1);
   const encounterStartedAtRef = useRef(0);
+  const selectedCharacterRef = useRef<CharacterId | null>(null);
+  const bossDefRef = useRef<BossDefinition | undefined>(bossDef);
   const isStartAuthority = players[0]?.userId === currentUserId;
+
+  useEffect(() => {
+    selectedCharacterRef.current = selectedCharacter;
+  }, [selectedCharacter]);
+
+  useEffect(() => {
+    bossDefRef.current = bossDef;
+  }, [bossDef]);
 
   useEffect(() => {
     let active = true;
@@ -396,11 +406,13 @@ const BrawlPvE: React.FC = () => {
       });
       channel.on("broadcast", { event: "pve-start" }, ({ payload }) => {
         const nextPayload = payload as StartPayload;
-        if (nextPayload.bossId !== bossId || !selectedCharacter) return;
+        const liveCharacter = selectedCharacterRef.current;
+        const liveBossDef = bossDefRef.current ?? BOSSES["boss-1"];
+        if (nextPayload.bossId !== bossId || !liveCharacter) return;
         encounterSeedRef.current = nextPayload.seed >>> 0;
         encounterStartedAtRef.current = nextPayload.startedAt;
-        playerRef.current = makePlayerState(selectedCharacter);
-        bossRef.current = makeBossState(bossDef ?? BOSSES["boss-1"], nextPayload.partySize);
+        playerRef.current = makePlayerState(liveCharacter);
+        bossRef.current = makeBossState(liveBossDef, nextPayload.partySize);
         hazardsRef.current = [];
         projectilesRef.current = [];
         effectsRef.current = [];
@@ -410,7 +422,7 @@ const BrawlPvE: React.FC = () => {
         setWon(false);
         setLost(false);
         setFightStarted(true);
-        setStatus(`${bossDef?.name ?? "Boss"} awakens for a ${nextPayload.partySize} player hunt. Survive the telegraphs and punish the gaps.`);
+        setStatus(`${liveBossDef.name} awakens for a ${nextPayload.partySize} player hunt. Survive the telegraphs and punish the gaps.`);
       });
       channel.on("broadcast", { event: "pve-snapshot" }, ({ payload }) => {
         const nextPayload = payload as RemoteSnapshot;
