@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import InputPrompt from "../components/InputPrompt";
 import NavBar from "../components/NavBar";
+import { COMBAT_MUSIC, createLoopingTrack } from "../lib/combatMusic";
 import {
   CHARACTER_CONFIGS,
   clamp,
@@ -165,7 +166,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const NETWORK_RENDER_WINDOW_MS = 60;
-const BRAWL_VERSION = "1.3";
+const BRAWL_VERSION = "1.4";
 const DEFAULT_MAP: MapId = "sky-ruins";
 const BLAST_ZONE_MARGIN = FLOOR_MARGIN + 48;
 const LAVA_LANES = [WIDTH * 0.28, WIDTH * 0.5, WIDTH * 0.72];
@@ -514,6 +515,10 @@ const Brawl: React.FC = () => {
     rightName: string;
     rightCharacter: CharacterId;
   } | null>(null);
+  const [musicMuted, setMusicMuted] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("focusland-combat-music-muted") === "true";
+  });
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const tickRef = useRef<number | null>(null);
@@ -534,6 +539,7 @@ const Brawl: React.FC = () => {
   const particleImagesRef = useRef<Record<KenneyParticleKey, HTMLImageElement> | null>(null);
   const vsIntroTimeoutRef = useRef<number | null>(null);
   const rewardClaimedRef = useRef(false);
+  const musicRef = useRef<HTMLAudioElement | null>(null);
 
   const isSeated = currentUserId ? players.some((player) => player.userId === currentUserId) : false;
   const isHost = Boolean(currentUserId && players[0]?.userId === currentUserId);
@@ -591,10 +597,47 @@ const Brawl: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    musicRef.current = createLoopingTrack(COMBAT_MUSIC.pvp, 0.34);
+    return () => {
+      musicRef.current?.pause();
+      musicRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("focusland-combat-music-muted", musicMuted ? "true" : "false");
+    }
+    if (musicRef.current) {
+      musicRef.current.muted = musicMuted;
+    }
+  }, [musicMuted]);
+
+  useEffect(() => {
+    const shouldPlay = brawlState.phase === "playing";
+    const music = musicRef.current;
+    if (!music) return;
+
+    if (shouldPlay && !musicMuted) {
+      void music.play().catch(() => {
+        // Ignore autoplay blocking until the player interacts.
+      });
+    } else {
+      music.pause();
+      if (!shouldPlay) music.currentTime = 0;
+    }
+  }, [brawlState.phase, musicMuted]);
+
+  useEffect(() => {
     const unlockAudio = () => {
       if (audioUnlockedRef.current) return;
       audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
       audioUnlockedRef.current = true;
+      if (musicRef.current && brawlState.phase === "playing" && !musicMuted) {
+        void musicRef.current.play().catch(() => {
+          // Ignore autoplay failures.
+        });
+      }
     };
 
     window.addEventListener("pointerdown", unlockAudio, { once: true });
@@ -603,7 +646,7 @@ const Brawl: React.FC = () => {
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
     };
-  }, []);
+  }, [brawlState.phase, musicMuted]);
 
   useEffect(() => {
     if (brawlState.phase !== "playing") {
@@ -2415,6 +2458,12 @@ const Brawl: React.FC = () => {
                   </span>
                 </span>
               </p>
+            </div>
+
+            <div className="button-row">
+              <button className="secondary-button" type="button" onClick={() => setMusicMuted((current) => !current)}>
+                {musicMuted ? "Music off" : "Music on"}
+              </button>
             </div>
 
             {brawlState.phase === "select" && isHost && (

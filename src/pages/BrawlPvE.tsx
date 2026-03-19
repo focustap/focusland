@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { AuthContext } from "../components/AuthProvider";
 import InputPrompt from "../components/InputPrompt";
 import NavBar from "../components/NavBar";
+import { COMBAT_MUSIC, createLoopingTrack } from "../lib/combatMusic";
 import { completeBrawlPveBoss, loadBrawlPveProgress } from "../lib/brawlPveProgress";
 import { CHARACTER_CONFIGS, clamp, type CharacterId, drawBrawlCharacter, getDashProfile, normalizeVector } from "../lib/brawlShared";
 import {
@@ -40,11 +41,14 @@ type RemoteSnapshot = {
   aimX: number;
   aimY: number;
   hp: number;
+  dead: boolean;
   attackFlashMs: number;
   invulnMs: number;
   selectedCharacter: CharacterId;
 };
-type RemoteRenderState = RemoteSnapshot;
+type RemoteRenderState = RemoteSnapshot & {
+  deathStartedAt: number | null;
+};
 type StartPayload = {
   partySize: number;
   bossId: string;
@@ -123,7 +127,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.103";
+const PVE_VERSION = "0.104";
 const MAX_PVE_PLAYERS = 4;
 const BOSSES: Record<string, BossDefinition> = {
   "boss-1": {
@@ -351,6 +355,10 @@ const BrawlPvE: React.FC = () => {
   const [players, setPlayers] = useState<PlayerPresence[]>([]);
   const [connected, setConnected] = useState(false);
   const [scaledPartySize, setScaledPartySize] = useState(1);
+  const [musicMuted, setMusicMuted] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("focusland-combat-music-muted") === "true";
+  });
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [currentUsername, setCurrentUsername] = useState("Player");
   const [remoteSelections, setRemoteSelections] = useState<Record<string, CharacterId>>({});
@@ -370,6 +378,7 @@ const BrawlPvE: React.FC = () => {
   const audioPoolsRef = useRef<Record<KenneySfxKey, HTMLAudioElement[]> | null>(null);
   const audioUnlockedRef = useRef(false);
   const particleImagesRef = useRef<Record<KenneyParticleKey, HTMLImageElement> | null>(null);
+  const musicRef = useRef<HTMLAudioElement | null>(null);
   const bossDef = BOSSES[bossId];
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [progressLoading, setProgressLoading] = useState(true);
@@ -389,10 +398,46 @@ const BrawlPvE: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    musicRef.current = createLoopingTrack(COMBAT_MUSIC.pve, 0.38);
+    return () => {
+      musicRef.current?.pause();
+      musicRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("focusland-combat-music-muted", musicMuted ? "true" : "false");
+    }
+    if (musicRef.current) {
+      musicRef.current.muted = musicMuted;
+    }
+  }, [musicMuted]);
+
+  useEffect(() => {
+    const shouldPlay = fightStarted && !won;
+    const music = musicRef.current;
+    if (!music) return;
+    if (shouldPlay && !musicMuted) {
+      void music.play().catch(() => {
+        // Ignore autoplay blocking until the player interacts.
+      });
+    } else {
+      music.pause();
+      if (!shouldPlay) music.currentTime = 0;
+    }
+  }, [fightStarted, won, musicMuted]);
+
+  useEffect(() => {
     const unlockAudio = () => {
       if (audioUnlockedRef.current) return;
       audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
       audioUnlockedRef.current = true;
+      if (musicRef.current && fightStarted && !won && !musicMuted) {
+        void musicRef.current.play().catch(() => {
+          // Ignore autoplay failures.
+        });
+      }
     };
 
     window.addEventListener("pointerdown", unlockAudio, { once: true });
@@ -401,7 +446,7 @@ const BrawlPvE: React.FC = () => {
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
     };
-  }, []);
+  }, [fightStarted, won, musicMuted]);
 
   useEffect(() => {
     selectedCharacterRef.current = selectedCharacter;
@@ -479,7 +524,7 @@ const BrawlPvE: React.FC = () => {
         const nextPayload = payload as RemoteSnapshot;
         if (nextPayload.userId === session.user.id) return;
         remoteSnapshotsRef.current[nextPayload.userId] = nextPayload;
-        remoteRenderStatesRef.current[nextPayload.userId] ??= { ...nextPayload };
+        remoteRenderStatesRef.current[nextPayload.userId] ??= { ...nextPayload, deathStartedAt: nextPayload.dead ? performance.now() : null };
       });
       channel.on("broadcast", { event: "pve-projectile" }, ({ payload }) => {
         const nextPayload = payload as RemoteProjectilePayload;
@@ -1543,6 +1588,13 @@ const BrawlPvE: React.FC = () => {
         ctx.restore();
       }
 
+      ctx.save();
+      if (spectating) {
+        ctx.translate(player.x, player.y - 12);
+        ctx.rotate(-0.9 * downProgress);
+        ctx.translate(-player.x, -(player.y - 12));
+        ctx.globalAlpha = 0.52 + (1 - downProgress) * 0.28;
+      }
       drawBrawlCharacter({
         ctx,
         characterId: player.selectedCharacter,
@@ -1557,9 +1609,22 @@ const BrawlPvE: React.FC = () => {
         width: PLAYER_WIDTH,
         height: PLAYER_HEIGHT
       });
+      if (spectating) {
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = "rgba(226,232,240,0.9)";
+        ctx.font = "bold 16px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("DOWN", player.x, player.y - 54);
+      }
+      ctx.restore();
 
       Object.values(remoteSnapshotsRef.current).forEach((snapshot) => {
-        const renderState = remoteRenderStatesRef.current[snapshot.userId] ?? { ...snapshot };
+        const renderState = remoteRenderStatesRef.current[snapshot.userId] ?? { ...snapshot, deathStartedAt: snapshot.dead ? performance.now() : null };
+        if (snapshot.dead && !renderState.dead) {
+          renderState.deathStartedAt = performance.now();
+        } else if (!snapshot.dead) {
+          renderState.deathStartedAt = null;
+        }
         renderState.x += (snapshot.x - renderState.x) * 0.22;
         renderState.y += (snapshot.y - renderState.y) * 0.22;
         renderState.aimX += (snapshot.aimX - renderState.aimX) * 0.24;
@@ -1570,7 +1635,18 @@ const BrawlPvE: React.FC = () => {
         renderState.invulnMs = Math.max(renderState.invulnMs - (1000 / 60), snapshot.invulnMs);
         renderState.username = snapshot.username;
         renderState.selectedCharacter = snapshot.selectedCharacter;
+        renderState.dead = snapshot.dead;
         remoteRenderStatesRef.current[snapshot.userId] = renderState;
+        const remoteDeathProgress = renderState.deathStartedAt
+          ? clamp((performance.now() - renderState.deathStartedAt) / 360, 0, 1)
+          : 0;
+        ctx.save();
+        if (renderState.dead) {
+          ctx.translate(renderState.x, renderState.y - 12);
+          ctx.rotate(-0.85 * remoteDeathProgress);
+          ctx.translate(-renderState.x, -(renderState.y - 12));
+          ctx.globalAlpha = 0.48 + (1 - remoteDeathProgress) * 0.28;
+        }
         drawBrawlCharacter({
           ctx,
           characterId: renderState.selectedCharacter,
@@ -1585,6 +1661,13 @@ const BrawlPvE: React.FC = () => {
           width: PLAYER_WIDTH,
           height: PLAYER_HEIGHT
         });
+        if (renderState.dead) {
+          ctx.fillStyle = "rgba(226,232,240,0.92)";
+          ctx.font = "bold 15px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText("DOWN", renderState.x, renderState.y - 54);
+        }
+        ctx.restore();
       });
 
       ctx.restore();
@@ -1622,6 +1705,7 @@ const BrawlPvE: React.FC = () => {
               aimX: mouseRef.current.x,
               aimY: mouseRef.current.y,
               hp: player.hp,
+              dead: lost,
               attackFlashMs: player.attackFlashMs,
               invulnMs: player.invulnMs,
               selectedCharacter: player.selectedCharacter
@@ -1786,6 +1870,9 @@ const BrawlPvE: React.FC = () => {
             <div className="button-row">
               <button className="primary-button" type="button" onClick={resetFight} disabled={!isStartAuthority}>
                 {fightStarted ? "Retry boss" : isStartAuthority ? "Enter fight" : "Waiting for host"}
+              </button>
+              <button className="secondary-button" type="button" onClick={() => setMusicMuted((current) => !current)}>
+                {musicMuted ? "Music off" : "Music on"}
               </button>
               <button className="secondary-button" type="button" onClick={() => navigate("/arena/pve")}>Back to world map</button>
             </div>
