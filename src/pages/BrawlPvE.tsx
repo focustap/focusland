@@ -56,6 +56,9 @@ type StartPayload = {
   seed: number;
   startedAt: number;
 };
+type WipePayload = {
+  bossId: string;
+};
 type DamagePayload = {
   eventId: string;
   userId: string;
@@ -132,7 +135,7 @@ const ULTIMATE_CHARGE_MAX = 100;
 const COYOTE_MS = 110;
 const JUMP_LOCK_MS = 180;
 const FRAME_MS = 1000 / 60;
-const PVE_VERSION = "0.108";
+const PVE_VERSION = "0.109";
 const MAX_PVE_PLAYERS = 4;
 const DEMON_FRAME_WIDTH = 81;
 const DEMON_FRAME_HEIGHT = 71;
@@ -665,6 +668,7 @@ const BrawlPvE: React.FC = () => {
   const [status, setStatus] = useState("Choose a class and enter the arena.");
   const [won, setWon] = useState(false);
   const [lost, setLost] = useState(false);
+  const [gameOver, setGameOver] = useState(false);
   const [players, setPlayers] = useState<PlayerPresence[]>([]);
   const [connected, setConnected] = useState(false);
   const [scaledPartySize, setScaledPartySize] = useState(1);
@@ -687,6 +691,12 @@ const BrawlPvE: React.FC = () => {
   const deathStartedAtRef = useRef<number | null>(null);
   const bossDeathStartedAtRef = useRef<number | null>(null);
   const winOverlayStartedAtRef = useRef<number | null>(null);
+  const wipeBroadcastedRef = useRef(false);
+  const wonRef = useRef(false);
+  const lostRef = useRef(false);
+  const gameOverRef = useRef(false);
+  const playersRef = useRef<PlayerPresence[]>([]);
+  const scaledPartySizeRef = useRef(1);
   const clearRewardGrantedRef = useRef(false);
   const audioPoolsRef = useRef<Record<KenneySfxKey, HTMLAudioElement[]> | null>(null);
   const audioUnlockedRef = useRef(false);
@@ -734,7 +744,7 @@ const BrawlPvE: React.FC = () => {
   }, [musicMuted]);
 
   useEffect(() => {
-    const shouldPlay = fightStarted && !won;
+    const shouldPlay = fightStarted && !won && !gameOver;
     const music = musicRef.current;
     if (!music) return;
     if (shouldPlay && !musicMuted) {
@@ -745,14 +755,14 @@ const BrawlPvE: React.FC = () => {
       music.pause();
       if (!shouldPlay) music.currentTime = 0;
     }
-  }, [fightStarted, won, musicMuted]);
+  }, [fightStarted, won, gameOver, musicMuted]);
 
   useEffect(() => {
     const unlockAudio = () => {
       if (audioUnlockedRef.current) return;
       audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
       audioUnlockedRef.current = true;
-      if (musicRef.current && fightStarted && !won && !musicMuted) {
+      if (musicRef.current && fightStarted && !won && !gameOver && !musicMuted) {
         void musicRef.current.play().catch(() => {
           // Ignore autoplay failures.
         });
@@ -765,7 +775,7 @@ const BrawlPvE: React.FC = () => {
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
     };
-  }, [fightStarted, won, musicMuted]);
+  }, [fightStarted, won, gameOver, musicMuted]);
 
   useEffect(() => {
     selectedCharacterRef.current = selectedCharacter;
@@ -774,6 +784,26 @@ const BrawlPvE: React.FC = () => {
   useEffect(() => {
     bossDefRef.current = bossDef;
   }, [bossDef]);
+
+  useEffect(() => {
+    wonRef.current = won;
+  }, [won]);
+
+  useEffect(() => {
+    lostRef.current = lost;
+  }, [lost]);
+
+  useEffect(() => {
+    gameOverRef.current = gameOver;
+  }, [gameOver]);
+
+  useEffect(() => {
+    playersRef.current = players;
+  }, [players]);
+
+  useEffect(() => {
+    scaledPartySizeRef.current = scaledPartySize;
+  }, [scaledPartySize]);
 
   useEffect(() => {
     let active = true;
@@ -833,9 +863,11 @@ const BrawlPvE: React.FC = () => {
         bossDeathStartedAtRef.current = null;
         winOverlayStartedAtRef.current = null;
         clearRewardGrantedRef.current = false;
+        wipeBroadcastedRef.current = false;
         setScaledPartySize(nextPayload.partySize);
         setWon(false);
         setLost(false);
+        setGameOver(false);
         setFightStarted(true);
         setStatus(`${liveBossDef.name} awakens for a ${nextPayload.partySize} player hunt. Survive the telegraphs and punish the gaps.`);
       });
@@ -898,6 +930,13 @@ const BrawlPvE: React.FC = () => {
             void recordArcadeResult({ goldEarned: bossDef.goldReward });
           }
         }
+      });
+      channel.on("broadcast", { event: "pve-wipe" }, ({ payload }) => {
+        const nextPayload = payload as WipePayload;
+        if (nextPayload.bossId !== bossId) return;
+        wipeBroadcastedRef.current = true;
+        setGameOver(true);
+        setStatus("The hunt failed. All hunters fell.");
       });
 
       channel.subscribe(async (subscriptionStatus) => {
@@ -977,7 +1016,7 @@ const BrawlPvE: React.FC = () => {
     };
 
     const finishWin = () => {
-      if (won) return;
+      if (wonRef.current || gameOverRef.current) return;
       const now = performance.now();
       bossDeathStartedAtRef.current = now;
       winOverlayStartedAtRef.current = now + 450;
@@ -1011,6 +1050,25 @@ const BrawlPvE: React.FC = () => {
           type: "broadcast",
           event: "pve-clear",
           payload: { bossId }
+        });
+      }
+    };
+
+    const finishGameOver = () => {
+      if (wonRef.current || gameOverRef.current) return;
+      gameOverRef.current = true;
+      setGameOver(true);
+      setStatus("The hunt failed. All hunters fell.");
+      if (audioUnlockedRef.current) {
+        audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
+        playKenneySfx(audioPoolsRef.current, "hazard", 0.52);
+      }
+      if (isStartAuthority && channelRef.current && !wipeBroadcastedRef.current) {
+        wipeBroadcastedRef.current = true;
+        void channelRef.current.send({
+          type: "broadcast",
+          event: "pve-wipe",
+          payload: { bossId } satisfies WipePayload
         });
       }
     };
@@ -1078,7 +1136,7 @@ const BrawlPvE: React.FC = () => {
 
     const damagePlayer = (amount: number, message: string) => {
       const player = playerRef.current;
-      if (!player || player.invulnMs > 0 || won || lost) return;
+      if (!player || player.invulnMs > 0 || wonRef.current || gameOverRef.current || lostRef.current) return;
       player.hp = Math.max(0, player.hp - amount);
       player.invulnMs = 700;
       setStatus(message);
@@ -1091,8 +1149,14 @@ const BrawlPvE: React.FC = () => {
           audioPoolsRef.current = audioPoolsRef.current ?? createKenneyAudioPools();
           playKenneySfx(audioPoolsRef.current, "hazard", 0.42);
         }
+        lostRef.current = true;
         setLost(true);
-        setStatus("You are down. Spectating the hunt.");
+        if (scaledPartySizeRef.current <= 1) {
+          setStatus("You were slain.");
+          finishGameOver();
+        } else {
+          setStatus("You are down. Spectating the hunt.");
+        }
       }
     };
 
@@ -1109,7 +1173,7 @@ const BrawlPvE: React.FC = () => {
       const aim = rawAim.length < 10 ? { x: player.facing, y: 0, length: 1 } : rawAim;
       const toBoss = normalizeVector(boss.x - player.x, (boss.y - 48) - (player.y - 18));
 
-      if (!won) {
+      if (!wonRef.current && !gameOverRef.current) {
         player.attackCooldownMs = Math.max(0, player.attackCooldownMs - dt);
         player.dashCooldownMs = Math.max(0, player.dashCooldownMs - dt);
         player.specialCooldownMs = Math.max(0, player.specialCooldownMs - dt);
@@ -1136,7 +1200,7 @@ const BrawlPvE: React.FC = () => {
           setStatus("The Grim Sovereign returns. The scythe hunt begins.");
         }
 
-        if (!lost) {
+        if (!lostRef.current) {
           let moveX = 0;
           if (keys.a || keys.arrowleft) moveX -= 1;
           if (keys.d || keys.arrowright) moveX += 1;
@@ -1692,13 +1756,27 @@ const BrawlPvE: React.FC = () => {
           const next = { ...effect, ttlMs: effect.ttlMs - dt };
           return next.ttlMs > 0 ? [next] : [];
         });
+
+        if (scaledPartySizeRef.current > 1 && !wipeBroadcastedRef.current) {
+          const activePlayers = playersRef.current;
+          const everyoneDead =
+            activePlayers.length > 0 &&
+            activePlayers.every((partyPlayer) =>
+              partyPlayer.userId === currentUserId
+                ? lostRef.current
+                : Boolean(remoteSnapshotsRef.current[partyPlayer.userId]?.dead)
+            );
+          if (everyoneDead) {
+            finishGameOver();
+          }
+        }
       }
 
       ctx.clearRect(0, 0, WIDTH, HEIGHT);
       const deathProgress = bossDeathStartedAtRef.current
         ? clamp((performance.now() - bossDeathStartedAtRef.current) / 1200, 0, 1)
         : 0;
-      const spectating = lost && !won;
+      const spectating = lost && !wonRef.current && !gameOverRef.current;
       const downProgress = deathStartedAtRef.current
         ? clamp((performance.now() - deathStartedAtRef.current) / 480, 0, 1)
         : 0;
@@ -2096,7 +2174,7 @@ const BrawlPvE: React.FC = () => {
               aimX: mouseRef.current.x,
               aimY: mouseRef.current.y,
               hp: player.hp,
-              dead: lost,
+              dead: lostRef.current,
               attackFlashMs: player.attackFlashMs,
               invulnMs: player.invulnMs,
               selectedCharacter: player.selectedCharacter
@@ -2164,6 +2242,28 @@ const BrawlPvE: React.FC = () => {
         ctx.restore();
       }
 
+      if (gameOver) {
+        ctx.save();
+        ctx.fillStyle = "rgba(2,6,23,0.84)";
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        drawPolygon(ctx, [[0, 0], [WIDTH * 0.52, 0], [WIDTH * 0.34, HEIGHT], [0, HEIGHT]], "rgba(127,29,29,0.3)");
+        drawPolygon(ctx, [[WIDTH * 0.46, 0], [WIDTH, 0], [WIDTH, HEIGHT], [WIDTH * 0.68, HEIGHT]], "rgba(71,85,105,0.2)");
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#fff7ed";
+        ctx.font = "bold 42px monospace";
+        ctx.fillText("GAME OVER", WIDTH / 2, HEIGHT * 0.32);
+        ctx.font = "18px monospace";
+        ctx.fillText("The hunt failed.", WIDTH / 2, HEIGHT * 0.52);
+        ctx.font = "14px monospace";
+        ctx.fillStyle = "#cbd5e1";
+        ctx.fillText(
+          isStartAuthority ? "Restart the fight with the current party." : `${players[0]?.username ?? "Host"} can restart this pull.`,
+          WIDTH / 2,
+          HEIGHT * 0.66
+        );
+        ctx.restore();
+      }
+
       animationRef.current = window.requestAnimationFrame(update);
     };
 
@@ -2175,7 +2275,7 @@ const BrawlPvE: React.FC = () => {
         animationRef.current = null;
       }
     };
-  }, [bossDef, bossId, currentUserId, currentUsername, fightStarted, lost, navigate, selectedCharacter, won, session?.user.id]);
+  }, [bossDef, bossId, currentUserId, currentUsername, fightStarted, gameOver, isStartAuthority, navigate, players, selectedCharacter, session?.user.id]);
 
   const resetFight = () => {
     if (!selectedCharacter || !isStartAuthority) return;
@@ -2193,9 +2293,11 @@ const BrawlPvE: React.FC = () => {
     bossDeathStartedAtRef.current = null;
     winOverlayStartedAtRef.current = null;
     clearRewardGrantedRef.current = false;
+    wipeBroadcastedRef.current = false;
     setScaledPartySize(partySize);
     setWon(false);
     setLost(false);
+    setGameOver(false);
     setFightStarted(true);
     setStatus(`${bossDef?.name ?? "Boss"} awakens for a ${partySize} player hunt. Survive the telegraphs and punish the gaps.`);
     if (channelRef.current && currentUserId) {
@@ -2260,7 +2362,7 @@ const BrawlPvE: React.FC = () => {
           <>
             <div className="button-row">
               <button className="primary-button" type="button" onClick={resetFight} disabled={!isStartAuthority}>
-                {fightStarted ? "Retry boss" : isStartAuthority ? "Enter fight" : "Waiting for host"}
+                {gameOver ? (isStartAuthority ? "Restart fight with current players" : "Waiting for host restart") : fightStarted ? "Retry boss" : isStartAuthority ? "Enter fight" : "Waiting for host"}
               </button>
               <button className="secondary-button" type="button" onClick={() => setMusicMuted((current) => !current)}>
                 {musicMuted ? "Music off" : "Music on"}
