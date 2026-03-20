@@ -86,6 +86,8 @@ a {
 .navbar-links {
   display: flex;
   gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .navbar-links a {
@@ -95,6 +97,20 @@ a {
 
 .navbar-links a:hover {
   color: #a5b4fc;
+}
+
+.navbar-update-button {
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  border-radius: 999px;
+  padding: 0.42rem 0.9rem;
+  background: rgba(251, 191, 36, 0.16);
+  color: #fef3c7;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.navbar-update-button:hover {
+  background: rgba(251, 191, 36, 0.24);
 }
 
 form {
