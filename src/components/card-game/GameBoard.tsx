@@ -180,9 +180,7 @@ const PlayerBadge: React.FC<{
   player: PlayerState;
   isActive: boolean;
   isViewer: boolean;
-  canAttackHero: boolean;
-  onAttackHero?: () => void;
-}> = ({ player, isActive, isViewer, canAttackHero, onAttackHero }) => {
+}> = ({ player, isActive, isViewer }) => {
   return (
     <div className={`card-battle-badge${isActive ? " card-battle-badge--active" : ""}`}>
       <div>
@@ -193,11 +191,6 @@ const PlayerBadge: React.FC<{
         <span>Health {player.health}</span>
         <span>Resource {player.currentResource}/{player.maxResource}</span>
         <span>Deck {player.deck.length}</span>
-        {onAttackHero ? (
-          <button className="secondary-button" type="button" onClick={onAttackHero} disabled={!canAttackHero}>
-            Face attack
-          </button>
-        ) : null}
       </div>
     </div>
   );
@@ -289,12 +282,20 @@ const GameBoard: React.FC<GameBoardProps> = ({
             player={opponent}
             isActive={state.activePlayer !== viewerIndex}
             isViewer={false}
-            canAttackHero={canAttackHeroDirectly}
-            onAttackHero={selectedAttacker ? () => onAttackHero(selectedAttacker.instanceId) : undefined}
           />
           <div className="card-battle-arena-half card-battle-arena-half--top">
             <SidePiles player={opponent} flipped />
             <div className="card-battle-lanes">
+              <button
+                className={`card-battle-hero-slot${canAttackHeroDirectly ? " card-battle-hero-slot--targetable" : ""}`}
+                type="button"
+                onClick={selectedAttacker ? () => onAttackHero(selectedAttacker.instanceId) : undefined}
+                disabled={!canAttackHeroDirectly}
+              >
+                <span>{opponent.name}</span>
+                <strong>{opponent.health}</strong>
+                <small>Health</small>
+              </button>
               <HandBacks count={opponent.hand.length} />
               <TrapSlots traps={opponent.traps} reveal={false} />
               <ZoneSlots
@@ -323,11 +324,15 @@ const GameBoard: React.FC<GameBoardProps> = ({
                 player={viewer}
                 isActive={state.activePlayer === viewerIndex}
                 isViewer
-                canAttackHero={false}
               />
               <div className="card-battle-arena-half">
                 <SidePiles player={viewer} />
                 <div className="card-battle-lanes">
+                  <div className="card-battle-hero-slot card-battle-hero-slot--self">
+                    <span>{viewer.name}</span>
+                    <strong>{viewer.health}</strong>
+                    <small>Health</small>
+                  </div>
                   <ZoneSlots
                     units={viewer.board}
                     selectedAttackerId={selectedAttackerId}

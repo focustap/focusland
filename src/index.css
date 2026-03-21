@@ -1189,6 +1189,51 @@ body[data-theme="dark"] .brawl-pick-card span {
   gap: 0.8rem;
 }
 
+.card-battle-hero-slot {
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.65rem;
+  border: 2px solid rgba(250, 204, 21, 0.38);
+  background:
+    linear-gradient(180deg, rgba(180, 83, 9, 0.24), rgba(120, 53, 15, 0.52)),
+    rgba(15, 23, 42, 0.22);
+  color: #fff7ed;
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.04),
+    0 8px 18px rgba(15, 23, 42, 0.16);
+}
+
+.card-battle-hero-slot span,
+.card-battle-hero-slot small {
+  color: rgba(255, 247, 237, 0.82);
+}
+
+.card-battle-hero-slot strong {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.card-battle-hero-slot--targetable {
+  cursor: pointer;
+  border-color: rgba(250, 204, 21, 0.72);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.05),
+    0 0 0 3px rgba(250, 204, 21, 0.14),
+    0 12px 26px rgba(15, 23, 42, 0.2);
+}
+
+.card-battle-hero-slot--self {
+  border-color: rgba(56, 189, 248, 0.44);
+  background:
+    linear-gradient(180deg, rgba(3, 105, 161, 0.22), rgba(8, 47, 73, 0.54)),
+    rgba(15, 23, 42, 0.22);
+}
+
 .card-battle-badge {
   display: flex;
   justify-content: space-between;
