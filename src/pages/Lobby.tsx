@@ -152,7 +152,7 @@ const Lobby: React.FC = () => {
           .setStrokeStyle(2, 0xffffff, 0.08)
           .setDepth(20);
 
-        player = createAvatarRender(this, width / 2, height / 2 + 56, localAvatarCustomization, 12, 2.72);
+        player = createAvatarRender(this, width / 2, height / 2 + 56, localAvatarCustomization, 12, 2.2);
 
         const handlePageHide = () => {
           void removePresenceForUser({ userId, roomName: LOBBY_ROOM_NAME });
@@ -435,7 +435,7 @@ const Lobby: React.FC = () => {
 
         if (!existing) {
           const customization = this.avatarCustomizationCache.get(row.user_id) ?? DEFAULT_AVATAR_CUSTOMIZATION;
-          const render = createAvatarRender(this, row.x, row.y + 18, customization, 12, 2.72);
+          const render = createAvatarRender(this, row.x, row.y + 18, customization, 12, 2.2);
           const label = this.add.text(row.x, row.y - 24, row.username ?? "Player", {
             fontSize: "12px",
             color: "#f8fafc",

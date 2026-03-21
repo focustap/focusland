@@ -145,7 +145,7 @@ const ArcadeRoom: React.FC = () => {
           entranceY: height - 94
         });
 
-          this.player = createAvatarRender(this, 112, height - 84, avatarCustomization, 12, 2.72);
+          this.player = createAvatarRender(this, 112, height - 84, avatarCustomization, 12, 2.2);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;

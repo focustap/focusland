@@ -141,7 +141,7 @@ const CasinoRoom: React.FC = () => {
           color: 0x8b5a2b
         });
 
-          this.player = createAvatarRender(this, width / 2, height - 102, avatarCustomization, 12, 2.72);
+          this.player = createAvatarRender(this, width / 2, height - 102, avatarCustomization, 12, 2.2);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;

@@ -130,7 +130,7 @@ const InvadersRoom: React.FC = () => {
             entranceY: height - 118
           });
 
-          this.player = createAvatarRender(this, 140, height - 84, avatarCustomization, 12, 2.72);
+          this.player = createAvatarRender(this, 140, height - 84, avatarCustomization, 12, 2.2);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
