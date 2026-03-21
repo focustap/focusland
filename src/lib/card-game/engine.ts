@@ -12,7 +12,7 @@ import type {
   UnitOnBoard
 } from "./types";
 
-const PLAYER_NAMES = ["Player 1", "Player 2"] as const;
+const PLAYER_NAMES: [string, string] = ["Player 1", "Player 2"];
 
 const otherPlayer = (player: PlayerIndex): PlayerIndex => (player === 0 ? 1 : 0);
 
@@ -55,9 +55,9 @@ const buildDeck = (player: PlayerIndex): CardInstance[] =>
     }))
   );
 
-const createPlayer = (player: PlayerIndex): PlayerState => ({
+const createPlayer = (player: PlayerIndex, playerNames: [string, string]): PlayerState => ({
   id: player,
-  name: PLAYER_NAMES[player],
+  name: playerNames[player],
   health: STARTING_HEALTH,
   maxResource: 0,
   currentResource: 0,
@@ -264,9 +264,9 @@ const startTurn = (state: GameState, playerId: PlayerIndex) => {
 
 export const canUnitAttack = (unit: UnitOnBoard) => !unit.exhausted && !unit.summoningSick;
 
-export const createInitialGameState = (): GameState => {
+export const createInitialGameState = (playerNames: [string, string] = PLAYER_NAMES): GameState => {
   const initialState: GameState = {
-    players: [createPlayer(0), createPlayer(1)],
+    players: [createPlayer(0, playerNames), createPlayer(1, playerNames)],
     activePlayer: 0,
     turnNumber: 0,
     winner: null,
