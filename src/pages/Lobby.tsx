@@ -120,60 +120,25 @@ const Lobby: React.FC = () => {
         }
 
         preload() {
-          this.load.image("lobby-town", `${assetBase}assets/lobby/tiny-town/town-square.png`);
+          this.load.image("lobby-town", `${assetBase}assets/lobby/custom-lobby.png`);
         }
 
         create() {
         this.cameras.main.setBackgroundColor("#050816");
 
         const bg = this.add.image(width / 2, height / 2, "lobby-town");
-        bg.setDisplaySize(width, 448);
-        bg.setY(height / 2 + 8);
+        bg.setDisplaySize(width, height);
 
         this.add.rectangle(width / 2, 32, width, 82, 0x050816, 0.34).setDepth(1);
-        this.add.rectangle(width / 2, height - 18, width, 110, 0x020617, 0.28).setDepth(1);
+        this.add.rectangle(width / 2, height - 22, width, 82, 0x020617, 0.22).setDepth(1);
         this.add.rectangle(width / 2, height / 2, width - 16, height - 16, 0x000000, 0)
           .setStrokeStyle(2, 0xffffff, 0.08)
           .setDepth(20);
 
-        const addTreeCover = (x: number, y: number, scale = 1) => {
-          this.add.rectangle(x, y + 24 * scale, 10 * scale, 20 * scale, 0x6b4226).setDepth(4);
-          this.add.ellipse(x, y + 6 * scale, 30 * scale, 46 * scale, 0x2d6a4f).setDepth(5);
-          this.add.ellipse(x - 10 * scale, y + 12 * scale, 18 * scale, 24 * scale, 0x1f5138).setDepth(5);
-          this.add.ellipse(x + 10 * scale, y + 12 * scale, 18 * scale, 24 * scale, 0x3f8f62).setDepth(5);
-        };
-
-        const addBushCover = (x: number, y: number, widthPx: number) => {
-          this.add.ellipse(x, y, widthPx, 26, 0x6fce73).setDepth(5);
-          this.add.ellipse(x - widthPx * 0.22, y + 2, widthPx * 0.4, 18, 0x55a85a).setDepth(5);
-          this.add.ellipse(x + widthPx * 0.22, y + 1, widthPx * 0.42, 18, 0x4a9652).setDepth(5);
-        };
-
-        const addLantern = (x: number, y: number) => {
-          this.add.rectangle(x, y + 12, 4, 16, 0x6b4226).setDepth(6);
-          this.add.rectangle(x, y, 10, 12, 0xfbbf24).setDepth(7);
-          this.add.rectangle(x, y, 14, 16, 0xfef3c7, 0.18).setDepth(6);
-        };
-
-        const addCrate = (x: number, y: number) => {
-          this.add.rectangle(x, y, 18, 18, 0x8b5a2b).setDepth(5);
-          this.add.line(x, y, -7, -7, 7, 7, 0xd1a068, 0.8).setDepth(6);
-          this.add.line(x, y, -7, 7, 7, -7, 0xd1a068, 0.8).setDepth(6);
-        };
-
-        addTreeCover(334, 214, 0.9);
-        addTreeCover(560, 328, 0.92);
-        addTreeCover(350, 366, 0.88);
-        addBushCover(490, 294, 54);
-        addBushCover(602, 210, 58);
-        addCrate(673, 322);
-        addLantern(458, 164);
-        addLantern(608, 160);
-
         const localColor = profileColorToNumber(profileColor);
 
         // Player in the center of the room.
-        player = this.add.rectangle(width / 2 - 8, height / 2 + 44, 24, 32, localColor).setDepth(12);
+        player = this.add.rectangle(width / 2, height / 2 + 38, 24, 32, localColor).setDepth(12);
 
         const handlePageHide = () => {
           void removePresenceForUser({ userId, roomName: LOBBY_ROOM_NAME });
@@ -276,73 +241,73 @@ const Lobby: React.FC = () => {
             name: "Casino",
             color: 0xe11d48,
             body: null,
-            entranceX: 186,
-            entranceY: 142,
+            entranceX: 110,
+            entranceY: 156,
             route: "/casino",
-            x: 184,
-            y: 112,
-            width: 120,
-            height: 94
+            x: 111,
+            y: 104,
+            width: 132,
+            height: 108
           },
           {
             name: "Profile House",
             color: 0x3b82f6,
             body: null,
-            entranceX: 292,
-            entranceY: 314,
+            entranceX: 662,
+            entranceY: 360,
             route: "/profile",
-            x: 286,
-            y: 306,
-            width: 118,
-            height: 90
+            x: 662,
+            y: 314,
+            width: 126,
+            height: 104
           },
           {
             name: "Arena",
             color: 0xf59e0b,
             body: null,
-            entranceX: 665,
-            entranceY: 356,
+            entranceX: 402,
+            entranceY: 162,
             route: "/arena",
-            x: 678,
-            y: 326,
-            width: 146,
-            height: 134
+            x: 401,
+            y: 112,
+            width: 156,
+            height: 120
           },
           {
             name: "Records House",
             color: 0x22c55e,
             body: null,
-            entranceX: 514,
-            entranceY: 168,
+            entranceX: 128,
+            entranceY: 362,
             route: "/leaderboard",
-            x: 520,
-            y: 150,
-            width: 120,
-            height: 82
+            x: 128,
+            y: 314,
+            width: 136,
+            height: 106
           },
           {
             name: "Hangar",
             color: 0x06b6d4,
             body: null,
-            entranceX: 642,
-            entranceY: 182,
+            entranceX: 404,
+            entranceY: 420,
             route: "/hangar",
-            x: 648,
-            y: 162,
-            width: 118,
-            height: 82
+            x: 404,
+            y: 430,
+            width: 188,
+            height: 126
           },
           {
             name: "Arcade",
             color: 0x8b5cf6,
             body: null,
-            entranceX: 286,
-            entranceY: 142,
+            entranceX: 671,
+            entranceY: 156,
             route: "/arcade",
-            x: 286,
-            y: 110,
-            width: 116,
-            height: 88
+            x: 671,
+            y: 108,
+            width: 134,
+            height: 108
           }
         ];
 
@@ -398,7 +363,7 @@ const Lobby: React.FC = () => {
           drawBuilding(building);
         });
 
-        const hubHeader = this.add.rectangle(width / 2, 34, 370, 46, 0x0f172a, 0.72)
+        const hubHeader = this.add.rectangle(width / 2, 34, 380, 46, 0x0f172a, 0.72)
           .setStrokeStyle(1, 0xffffff, 0.08)
           .setDepth(15);
         const hubTitle = this.add.text(width / 2, 24, "Focusland Town Square", {
