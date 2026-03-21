@@ -80,65 +80,87 @@ const CasinoRoom: React.FC = () => {
 
         preload() {
           loadAvatarSpriteSheet(this, assetBase);
+          this.load.image("casino-room", `${assetBase}assets/lobby/casino-room.png`);
         }
 
         create() {
           this.cameras.main.setBackgroundColor("#14060a");
-          this.add.rectangle(width / 2, height / 2, width, height, 0x2a0b14);
-          this.add.rectangle(width / 2, height / 2, width - 36, height - 36, 0x4a1021);
-          this.add.rectangle(width / 2, height / 2, width - 86, height - 86, 0x1f8a70, 0.85);
-          this.add.rectangle(width / 2, height / 2, width - 140, height - 140, 0x0f6b58, 0.9);
+          const bg = this.add.image(width / 2, height / 2, "casino-room");
+          bg.setDisplaySize(width, height);
+          this.add.rectangle(width / 2, 30, width, 68, 0x14060a, 0.34).setDepth(1);
+          this.add.rectangle(width / 2, height - 18, width, 64, 0x14060a, 0.28).setDepth(1);
+          this.add.rectangle(width / 2, height / 2, width - 12, height - 12, 0x000000, 0)
+            .setStrokeStyle(2, 0xffffff, 0.08)
+            .setDepth(12);
 
           this.add.text(width / 2, 34, "Focusland Casino", {
             color: "#fde68a",
             fontSize: "28px",
             fontStyle: "bold"
-          }).setOrigin(0.5);
+          }).setOrigin(0.5).setDepth(13);
 
-        const addTable = (x: number, y: number, label: string, route: string, color: number) => {
-          this.add.ellipse(x, y, 180, 88, color);
-          this.add.ellipse(x, y - 6, 152, 58, 0x083344, 0.55);
-          this.add.rectangle(x, y + 54, 18, 54, 0x4b2e19);
-          this.add.text(x, y - 2, label, {
+        const addTable = (
+          x: number,
+          y: number,
+          widthPx: number,
+          heightPx: number,
+          label: string,
+          route: string,
+          color: number
+        ) => {
+          const glow = this.add.ellipse(x, y, widthPx, heightPx, color, 0.18).setDepth(13);
+          const ring = this.add.ellipse(x, y, widthPx - 8, heightPx - 8, 0x000000, 0)
+            .setStrokeStyle(2, color, 0.9)
+            .setDepth(14);
+          this.add.text(x, y, label, {
             color: "#f8fafc",
-            fontSize: "18px",
+            fontSize: "16px",
             fontStyle: "bold"
-          }).setOrigin(0.5);
+          }).setOrigin(0.5).setDepth(15);
+          this.tweens.add({
+            targets: [glow, ring],
+            alpha: { from: 0.18, to: 0.34 },
+            scale: { from: 0.98, to: 1.03 },
+            duration: 950,
+            yoyo: true,
+            repeat: -1
+          });
           this.hotspots.push({
             label,
             route,
             x,
             y,
-            width: 180,
-            height: 88,
+            width: widthPx,
+            height: heightPx,
             entranceX: x,
-            entranceY: y + 86,
+            entranceY: y + heightPx / 2 + 26,
             color
           });
         };
 
-        addTable(width / 2, 166, "21 Table", "/casino/21", 0x0f766e);
-        addTable(width / 2 - 210, 320, "Slots", "/casino/slots", 0x7c3aed);
-        addTable(width / 2 + 210, 320, "Ride the Bus", "/casino/bus", 0x0ea5e9);
+        addTable(112, 92, 180, 90, "21 Table", "/casino/21", 0x0f766e);
+        addTable(412, 230, 216, 96, "Ride the Bus", "/casino/bus", 0x0ea5e9);
+        addTable(646, 296, 148, 188, "Slots", "/casino/slots", 0x7c3aed);
 
-        const doorY = height - 72;
-        this.add.rectangle(width / 2, doorY, 92, 120, 0x3f2a1d);
-        this.add.rectangle(width / 2, doorY - 10, 64, 82, 0x8b5a2b);
-        this.add.text(width / 2, doorY + 58, "Back to Hub", {
+        const doorY = height - 42;
+        this.add.rectangle(width / 2, doorY, 176, 34, 0x14060a, 0.72)
+          .setStrokeStyle(2, 0xf59e0b, 0.78)
+          .setDepth(14);
+        this.add.text(width / 2, doorY, "Back to Hub", {
           color: "#fef3c7",
           fontSize: "16px",
           fontStyle: "bold"
-        }).setOrigin(0.5);
+        }).setOrigin(0.5).setDepth(15);
 
         this.hotspots.push({
           label: "Back to Hub",
           route: "/lobby",
           x: width / 2,
           y: doorY,
-          width: 92,
-          height: 120,
+          width: 176,
+          height: 34,
           entranceX: width / 2,
-          entranceY: height - 92,
+          entranceY: height - 64,
           color: 0x8b5a2b
         });
 
