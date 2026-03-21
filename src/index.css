@@ -463,6 +463,25 @@ input {
   font-size: 1.6rem;
 }
 
+body[data-theme="dark"] .ride-bus-seat {
+  background: rgba(31, 35, 34, 0.96);
+  border-color: rgba(148, 163, 184, 0.2);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.28);
+  color: #f8fafc;
+}
+
+body[data-theme="dark"] .ride-bus-seat strong {
+  color: #f8fafc;
+}
+
+body[data-theme="dark"] .ride-bus-seat span {
+  color: #e5e7eb;
+}
+
+body[data-theme="dark"] .ride-bus-avatar {
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
 @media (max-width: 760px) {
   .casino-table-wrap {
     min-height: auto;
