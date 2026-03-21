@@ -73,6 +73,16 @@ const Lobby: React.FC = () => {
 
       const width = 800;
       const height = 520;
+      const lobbyBlockers = [
+        new Phaser.Geom.Rectangle(34, 18, 154, 108),
+        new Phaser.Geom.Rectangle(305, 16, 194, 120),
+        new Phaser.Geom.Rectangle(593, 18, 152, 108),
+        new Phaser.Geom.Rectangle(20, 204, 174, 96),
+        new Phaser.Geom.Rectangle(582, 210, 160, 106),
+        new Phaser.Geom.Rectangle(254, 350, 76, 118),
+        new Phaser.Geom.Rectangle(328, 332, 156, 42),
+        new Phaser.Geom.Rectangle(482, 350, 74, 118)
+      ];
 
       // Simple structure to describe a building zone.
       type Building = {
@@ -108,6 +118,30 @@ const Lobby: React.FC = () => {
       const sceneConfig: Phaser.Types.Scenes.SettingsConfig = {
         active: true,
         key: "LobbyScene"
+      };
+
+      const isBlocked = (x: number, y: number) =>
+        lobbyBlockers.some((blocker) => blocker.contains(x, y));
+
+      const resolveBlockedStep = (
+        currentX: number,
+        currentY: number,
+        nextX: number,
+        nextY: number
+      ) => {
+        if (!isBlocked(nextX, nextY)) {
+          return { x: nextX, y: nextY, blocked: false };
+        }
+
+        if (!isBlocked(nextX, currentY)) {
+          return { x: nextX, y: currentY, blocked: false };
+        }
+
+        if (!isBlocked(currentX, nextY)) {
+          return { x: currentX, y: nextY, blocked: false };
+        }
+
+        return { x: currentX, y: currentY, blocked: true };
       };
 
       class LobbyScene extends Phaser.Scene {
@@ -560,7 +594,21 @@ const Lobby: React.FC = () => {
             34,
             height - 2
           );
-          player.container.setPosition(nextX, nextY);
+          const resolvedStep = resolveBlockedStep(
+            player.container.x,
+            player.container.y,
+            nextX,
+            nextY
+          );
+
+          if (resolvedStep.blocked) {
+            targetX = null;
+            targetY = null;
+            updateAvatarRender(player, localAvatarCustomization, player.facing, false);
+            return;
+          }
+
+          player.container.setPosition(resolvedStep.x, resolvedStep.y);
           updateAvatarRender(
             player,
             localAvatarCustomization,
