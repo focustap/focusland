@@ -146,7 +146,7 @@ const ArcadeRoom: React.FC = () => {
         });
 
           this.playerShadow = this.add.ellipse(112, height - 84, 28, 12, 0x020617, 0.28);
-          this.player = createAvatarRender(this, 112, height - 84, avatarCustomization, 12, 0.34);
+          this.player = createAvatarRender(this, 112, height - 84, avatarCustomization, 12, 0.54);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;

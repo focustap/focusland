@@ -13,7 +13,7 @@ type Props = {
 
 const AvatarSprite: React.FC<Props> = ({
   customization,
-  size = 84,
+  size = 96,
   className
 }) => {
   const assetBase = import.meta.env.BASE_URL;
