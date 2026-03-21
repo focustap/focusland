@@ -2,6 +2,13 @@ import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import Phaser from "phaser";
+import {
+  clampAvatarStyle,
+  createAvatarImage,
+  getStoredAvatarStyle,
+  loadAvatarSpriteSheet,
+  updateAvatarImage
+} from "../lib/avatarSprites";
 import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } from "../lib/profileColor";
 import { supabase } from "../lib/supabase";
 
@@ -21,6 +28,7 @@ const CasinoRoom: React.FC = () => {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  const assetBase = import.meta.env.BASE_URL;
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) {
@@ -34,6 +42,7 @@ const CasinoRoom: React.FC = () => {
       const width = 760;
       const height = 500;
       let playerColor = profileColorToNumber(DEFAULT_PROFILE_COLOR);
+      let avatarStyle = getStoredAvatarStyle();
 
       const {
         data: { session }
@@ -42,13 +51,14 @@ const CasinoRoom: React.FC = () => {
       if (session) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("color")
+          .select("*")
           .eq("id", session.user.id)
           .maybeSingle();
 
         playerColor = profileColorToNumber(
           normalizeProfileColor((profile?.color as string | null) ?? DEFAULT_PROFILE_COLOR)
         );
+        avatarStyle = clampAvatarStyle(Number((profile as { avatar_style?: number | null } | null)?.avatar_style ?? avatarStyle));
       }
 
       if (isUnmounted || !containerRef.current) {
@@ -56,12 +66,16 @@ const CasinoRoom: React.FC = () => {
       }
 
       class CasinoScene extends Phaser.Scene {
-        player!: Phaser.GameObjects.Rectangle;
+        player!: Phaser.GameObjects.Image;
         playerShadow!: Phaser.GameObjects.Ellipse;
         targetX: number | null = null;
         targetY: number | null = null;
         pendingRoute: string | null = null;
         hotspots: Hotspot[] = [];
+
+        preload() {
+          loadAvatarSpriteSheet(this, assetBase);
+        }
 
         create() {
           this.cameras.main.setBackgroundColor("#14060a");
@@ -124,7 +138,7 @@ const CasinoRoom: React.FC = () => {
         });
 
           this.playerShadow = this.add.ellipse(width / 2, height - 102, 28, 12, 0x020617, 0.25);
-          this.player = this.add.rectangle(width / 2, height - 120, 24, 32, playerColor);
+          this.player = createAvatarImage(this, width / 2, height - 102, avatarStyle, "front", 12, 0.34);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
@@ -159,8 +173,9 @@ const CasinoRoom: React.FC = () => {
           const step = (220 * delta) / 1000;
 
           if (distance <= step) {
-            this.player.setPosition(this.targetX, this.targetY);
+            this.player.setPosition(this.targetX, this.targetY - 18);
             this.playerShadow.setPosition(this.targetX, this.targetY + 18);
+            updateAvatarImage(this.player, avatarStyle, "front");
             const route = this.pendingRoute;
             this.targetX = null;
             this.targetY = null;
@@ -172,9 +187,10 @@ const CasinoRoom: React.FC = () => {
           }
 
           const nextX = Phaser.Math.Clamp(this.player.x + (dx / distance) * step, 20, width - 20);
-          const nextY = Phaser.Math.Clamp(this.player.y + (dy / distance) * step, 54, height - 24);
+          const nextY = Phaser.Math.Clamp(this.player.y + (dy / distance) * step, 36, height - 42);
           this.player.setPosition(nextX, nextY);
-          this.playerShadow.setPosition(nextX, nextY + 18);
+          this.playerShadow.setPosition(nextX, nextY + 36);
+          updateAvatarImage(this.player, avatarStyle, dy < 0 ? "back" : "front");
         }
       }
 

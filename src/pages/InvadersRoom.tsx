@@ -2,6 +2,13 @@ import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import Phaser from "phaser";
+import {
+  clampAvatarStyle,
+  createAvatarImage,
+  getStoredAvatarStyle,
+  loadAvatarSpriteSheet,
+  updateAvatarImage
+} from "../lib/avatarSprites";
 import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } from "../lib/profileColor";
 import { supabase } from "../lib/supabase";
 
@@ -19,6 +26,7 @@ const InvadersRoom: React.FC = () => {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  const assetBase = import.meta.env.BASE_URL;
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) {
@@ -32,6 +40,7 @@ const InvadersRoom: React.FC = () => {
       const width = 780;
       const height = 500;
       let playerColor = profileColorToNumber(DEFAULT_PROFILE_COLOR);
+      let avatarStyle = getStoredAvatarStyle();
 
       const {
         data: { session }
@@ -40,13 +49,14 @@ const InvadersRoom: React.FC = () => {
       if (session) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("color")
+          .select("*")
           .eq("id", session.user.id)
           .maybeSingle();
 
         playerColor = profileColorToNumber(
           normalizeProfileColor((profile?.color as string | null) ?? DEFAULT_PROFILE_COLOR)
         );
+        avatarStyle = clampAvatarStyle(Number((profile as { avatar_style?: number | null } | null)?.avatar_style ?? avatarStyle));
       }
 
       if (isUnmounted || !containerRef.current) {
@@ -54,12 +64,16 @@ const InvadersRoom: React.FC = () => {
       }
 
       class HangarScene extends Phaser.Scene {
-        player!: Phaser.GameObjects.Rectangle;
+        player!: Phaser.GameObjects.Image;
         shadow!: Phaser.GameObjects.Ellipse;
         targetX: number | null = null;
         targetY: number | null = null;
         pendingRoute: string | null = null;
         hotspots: Hotspot[] = [];
+
+        preload() {
+          loadAvatarSpriteSheet(this, assetBase);
+        }
 
         create() {
           this.cameras.main.setBackgroundColor("#04111f");
@@ -113,7 +127,7 @@ const InvadersRoom: React.FC = () => {
           });
 
           this.shadow = this.add.ellipse(140, height - 84, 28, 12, 0x020617, 0.28);
-          this.player = this.add.rectangle(140, height - 102, 24, 32, playerColor);
+          this.player = createAvatarImage(this, 140, height - 84, avatarStyle, "front", 12, 0.34);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
@@ -148,8 +162,9 @@ const InvadersRoom: React.FC = () => {
           const step = (230 * delta) / 1000;
 
           if (distance <= step) {
-            this.player.setPosition(this.targetX, this.targetY);
+            this.player.setPosition(this.targetX, this.targetY - 18);
             this.shadow.setPosition(this.targetX, this.targetY + 18);
+            updateAvatarImage(this.player, avatarStyle, "front");
             const route = this.pendingRoute;
             this.targetX = null;
             this.targetY = null;
@@ -161,9 +176,10 @@ const InvadersRoom: React.FC = () => {
           }
 
           const nextX = Phaser.Math.Clamp(this.player.x + (dx / distance) * step, 18, width - 18);
-          const nextY = Phaser.Math.Clamp(this.player.y + (dy / distance) * step, 56, height - 22);
+          const nextY = Phaser.Math.Clamp(this.player.y + (dy / distance) * step, 38, height - 40);
           this.player.setPosition(nextX, nextY);
           this.shadow.setPosition(nextX, nextY + 18);
+          updateAvatarImage(this.player, avatarStyle, dy < 0 ? "back" : "front");
         }
       }
 

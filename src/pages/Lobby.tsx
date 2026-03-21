@@ -5,7 +5,15 @@ import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import Phaser from "phaser";
-import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } from "../lib/profileColor";
+import {
+  clampAvatarStyle,
+  createAvatarImage,
+  DEFAULT_AVATAR_STYLE,
+  getStoredAvatarStyle,
+  loadAvatarSpriteSheet,
+  updateAvatarImage
+} from "../lib/avatarSprites";
+import { DEFAULT_PROFILE_COLOR, normalizeProfileColor } from "../lib/profileColor";
 import { supabase } from "../lib/supabase";
 import {
   LOBBY_ROOM_NAME,
@@ -45,12 +53,15 @@ const Lobby: React.FC = () => {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("username, color")
+        .select("*")
         .eq("id", userId)
         .maybeSingle();
 
       const username: string | null = (profile?.username as string) ?? session.user.email ?? null;
       const profileColor = normalizeProfileColor((profile?.color as string | null) ?? DEFAULT_PROFILE_COLOR);
+      const localAvatarStyle = clampAvatarStyle(
+        Number((profile as { avatar_style?: number | null } | null)?.avatar_style ?? getStoredAvatarStyle())
+      );
 
       if (isUnmounted || !containerRef.current) {
         return () => {};
@@ -81,7 +92,8 @@ const Lobby: React.FC = () => {
         navigate(route);
       };
 
-      let player: Phaser.GameObjects.Rectangle | null = null;
+      let player: Phaser.GameObjects.Image | null = null;
+      let playerShadow: Phaser.GameObjects.Ellipse | null = null;
       let targetX: number | null = null;
       let targetY: number | null = null;
       let buildings: Building[] = [];
@@ -99,13 +111,16 @@ const Lobby: React.FC = () => {
         otherPlayers: Map<
           string,
           {
-            rect: Phaser.GameObjects.Rectangle;
+            sprite: Phaser.GameObjects.Image;
+            shadow: Phaser.GameObjects.Ellipse;
             label: Phaser.GameObjects.Text;
             targetX: number;
             targetY: number;
             lastSeenAt: number;
+            avatarStyle: number;
           }
         > = new Map();
+        avatarStyleCache: Map<string, number> = new Map();
 
         localUserId: string;
         localUsername: string | null;
@@ -120,6 +135,7 @@ const Lobby: React.FC = () => {
         }
 
         preload() {
+          loadAvatarSpriteSheet(this, assetBase);
           this.load.image("lobby-town", `${assetBase}assets/lobby/custom-lobby.png`);
         }
 
@@ -135,10 +151,8 @@ const Lobby: React.FC = () => {
           .setStrokeStyle(2, 0xffffff, 0.08)
           .setDepth(20);
 
-        const localColor = profileColorToNumber(profileColor);
-
-        // Player in the center of the room.
-        player = this.add.rectangle(width / 2, height / 2 + 38, 24, 32, localColor).setDepth(12);
+        playerShadow = this.add.ellipse(width / 2, height / 2 + 42, 28, 12, 0x020617, 0.3).setDepth(11);
+        player = createAvatarImage(this, width / 2, height / 2 + 56, localAvatarStyle, "front", 12, 0.34);
 
         const handlePageHide = () => {
           void removePresenceForUser({ userId, roomName: LOBBY_ROOM_NAME });
@@ -158,7 +172,7 @@ const Lobby: React.FC = () => {
           userId,
           username,
           x: player.x,
-          y: player.y,
+          y: player.y - 18,
           color: profileColor
         });
 
@@ -171,7 +185,7 @@ const Lobby: React.FC = () => {
               // Only send an update if the player actually moved
               // more than a tiny amount since last send.
               const currentX = player.x;
-              const currentY = player.y;
+              const currentY = player.y - 18;
               const movedDistance = Math.hypot(currentX - this.lastSentX, currentY - this.lastSentY);
               if (movedDistance < 1) {
                 return;
@@ -197,7 +211,7 @@ const Lobby: React.FC = () => {
               void updatePlayerPosition({
                 userId,
                 x: player.x,
-                y: player.y
+                y: player.y - 18
               });
             }
           });
@@ -412,17 +426,18 @@ const Lobby: React.FC = () => {
 
         if (eventType === "DELETE") {
           if (existing) {
-            existing.rect.destroy();
+            existing.sprite.destroy();
+            existing.shadow.destroy();
             existing.label.destroy();
             this.otherPlayers.delete(row.user_id);
           }
           return;
         }
 
-        const colorNumber = profileColorToNumber(row.color);
-
         if (!existing) {
-          const rect = this.add.rectangle(row.x, row.y, 24, 32, colorNumber).setDepth(12);
+          const avatarStyle = this.avatarStyleCache.get(row.user_id) ?? DEFAULT_AVATAR_STYLE;
+          const shadow = this.add.ellipse(row.x, row.y + 4, 28, 12, 0x020617, 0.28).setDepth(11);
+          const sprite = createAvatarImage(this, row.x, row.y + 18, avatarStyle, "front", 12, 0.34);
           const label = this.add.text(row.x, row.y - 24, row.username ?? "Player", {
             fontSize: "12px",
             color: "#f8fafc",
@@ -433,17 +448,41 @@ const Lobby: React.FC = () => {
           label.setDepth(13);
 
           this.otherPlayers.set(row.user_id, {
-            rect,
+            sprite,
+            shadow,
             label,
             targetX: row.x,
             targetY: row.y,
-            lastSeenAt: Date.now()
+            lastSeenAt: Date.now(),
+            avatarStyle
           });
+
+          void supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", row.user_id)
+            .maybeSingle()
+            .then(({ data: remoteProfile }) => {
+              if (!remoteProfile) {
+                return;
+              }
+
+              const resolvedStyle = clampAvatarStyle(
+                Number((remoteProfile as { avatar_style?: number | null }).avatar_style ?? DEFAULT_AVATAR_STYLE)
+              );
+              this.avatarStyleCache.set(row.user_id, resolvedStyle);
+              const current = this.otherPlayers.get(row.user_id);
+              if (!current) {
+                return;
+              }
+
+              current.avatarStyle = resolvedStyle;
+              updateAvatarImage(current.sprite, resolvedStyle, "front");
+            });
         } else {
           existing.targetX = row.x;
           existing.targetY = row.y;
           existing.lastSeenAt = Date.now();
-          existing.rect.fillColor = colorNumber;
           existing.label.setText(row.username ?? "Player");
         }
       }
@@ -453,20 +492,22 @@ const Lobby: React.FC = () => {
 
         this.otherPlayers.forEach((otherPlayer) => {
           const distance = Phaser.Math.Distance.Between(
-            otherPlayer.rect.x,
-            otherPlayer.rect.y,
+            otherPlayer.sprite.x,
+            otherPlayer.sprite.y - 18,
             otherPlayer.targetX,
             otherPlayer.targetY
           );
           const nextX =
             distance < 0.75
               ? otherPlayer.targetX
-              : Phaser.Math.Linear(otherPlayer.rect.x, otherPlayer.targetX, 0.14);
+              : Phaser.Math.Linear(otherPlayer.sprite.x, otherPlayer.targetX, 0.14);
           const nextY =
             distance < 0.75
               ? otherPlayer.targetY
-              : Phaser.Math.Linear(otherPlayer.rect.y, otherPlayer.targetY, 0.14);
-          otherPlayer.rect.setPosition(nextX, nextY);
+              : Phaser.Math.Linear(otherPlayer.sprite.y - 18, otherPlayer.targetY, 0.14);
+          otherPlayer.shadow.setPosition(nextX, nextY + 4);
+          otherPlayer.sprite.setPosition(nextX, nextY + 18);
+          updateAvatarImage(otherPlayer.sprite, otherPlayer.avatarStyle, nextY < otherPlayer.targetY ? "front" : "back");
           otherPlayer.label.setPosition(nextX, nextY - 24);
         });
 
@@ -480,7 +521,9 @@ const Lobby: React.FC = () => {
         const distance = Math.hypot(dx, dy);
 
         if (distance < arrivalThreshold) {
-          player.setPosition(targetX, targetY);
+          player.setPosition(targetX, targetY + 18);
+          playerShadow?.setPosition(targetX, targetY + 4);
+          updateAvatarImage(player, localAvatarStyle, "front");
 
           // If a route is pending and we just arrived at its entrance, navigate once.
           const pendingRoute: string | undefined = (this as any).pendingRoute;
@@ -504,10 +547,12 @@ const Lobby: React.FC = () => {
           );
           const nextY = Phaser.Math.Clamp(
             player.y + (dy / distance) * moveDistance,
-            16,
-            height - 16
+            34,
+            height - 2
           );
           player.setPosition(nextX, nextY);
+          playerShadow?.setPosition(nextX, nextY - 14);
+          updateAvatarImage(player, localAvatarStyle, dy < 0 ? "back" : "front");
         }
       }
     }
