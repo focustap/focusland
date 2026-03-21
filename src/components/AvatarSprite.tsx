@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  getAvatarScaleMultipliers,
   normalizeAvatarCustomization,
   PROFILE_AVATAR_PREVIEW_SIZE,
   SKIN_OPTIONS,
@@ -20,6 +21,7 @@ const AvatarSprite: React.FC<Props> = ({
   const assetBase = import.meta.env.BASE_URL;
   const resolved = normalizeAvatarCustomization(customization);
   const skin = SKIN_OPTIONS[resolved.skinId];
+  const multipliers = getAvatarScaleMultipliers(resolved);
 
   return (
     <img
@@ -32,7 +34,9 @@ const AvatarSprite: React.FC<Props> = ({
         borderRadius: 14,
         objectFit: "contain",
         imageRendering: "pixelated",
-        background: "rgba(15, 23, 42, 0.08)"
+        background: "rgba(15, 23, 42, 0.08)",
+        transform: `scale(${multipliers.scaleX}, ${multipliers.scaleY})`,
+        transformOrigin: "center bottom"
       }}
     />
   );
