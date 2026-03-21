@@ -29,6 +29,12 @@ type CasinoState = {
 const ROOM_NAME = "focusland-casino";
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 5;
+const AI_PLAYER_ID = "__casino_ai__";
+const AI_PLAYER: PlayerPresence = {
+  userId: AI_PLAYER_ID,
+  username: "House AI",
+  onlineAt: "9999-12-31T23:59:59.999Z"
+};
 const DEFAULT_STATE: CasinoState = {
   phase: "waiting",
   chips: {},
@@ -112,6 +118,13 @@ function getSeatStyle(index: number, count: number): React.CSSProperties {
   return layouts[count]?.[index] ?? { left: "50%", top: "50%", transform: "translate(-50%, -50%)" };
 }
 
+function getTablePlayers(players: PlayerPresence[], soloMode: boolean) {
+  if (soloMode && players.length === 1) {
+    return [...players, AI_PLAYER];
+  }
+  return players;
+}
+
 const Casino: React.FC = () => {
   const [players, setPlayers] = useState<PlayerPresence[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -122,6 +135,7 @@ const Casino: React.FC = () => {
   const [status, setStatus] = useState("Join the room and wait for at least one more player.");
   const [roomFull, setRoomFull] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [soloMode, setSoloMode] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
   const playersRef = useRef<PlayerPresence[]>([]);
@@ -141,6 +155,7 @@ const Casino: React.FC = () => {
   const isSeated = currentUserId ? players.some((player) => player.userId === currentUserId) : false;
   const hostId = players[0]?.userId ?? null;
   const isHost = Boolean(currentUserId && currentUserId === hostId);
+  const tablePlayers = useMemo(() => getTablePlayers(players, soloMode), [players, soloMode]);
   const playerCountLabel = `${Math.min(players.length, MAX_PLAYERS)}/${MAX_PLAYERS}`;
   const myChips =
     currentUserId && gameState.phase !== "waiting"
@@ -151,7 +166,7 @@ const Casino: React.FC = () => {
   const potSize = Object.values(gameState.bets).reduce((sum, bet) => sum + bet, 0);
 
   const playerPanels = useMemo(() => {
-    return players.map((player) => {
+    return tablePlayers.map((player) => {
       const hand = gameState.hands[player.userId] ?? [];
       const total = getHandTotal(hand);
       const chips =
@@ -178,12 +193,12 @@ const Casino: React.FC = () => {
         wonLastRound
       };
     });
-  }, [currentGold, currentUserId, gameState, players]);
+  }, [currentGold, currentUserId, gameState, tablePlayers]);
 
   useEffect(() => {
-    playersRef.current = players;
+    playersRef.current = tablePlayers;
     isHostRef.current = isHost;
-  }, [players, isHost]);
+  }, [tablePlayers, isHost]);
 
   useEffect(() => {
     if (
@@ -274,6 +289,47 @@ const Casino: React.FC = () => {
     };
 
     await broadcastState(dealtState, "Cards out. Hit or stand.");
+  };
+
+  const maybeResolveAiTurn = async (stateToCheck: CasinoState) => {
+    const currentPlayers = playersRef.current;
+    const aiActive = currentPlayers.some((player) => player.userId === AI_PLAYER_ID);
+    if (!isHostRef.current || !aiActive || stateToCheck.phase !== "playing") {
+      return;
+    }
+
+    const aiHand = stateToCheck.hands[AI_PLAYER_ID] ?? [];
+    const aiTotal = getHandTotal(aiHand);
+    const aiDone = aiTotal > 21 || Boolean(stateToCheck.stood[AI_PLAYER_ID]);
+    if (aiDone) {
+      return;
+    }
+
+    if (aiTotal >= 17) {
+      const stoodState: CasinoState = {
+        ...stateToCheck,
+        stood: {
+          ...stateToCheck.stood,
+          [AI_PLAYER_ID]: true
+        }
+      };
+      await broadcastState(stoodState, "House AI stands.");
+      await maybeSettleRound(stoodState);
+      return;
+    }
+
+    const nextHand = [...aiHand, drawCard()];
+    const nextState: CasinoState = {
+      ...stateToCheck,
+      hands: {
+        ...stateToCheck.hands,
+        [AI_PLAYER_ID]: nextHand
+      }
+    };
+    const total = getHandTotal(nextHand);
+    await broadcastState(nextState, total > 21 ? "House AI busted." : "House AI hits.");
+    await maybeResolveAiTurn(nextState);
+    await maybeSettleRound(nextState);
   };
 
   const settleRound = async (stateToResolve: CasinoState) => {
@@ -406,7 +462,11 @@ const Casino: React.FC = () => {
             : "Join the room and wait for at least one more player."
         );
       } else if (phaseRef.current === "waiting") {
-        setStatus(`${nextPlayers.length}/${MAX_PLAYERS} seated. Host can start the table.`);
+        setStatus(
+          nextPlayers.length === 1
+            ? "You can start solo versus House AI, or wait for another player."
+            : `${nextPlayers.length}/${MAX_PLAYERS} seated. Host can start the table.`
+        );
       }
     };
 
@@ -445,6 +505,7 @@ const Casino: React.FC = () => {
         setGameState(nextPayload.state);
         setStatus(nextPayload.status ?? "Table updated.");
         void maybeDealOpeningCards(nextPayload.state);
+        void maybeResolveAiTurn(nextPayload.state);
         void maybeSettleRound(nextPayload.state);
       });
 
@@ -489,28 +550,40 @@ const Casino: React.FC = () => {
   }, []);
 
   const startGame = async () => {
-    if (!isHost || players.length < MIN_PLAYERS) {
+    if (!isHost || (players.length < MIN_PLAYERS && !(players.length === 1 && soloMode))) {
       return;
     }
 
+    const currentTablePlayers = getTablePlayers(players, soloMode);
     const chips =
       Object.keys(gameState.chips).length > 0
-        ? players.reduce<Record<string, number>>((acc, player) => {
+        ? currentTablePlayers.reduce<Record<string, number>>((acc, player) => {
             acc[player.userId] = gameState.chips[player.userId] ?? 0;
             return acc;
           }, {})
-        : await fetchGoldBalances(players.map((player) => player.userId));
+        : (() => {
+            const humanIds = players.map((player) => player.userId);
+            return fetchGoldBalances(humanIds).then((balances) => ({
+              ...balances,
+              ...(soloMode && players.length === 1 ? { [AI_PLAYER_ID]: Math.max(250, balances[humanIds[0]] ?? 250) } : {})
+            }));
+          })();
+
+    const openingBets =
+      soloMode && players.length === 1
+        ? { [AI_PLAYER_ID]: Math.min(selectedBet, (chips[AI_PLAYER_ID] ?? selectedBet)) }
+        : {};
 
     await broadcastState(
       {
         phase: "betting",
         chips,
-        bets: {},
+        bets: openingBets,
         hands: {},
         stood: {},
         lastRound: null
       },
-      "Place your gold wager to start the hand."
+      soloMode && players.length === 1 ? "Place your wager. House AI is already in." : "Place your gold wager to start the hand."
     );
   };
 
@@ -552,6 +625,7 @@ const Casino: React.FC = () => {
 
     const total = getHandTotal(nextHand);
     await broadcastState(nextState, total > 21 ? `${currentUsername} busted.` : `${currentUsername} hits.`);
+    await maybeResolveAiTurn(nextState);
     await maybeSettleRound(nextState);
   };
 
@@ -569,11 +643,12 @@ const Casino: React.FC = () => {
     };
 
     await broadcastState(nextState, `${currentUsername} stands.`);
+    await maybeResolveAiTurn(nextState);
     await maybeSettleRound(nextState);
   };
 
   const nextHand = async () => {
-    if (!isHost || players.length < MIN_PLAYERS) {
+    if (!isHost || (players.length < MIN_PLAYERS && !(players.length === 1 && soloMode))) {
       return;
     }
 
@@ -602,6 +677,16 @@ const Casino: React.FC = () => {
                   {player.username}
                 </span>
               ))}
+              {players.length === 1 ? (
+                <button
+                  type="button"
+                  className={soloMode ? "primary-button" : "secondary-button"}
+                  onClick={() => setSoloMode((current) => !current)}
+                  disabled={!isHost || gameState.phase !== "waiting"}
+                >
+                  {soloMode ? "Solo vs AI on" : "Solo vs AI"}
+                </button>
+              ) : null}
             </div>
 
             <div className="casino-table-wrap">
@@ -647,9 +732,9 @@ const Casino: React.FC = () => {
                 className="primary-button"
                 type="button"
                 onClick={() => void startGame()}
-                disabled={players.length < MIN_PLAYERS}
+                disabled={players.length < MIN_PLAYERS && !(players.length === 1 && soloMode)}
               >
-                Open betting
+                {players.length === 1 && soloMode ? "Open solo table" : "Open betting"}
               </button>
             )}
 
