@@ -106,22 +106,28 @@ const CasinoRoom: React.FC = () => {
           heightPx: number,
           label: string,
           route: string,
-          color: number
+          color: number,
+          markerX: number,
+          markerY: number
         ) => {
-          const glow = this.add.ellipse(x, y, widthPx, heightPx, color, 0.18).setDepth(13);
-          const ring = this.add.ellipse(x, y, widthPx - 8, heightPx - 8, 0x000000, 0)
-            .setStrokeStyle(2, color, 0.9)
+          const glow = this.add.circle(markerX, markerY, 22, color, 0.28).setDepth(13);
+          const marker = this.add.circle(markerX, markerY - 2, 11, color, 0.92)
+            .setStrokeStyle(2, 0xffffff, 0.9)
             .setDepth(14);
-          this.add.text(x, y, label, {
+          const tagWidth = Math.max(90, label.length * 8 + 20);
+          const tag = this.add.rectangle(markerX, markerY + 24, tagWidth, 22, 0x0f172a, 0.88)
+            .setStrokeStyle(1, color, 0.95)
+            .setDepth(14);
+          this.add.text(markerX, markerY + 24, label, {
             color: "#f8fafc",
-            fontSize: "16px",
+            fontSize: "12px",
             fontStyle: "bold"
           }).setOrigin(0.5).setDepth(15);
           this.tweens.add({
-            targets: [glow, ring],
-            alpha: { from: 0.18, to: 0.34 },
-            scale: { from: 0.98, to: 1.03 },
-            duration: 950,
+            targets: [glow, marker],
+            alpha: { from: glow.alpha, to: 0.52 },
+            scale: { from: 0.96, to: 1.08 },
+            duration: 1100,
             yoyo: true,
             repeat: -1
           });
@@ -138,9 +144,9 @@ const CasinoRoom: React.FC = () => {
           });
         };
 
-        addTable(112, 92, 180, 90, "21 Table", "/casino/21", 0x0f766e);
-        addTable(412, 230, 216, 96, "Ride the Bus", "/casino/bus", 0x0ea5e9);
-        addTable(646, 296, 148, 188, "Slots", "/casino/slots", 0x7c3aed);
+        addTable(112, 92, 180, 90, "21 Table", "/casino/21", 0x0f766e, 102, 92);
+        addTable(412, 230, 216, 96, "Ride the Bus", "/casino/bus", 0x0ea5e9, 410, 232);
+        addTable(646, 296, 148, 188, "Slots", "/casino/slots", 0x7c3aed, 650, 292);
 
         const doorY = height - 42;
         this.add.rectangle(width / 2, doorY, 176, 34, 0x14060a, 0.72)
