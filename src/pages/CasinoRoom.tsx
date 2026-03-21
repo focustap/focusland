@@ -143,7 +143,7 @@ const CasinoRoom: React.FC = () => {
         });
 
           this.playerShadow = this.add.ellipse(width / 2, height - 102, 28, 12, 0x020617, 0.25);
-          this.player = createAvatarRender(this, width / 2, height - 102, avatarCustomization, 12, 0.54);
+          this.player = createAvatarRender(this, width / 2, height - 102, avatarCustomization, 12, 1.36);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
