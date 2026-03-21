@@ -86,6 +86,8 @@ const CatchGame: React.FC = () => {
       > = [];
       let strikeWarnings: Phaser.GameObjects.Rectangle[] = [];
       let strikeBeams: Phaser.GameObjects.Rectangle[] = [];
+      let crushWarnings: Phaser.GameObjects.Rectangle[] = [];
+      let crushWalls: Phaser.GameObjects.Rectangle[] = [];
       let score = 0;
       let combo = 0;
       let comboTimeoutAt = 0;
@@ -153,6 +155,7 @@ const CatchGame: React.FC = () => {
       };
 
       const phaseLabel = () => {
+        if (elapsedSeconds >= 20) return "Phase: Collapse";
         if (elapsedSeconds >= 14) return "Phase: Storm";
         if (elapsedSeconds >= 7) return "Phase: Rush";
         return "Phase: Warmup";
@@ -194,6 +197,8 @@ const CatchGame: React.FC = () => {
         movingDots = [];
         strikeWarnings = [];
         strikeBeams = [];
+        crushWarnings = [];
+        crushWalls = [];
 
         playerRect = this.add.rectangle(width / 2, height - 48, 88, 18, playerColor);
         playerRect.setStrokeStyle(2, 0xe0f2fe, 0.55);
@@ -235,7 +240,7 @@ const CatchGame: React.FC = () => {
           callback: () => {
             if (gameOver) return;
 
-            const hazardChance = elapsedSeconds >= 16 ? 0.42 : elapsedSeconds >= 7 ? 0.35 : 0.24;
+            const hazardChance = elapsedSeconds >= 20 ? 0.3 : elapsedSeconds >= 14 ? 0.26 : elapsedSeconds >= 7 ? 0.2 : 0.12;
             const timeChance = elapsedSeconds >= 6 ? 0.08 : 0.04;
             const roll = Math.random();
             const kind: "good" | "hazard" | "time" =
@@ -371,6 +376,70 @@ const CatchGame: React.FC = () => {
               this.time.delayedCall(220, () => {
                 strikeBeams = strikeBeams.filter((item) => item !== beam);
                 clearObject(beam);
+              });
+            });
+          }
+        });
+
+        this.time.addEvent({
+          delay: 3400,
+          loop: true,
+          callback: () => {
+            if (gameOver || elapsedSeconds < 20) return;
+
+            const laneWidth = 86;
+            const safeX = Phaser.Math.Between(76, width - 76);
+            const leftWidth = Math.max(0, safeX - laneWidth / 2);
+            const rightX = safeX + laneWidth / 2;
+            const rightWidth = Math.max(0, width - rightX);
+            const warningY = height - 82;
+
+            if (leftWidth > 0) {
+              const leftWarning = this.add.rectangle(leftWidth / 2, warningY, leftWidth, 26, 0xdc2626, 0.24);
+              leftWarning.setStrokeStyle(2, 0xfca5a5, 0.7);
+              crushWarnings.push(leftWarning);
+              this.tweens.add({ targets: leftWarning, alpha: 0.72, yoyo: true, repeat: 3, duration: 110 });
+            }
+
+            if (rightWidth > 0) {
+              const rightWarning = this.add.rectangle(rightX + rightWidth / 2, warningY, rightWidth, 26, 0xdc2626, 0.24);
+              rightWarning.setStrokeStyle(2, 0xfca5a5, 0.7);
+              crushWarnings.push(rightWarning);
+              this.tweens.add({ targets: rightWarning, alpha: 0.72, yoyo: true, repeat: 3, duration: 110 });
+            }
+
+            const safeMarker = this.add.rectangle(safeX, warningY, laneWidth, 26, 0x38bdf8, 0.22);
+            safeMarker.setStrokeStyle(2, 0xe0f2fe, 0.78);
+            crushWarnings.push(safeMarker);
+            this.tweens.add({ targets: safeMarker, alpha: 0.85, yoyo: true, repeat: 3, duration: 110 });
+            playTone(this, 240, 150, "sawtooth", 0.04, 160);
+
+            this.time.delayedCall(900, () => {
+              crushWarnings.forEach((warning) => clearObject(warning));
+              crushWarnings = [];
+
+              if (leftWidth > 0) {
+                const leftWall = this.add.rectangle(leftWidth / 2, height / 2, leftWidth, height - 120, 0xb91c1c, 0.34);
+                leftWall.setStrokeStyle(2, 0xfca5a5, 0.65);
+                crushWalls.push(leftWall);
+              }
+
+              if (rightWidth > 0) {
+                const rightWall = this.add.rectangle(rightX + rightWidth / 2, height / 2, rightWidth, height - 120, 0xb91c1c, 0.34);
+                rightWall.setStrokeStyle(2, 0xfca5a5, 0.65);
+                crushWalls.push(rightWall);
+              }
+
+              playTone(this, 150, 220, "sawtooth", 0.05, 90);
+              this.cameras.main.shake(120, 0.004);
+
+              if (playerRect && Math.abs(playerRect.x - safeX) > laneWidth / 2 - 8) {
+                endRound(this, "The walls closed in!");
+              }
+
+              this.time.delayedCall(260, () => {
+                crushWalls.forEach((wall) => clearObject(wall));
+                crushWalls = [];
               });
             });
           }
@@ -520,7 +589,7 @@ const CatchGame: React.FC = () => {
               setRestartCount((count) => count + 1);
               setCanRestart(false);
               setLastScore(null);
-              setStatus("Catch green drops, cash in blue time cubes, and stay alive through the storm.");
+              setStatus("Catch green drops, cash in blue time cubes, and survive the rush, storm, and collapse.");
             }}
           >
             Restart game
