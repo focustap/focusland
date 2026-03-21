@@ -1,6 +1,7 @@
 import React from "react";
 import {
   normalizeAvatarCustomization,
+  PROFILE_AVATAR_PREVIEW_SIZE,
   SKIN_OPTIONS,
   type AvatarCustomization
 } from "../lib/avatarSprites";
@@ -13,7 +14,7 @@ type Props = {
 
 const AvatarSprite: React.FC<Props> = ({
   customization,
-  size = 224,
+  size = PROFILE_AVATAR_PREVIEW_SIZE,
   className
 }) => {
   const assetBase = import.meta.env.BASE_URL;

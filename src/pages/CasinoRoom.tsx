@@ -7,6 +7,7 @@ import {
   getStoredAvatarCustomization,
   loadAvatarSpriteSheet,
   normalizeAvatarCustomization,
+  TOWN_AVATAR_SCALE,
   updateAvatarRender,
   type AvatarCustomization,
   type AvatarRender
@@ -141,7 +142,7 @@ const CasinoRoom: React.FC = () => {
           color: 0x8b5a2b
         });
 
-          this.player = createAvatarRender(this, width / 2, height - 102, avatarCustomization, 12, 2.2);
+          this.player = createAvatarRender(this, width / 2, height - 102, avatarCustomization, 12, TOWN_AVATAR_SCALE);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;

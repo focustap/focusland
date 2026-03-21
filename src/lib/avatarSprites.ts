@@ -1,6 +1,8 @@
 import Phaser from "phaser";
 
 export const AVATAR_STORAGE_KEY = "focusland-avatar-customization";
+export const TOWN_AVATAR_SCALE = 1.7;
+export const PROFILE_AVATAR_PREVIEW_SIZE = 224;
 
 export type AvatarFacing = "front" | "back" | "left" | "right";
 
@@ -134,7 +136,7 @@ export function createAvatarRender(
   y: number,
   customization: AvatarCustomization,
   depth = 10,
-  scale = 0.52
+  scale = TOWN_AVATAR_SCALE
 ): AvatarRender {
   ensureAvatarAnimations(scene);
   const resolved = normalizeAvatarCustomization(customization);
