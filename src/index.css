@@ -160,12 +160,12 @@ input {
 
 .secondary-button {
   background: var(--card-bg);
-  color: #1f2933;
+  color: var(--page-text);
   border: 1px solid var(--input-border);
 }
 
 .secondary-button:hover {
-  background: #e5e7eb;
+  background: rgba(148, 163, 184, 0.14);
 }
 
 .link-button {
@@ -293,7 +293,7 @@ input {
   padding: 1rem;
   border-radius: 0.75rem;
   background: var(--panel-bg);
-  border: 1px solid #dbe2ea;
+  border: 1px solid var(--card-border);
 }
 
 .casino-table-wrap {
@@ -329,7 +329,7 @@ input {
 .casino-seat {
   position: absolute;
   width: 210px;
-  background: rgba(248, 250, 252, 0.96);
+  background: color-mix(in srgb, var(--panel-bg) 94%, white 6%);
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
 }
 
@@ -537,7 +537,7 @@ body[data-theme="dark"] .ride-bus-avatar {
   padding: 0.9rem 1rem;
   border-radius: 0.9rem;
   background: var(--panel-bg);
-  border: 1px solid #dbe2ea;
+  border: 1px solid var(--card-border);
 }
 
 .brawl-player-pill strong {
@@ -545,7 +545,7 @@ body[data-theme="dark"] .ride-bus-avatar {
 }
 
 .brawl-player-pill span {
-  color: #475569;
+  color: color-mix(in srgb, var(--page-text) 70%, transparent 30%);
   font-size: 0.9rem;
 }
 
@@ -566,6 +566,7 @@ body[data-theme="dark"] .ride-bus-avatar {
   border-radius: 1rem;
   border: 2px solid #d1d5db;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  color: var(--page-text);
 }
 
 .brawl-pick-card strong {
@@ -574,7 +575,7 @@ body[data-theme="dark"] .ride-bus-avatar {
 
 .brawl-pick-card span {
   text-align: left;
-  color: #475569;
+  color: color-mix(in srgb, var(--page-text) 70%, transparent 30%);
   font-size: 0.88rem;
 }
 
@@ -594,7 +595,7 @@ body[data-theme="dark"] .ride-bus-avatar {
 }
 
 .brawl-controls {
-  color: #334155;
+  color: color-mix(in srgb, var(--page-text) 82%, transparent 18%);
 }
 
 .input-prompt-row {
@@ -639,6 +640,52 @@ body[data-theme="dark"] .ride-bus-avatar {
   box-shadow:
     0 18px 46px rgba(15, 23, 42, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+body[data-theme="dark"] .info {
+  color: #c7d2fe;
+  background: rgba(51, 65, 85, 0.88);
+}
+
+body[data-theme="dark"] .error {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.76);
+}
+
+body[data-theme="dark"] .warning {
+  color: #fde68a;
+  background: rgba(120, 53, 15, 0.76);
+}
+
+body[data-theme="dark"] .casino-seat {
+  background: rgba(28, 32, 31, 0.97);
+  color: #f8fafc;
+  box-shadow: 0 16px 28px rgba(0, 0, 0, 0.3);
+}
+
+body[data-theme="dark"] .casino-panel,
+body[data-theme="dark"] .casino-panel strong,
+body[data-theme="dark"] .casino-panel span,
+body[data-theme="dark"] .casino-table-wrap,
+body[data-theme="dark"] .ride-bus-table,
+body[data-theme="dark"] .ride-bus-center,
+body[data-theme="dark"] .casino-pot-display {
+  color: #f8fafc;
+}
+
+body[data-theme="dark"] .casino-panel span,
+body[data-theme="dark"] .ride-bus-center span {
+  color: #e5e7eb;
+}
+
+body[data-theme="dark"] .brawl-shell {
+  background:
+    radial-gradient(circle at top, rgba(96, 165, 250, 0.16), transparent 42%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98) 58%, rgba(0, 0, 0, 0.98));
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .brawl-stage-wrap {
