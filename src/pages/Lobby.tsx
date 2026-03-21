@@ -120,7 +120,7 @@ const Lobby: React.FC = () => {
         }
 
         preload() {
-          this.load.image("lobby-town", `${assetBase}assets/lobby/tiny-town/sample.png`);
+          this.load.image("lobby-town", `${assetBase}assets/lobby/tiny-town/town-square.png`);
         }
 
         create() {
@@ -135,6 +135,40 @@ const Lobby: React.FC = () => {
         this.add.rectangle(width / 2, height / 2, width - 16, height - 16, 0x000000, 0)
           .setStrokeStyle(2, 0xffffff, 0.08)
           .setDepth(20);
+
+        const addTreeCover = (x: number, y: number, scale = 1) => {
+          this.add.rectangle(x, y + 24 * scale, 10 * scale, 20 * scale, 0x6b4226).setDepth(4);
+          this.add.ellipse(x, y + 6 * scale, 30 * scale, 46 * scale, 0x2d6a4f).setDepth(5);
+          this.add.ellipse(x - 10 * scale, y + 12 * scale, 18 * scale, 24 * scale, 0x1f5138).setDepth(5);
+          this.add.ellipse(x + 10 * scale, y + 12 * scale, 18 * scale, 24 * scale, 0x3f8f62).setDepth(5);
+        };
+
+        const addBushCover = (x: number, y: number, widthPx: number) => {
+          this.add.ellipse(x, y, widthPx, 26, 0x6fce73).setDepth(5);
+          this.add.ellipse(x - widthPx * 0.22, y + 2, widthPx * 0.4, 18, 0x55a85a).setDepth(5);
+          this.add.ellipse(x + widthPx * 0.22, y + 1, widthPx * 0.42, 18, 0x4a9652).setDepth(5);
+        };
+
+        const addLantern = (x: number, y: number) => {
+          this.add.rectangle(x, y + 12, 4, 16, 0x6b4226).setDepth(6);
+          this.add.rectangle(x, y, 10, 12, 0xfbbf24).setDepth(7);
+          this.add.rectangle(x, y, 14, 16, 0xfef3c7, 0.18).setDepth(6);
+        };
+
+        const addCrate = (x: number, y: number) => {
+          this.add.rectangle(x, y, 18, 18, 0x8b5a2b).setDepth(5);
+          this.add.line(x, y, -7, -7, 7, 7, 0xd1a068, 0.8).setDepth(6);
+          this.add.line(x, y, -7, 7, 7, -7, 0xd1a068, 0.8).setDepth(6);
+        };
+
+        addTreeCover(334, 214, 0.9);
+        addTreeCover(560, 328, 0.92);
+        addTreeCover(350, 366, 0.88);
+        addBushCover(490, 294, 54);
+        addBushCover(602, 210, 58);
+        addCrate(673, 322);
+        addLantern(458, 164);
+        addLantern(608, 160);
 
         const localColor = profileColorToNumber(profileColor);
 
