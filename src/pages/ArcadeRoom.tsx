@@ -79,14 +79,16 @@ const ArcadeRoom: React.FC = () => {
 
         preload() {
           loadAvatarSpriteSheet(this, assetBase);
+          this.load.image("arcade-room-bg", `${assetBase}assets/lobby/arcade-room.png`);
         }
 
         create() {
           this.cameras.main.setBackgroundColor("#020617");
-          this.add.rectangle(width / 2, height / 2, width, height, 0x111827);
-          this.add.rectangle(width / 2, height / 2, width - 30, height - 30, 0x1f2937);
-          this.add.rectangle(width / 2, height / 2, width - 70, height - 92, 0x0b1220);
-          this.add.rectangle(width / 2, height - 76, width - 120, 98, 0x111827);
+          const bg = this.add.image(width / 2, height / 2, "arcade-room-bg");
+          bg.setDisplaySize(width, height);
+          this.add.rectangle(width / 2, height / 2, width, height, 0x020617, 0.18);
+          this.add.rectangle(width / 2, height / 2, width - 16, height - 16, 0x000000, 0)
+            .setStrokeStyle(2, 0xffffff, 0.08);
 
         this.add.text(width / 2, 34, "Focusland Arcade", {
           color: "#7dd3fc",
@@ -95,54 +97,53 @@ const ArcadeRoom: React.FC = () => {
         }).setOrigin(0.5);
 
         const machines = [
-          { label: "Dodge", route: "/game", x: 130, y: 168, color: 0x22c55e },
-          { label: "Catch", route: "/catch", x: 315, y: 168, color: 0xf97316 },
-          { label: "Pong", route: "/pong", x: 500, y: 168, color: 0x06b6d4 },
-          { label: "8 Ball", route: "/pool", x: 650, y: 168, color: 0x0f766e }
+          { label: "Dodge", route: "/game", x: 420, y: 134, color: 0x22c55e },
+          { label: "Catch", route: "/catch", x: 512, y: 136, color: 0xf97316 },
+          { label: "Pong", route: "/pong", x: 604, y: 136, color: 0x06b6d4 },
+          { label: "8 Ball", route: "/pool", x: 274, y: 346, color: 0x0f766e }
         ];
 
         machines.forEach((machine) => {
-          this.add.rectangle(machine.x, machine.y, 96, 128, machine.color);
-          this.add.rectangle(machine.x, machine.y - 12, 68, 48, 0x020617, 0.9);
-          this.add.circle(machine.x, machine.y + 30, 7, 0xf43f5e);
-          this.add.circle(machine.x + 18, machine.y + 30, 7, 0xfacc15);
-          this.add.rectangle(machine.x, machine.y + 58, 24, 8, 0xe5e7eb);
+          this.add.circle(machine.x, machine.y + 26, 26, machine.color, 0.28).setDepth(2);
+          this.add.circle(machine.x, machine.y + 18, 12, machine.color, 0.88)
+            .setStrokeStyle(2, 0xffffff, 0.9)
+            .setDepth(3);
           this.add.text(machine.x, machine.y + 82, machine.label, {
             color: "#f8fafc",
-            fontSize: "16px",
+            fontSize: "15px",
             fontStyle: "bold"
-          }).setOrigin(0.5);
+          }).setOrigin(0.5).setDepth(3);
 
           this.hotspots.push({
             label: machine.label,
             route: machine.route,
             x: machine.x,
             y: machine.y,
-            width: 96,
-            height: 128,
+            width: 82,
+            height: 96,
             entranceX: machine.x,
-            entranceY: machine.y + 88
+            entranceY: machine.y + 54
           });
         });
 
-        const doorY = height - 70;
-        this.add.rectangle(width - 96, doorY, 88, 120, 0x31211a);
-        this.add.rectangle(width - 96, doorY - 12, 58, 78, 0x9a3412);
-        this.add.text(width - 96, doorY + 58, "Hub Door", {
-          color: "#ffedd5",
-          fontSize: "15px",
+        const doorX = 44;
+        const doorY = height - 84;
+        this.add.rectangle(doorX, doorY, 64, 96, 0x22c55e, 0.28).setDepth(2);
+        this.add.text(doorX + 24, doorY + 10, "Hub", {
+          color: "#dcfce7",
+          fontSize: "14px",
           fontStyle: "bold"
-        }).setOrigin(0.5);
+        }).setOrigin(0.5).setDepth(3);
 
         this.hotspots.push({
           label: "Hub Door",
           route: "/lobby",
-          x: width - 96,
+          x: doorX,
           y: doorY,
-          width: 88,
-          height: 120,
-          entranceX: width - 96,
-          entranceY: height - 100
+          width: 72,
+          height: 104,
+          entranceX: doorX + 22,
+          entranceY: height - 94
         });
 
           this.playerShadow = this.add.ellipse(112, height - 84, 28, 12, 0x020617, 0.28);

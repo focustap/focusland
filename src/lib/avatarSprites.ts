@@ -21,7 +21,8 @@ export const SKIN_OPTIONS: SkinDefinition[] = [
   { id: 2, key: "caroline", label: "Caroline", assetBaseName: "caroline" },
   { id: 3, key: "demetrius", label: "Demetrius", assetBaseName: "demetrius" },
   { id: 4, key: "elliott", label: "Elliott", assetBaseName: "elliott" },
-  { id: 5, key: "krobus", label: "Krobus", assetBaseName: "krobus" }
+  { id: 5, key: "krobus", label: "Krobus", assetBaseName: "krobus" },
+  { id: 6, key: "dwarf", label: "Dwarf", assetBaseName: "dwarf" }
 ];
 
 export const DEFAULT_AVATAR_CUSTOMIZATION: AvatarCustomization = {
