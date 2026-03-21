@@ -73,15 +73,20 @@ const Lobby: React.FC = () => {
 
       const width = 800;
       const height = 520;
+      const playerCollisionRadius = 13;
       const lobbyBlockers = [
-        new Phaser.Geom.Rectangle(34, 18, 154, 108),
-        new Phaser.Geom.Rectangle(305, 16, 194, 120),
-        new Phaser.Geom.Rectangle(593, 18, 152, 108),
-        new Phaser.Geom.Rectangle(20, 204, 174, 96),
-        new Phaser.Geom.Rectangle(582, 210, 160, 106),
-        new Phaser.Geom.Rectangle(254, 350, 76, 118),
-        new Phaser.Geom.Rectangle(328, 332, 156, 42),
-        new Phaser.Geom.Rectangle(482, 350, 74, 118)
+        new Phaser.Geom.Rectangle(22, 12, 174, 120),
+        new Phaser.Geom.Rectangle(586, 12, 168, 118),
+        new Phaser.Geom.Rectangle(16, 198, 188, 112),
+        new Phaser.Geom.Rectangle(572, 198, 176, 118),
+        new Phaser.Geom.Rectangle(296, 12, 66, 132),
+        new Phaser.Geom.Rectangle(362, 12, 84, 70),
+        new Phaser.Geom.Rectangle(446, 12, 64, 132),
+        new Phaser.Geom.Rectangle(320, 82, 48, 56),
+        new Phaser.Geom.Rectangle(432, 82, 48, 56),
+        new Phaser.Geom.Rectangle(246, 326, 80, 140),
+        new Phaser.Geom.Rectangle(326, 326, 158, 44),
+        new Phaser.Geom.Rectangle(484, 326, 80, 140)
       ];
 
       // Simple structure to describe a building zone.
@@ -120,8 +125,10 @@ const Lobby: React.FC = () => {
         key: "LobbyScene"
       };
 
-      const isBlocked = (x: number, y: number) =>
-        lobbyBlockers.some((blocker) => blocker.contains(x, y));
+      const isBlocked = (x: number, y: number) => {
+        const footprint = new Phaser.Geom.Circle(x, y, playerCollisionRadius);
+        return lobbyBlockers.some((blocker) => Phaser.Geom.Intersects.CircleToRectangle(footprint, blocker));
+      };
 
       const resolveBlockedStep = (
         currentX: number,
@@ -561,8 +568,10 @@ const Lobby: React.FC = () => {
           return;
         }
 
-        const dx = targetX - player.container.x;
-        const dy = targetY - player.container.y;
+        const currentLogicalX = player.container.x;
+        const currentLogicalY = player.container.y - 18;
+        const dx = targetX - currentLogicalX;
+        const dy = targetY - currentLogicalY;
         const distance = Math.hypot(dx, dy);
 
         if (distance < arrivalThreshold) {
@@ -585,20 +594,20 @@ const Lobby: React.FC = () => {
           const step = (walkSpeed * delta) / 1000;
           const moveDistance = Math.min(step, distance);
           const nextX = Phaser.Math.Clamp(
-            player.container.x + (dx / distance) * moveDistance,
+            currentLogicalX + (dx / distance) * moveDistance,
             12,
             width - 12
           );
-          const nextY = Phaser.Math.Clamp(
-            player.container.y + (dy / distance) * moveDistance,
+          const nextLogicalY = Phaser.Math.Clamp(
+            currentLogicalY + (dy / distance) * moveDistance,
             34,
-            height - 2
+            height - 20
           );
           const resolvedStep = resolveBlockedStep(
-            player.container.x,
-            player.container.y,
+            currentLogicalX,
+            currentLogicalY,
             nextX,
-            nextY
+            nextLogicalY
           );
 
           if (resolvedStep.blocked) {
@@ -608,7 +617,7 @@ const Lobby: React.FC = () => {
             return;
           }
 
-          player.container.setPosition(resolvedStep.x, resolvedStep.y);
+          player.container.setPosition(resolvedStep.x, resolvedStep.y + 18);
           updateAvatarRender(
             player,
             localAvatarCustomization,
