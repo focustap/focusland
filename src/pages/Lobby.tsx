@@ -96,7 +96,6 @@ const Lobby: React.FC = () => {
       };
 
       let player: AvatarRender | null = null;
-      let playerShadow: Phaser.GameObjects.Ellipse | null = null;
       let targetX: number | null = null;
       let targetY: number | null = null;
       let buildings: Building[] = [];
@@ -115,7 +114,6 @@ const Lobby: React.FC = () => {
           string,
           {
             render: AvatarRender;
-            shadow: Phaser.GameObjects.Ellipse;
             label: Phaser.GameObjects.Text;
             targetX: number;
             targetY: number;
@@ -154,8 +152,7 @@ const Lobby: React.FC = () => {
           .setStrokeStyle(2, 0xffffff, 0.08)
           .setDepth(20);
 
-        playerShadow = this.add.ellipse(width / 2, height / 2 + 42, 28, 12, 0x020617, 0.3).setDepth(11);
-        player = createAvatarRender(this, width / 2, height / 2 + 56, localAvatarCustomization, 12, 1.36);
+        player = createAvatarRender(this, width / 2, height / 2 + 56, localAvatarCustomization, 12, 2.72);
 
         const handlePageHide = () => {
           void removePresenceForUser({ userId, roomName: LOBBY_ROOM_NAME });
@@ -430,7 +427,6 @@ const Lobby: React.FC = () => {
         if (eventType === "DELETE") {
           if (existing) {
             existing.render.container.destroy();
-            existing.shadow.destroy();
             existing.label.destroy();
             this.otherPlayers.delete(row.user_id);
           }
@@ -439,8 +435,7 @@ const Lobby: React.FC = () => {
 
         if (!existing) {
           const customization = this.avatarCustomizationCache.get(row.user_id) ?? DEFAULT_AVATAR_CUSTOMIZATION;
-          const shadow = this.add.ellipse(row.x, row.y + 4, 28, 12, 0x020617, 0.28).setDepth(11);
-          const render = createAvatarRender(this, row.x, row.y + 18, customization, 12, 1.36);
+          const render = createAvatarRender(this, row.x, row.y + 18, customization, 12, 2.72);
           const label = this.add.text(row.x, row.y - 24, row.username ?? "Player", {
             fontSize: "12px",
             color: "#f8fafc",
@@ -452,7 +447,6 @@ const Lobby: React.FC = () => {
 
           this.otherPlayers.set(row.user_id, {
             render,
-            shadow,
             label,
             targetX: row.x,
             targetY: row.y,
@@ -511,7 +505,6 @@ const Lobby: React.FC = () => {
             distance < 0.75
               ? otherPlayer.targetY
               : Phaser.Math.Linear(otherPlayer.render.container.y - 18, otherPlayer.targetY, 0.14);
-          otherPlayer.shadow.setPosition(nextX, nextY + 4);
           otherPlayer.render.container.setPosition(nextX, nextY + 18);
           updateAvatarRender(
             otherPlayer.render,
@@ -539,7 +532,6 @@ const Lobby: React.FC = () => {
 
         if (distance < arrivalThreshold) {
           player.container.setPosition(targetX, targetY + 18);
-          playerShadow?.setPosition(targetX, targetY + 4);
           updateAvatarRender(player, localAvatarCustomization, "front", false);
 
           // If a route is pending and we just arrived at its entrance, navigate once.
@@ -568,7 +560,6 @@ const Lobby: React.FC = () => {
             height - 2
           );
           player.container.setPosition(nextX, nextY);
-          playerShadow?.setPosition(nextX, nextY - 14);
           updateAvatarRender(
             player,
             localAvatarCustomization,

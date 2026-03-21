@@ -70,7 +70,6 @@ const BrawlRoom: React.FC = () => {
 
       class ArenaScene extends Phaser.Scene {
         player!: AvatarRender;
-        shadow!: Phaser.GameObjects.Ellipse;
         targetX: number | null = null;
         targetY: number | null = null;
         pendingRoute: string | null = null;
@@ -145,8 +144,7 @@ const BrawlRoom: React.FC = () => {
             entranceY: height - 118
           });
 
-          this.shadow = this.add.ellipse(width / 2, height - 84, 28, 12, 0x020617, 0.28);
-          this.player = createAvatarRender(this, width / 2, height - 84, avatarCustomization, 12, 1.36);
+          this.player = createAvatarRender(this, width / 2, height - 84, avatarCustomization, 12, 2.72);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
@@ -182,7 +180,6 @@ const BrawlRoom: React.FC = () => {
 
           if (distance <= step) {
             this.player.container.setPosition(this.targetX, this.targetY - 18);
-            this.shadow.setPosition(this.targetX, this.targetY + 18);
             updateAvatarRender(this.player, avatarCustomization, "front", false);
             const route = this.pendingRoute;
             this.targetX = null;
@@ -197,7 +194,6 @@ const BrawlRoom: React.FC = () => {
           const nextX = Phaser.Math.Clamp(this.player.container.x + (dx / distance) * step, 18, width - 18);
           const nextY = Phaser.Math.Clamp(this.player.container.y + (dy / distance) * step, 38, height - 40);
           this.player.container.setPosition(nextX, nextY);
-          this.shadow.setPosition(nextX, nextY + 18);
           updateAvatarRender(
             this.player,
             avatarCustomization,

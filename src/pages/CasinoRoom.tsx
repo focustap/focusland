@@ -72,7 +72,6 @@ const CasinoRoom: React.FC = () => {
 
       class CasinoScene extends Phaser.Scene {
         player!: AvatarRender;
-        playerShadow!: Phaser.GameObjects.Ellipse;
         targetX: number | null = null;
         targetY: number | null = null;
         pendingRoute: string | null = null;
@@ -142,8 +141,7 @@ const CasinoRoom: React.FC = () => {
           color: 0x8b5a2b
         });
 
-          this.playerShadow = this.add.ellipse(width / 2, height - 102, 28, 12, 0x020617, 0.25);
-          this.player = createAvatarRender(this, width / 2, height - 102, avatarCustomization, 12, 1.36);
+          this.player = createAvatarRender(this, width / 2, height - 102, avatarCustomization, 12, 2.72);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
@@ -179,7 +177,6 @@ const CasinoRoom: React.FC = () => {
 
           if (distance <= step) {
             this.player.container.setPosition(this.targetX, this.targetY - 18);
-            this.playerShadow.setPosition(this.targetX, this.targetY + 18);
             updateAvatarRender(this.player, avatarCustomization, "front", false);
             const route = this.pendingRoute;
             this.targetX = null;
@@ -194,7 +191,6 @@ const CasinoRoom: React.FC = () => {
           const nextX = Phaser.Math.Clamp(this.player.container.x + (dx / distance) * step, 20, width - 20);
           const nextY = Phaser.Math.Clamp(this.player.container.y + (dy / distance) * step, 36, height - 42);
           this.player.container.setPosition(nextX, nextY);
-          this.playerShadow.setPosition(nextX, nextY + 36);
           updateAvatarRender(
             this.player,
             avatarCustomization,

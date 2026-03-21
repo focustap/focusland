@@ -71,7 +71,6 @@ const ArcadeRoom: React.FC = () => {
 
       class ArcadeScene extends Phaser.Scene {
         player!: AvatarRender;
-        playerShadow!: Phaser.GameObjects.Ellipse;
         targetX: number | null = null;
         targetY: number | null = null;
         pendingRoute: string | null = null;
@@ -146,8 +145,7 @@ const ArcadeRoom: React.FC = () => {
           entranceY: height - 94
         });
 
-          this.playerShadow = this.add.ellipse(112, height - 84, 28, 12, 0x020617, 0.28);
-          this.player = createAvatarRender(this, 112, height - 84, avatarCustomization, 12, 1.36);
+          this.player = createAvatarRender(this, 112, height - 84, avatarCustomization, 12, 2.72);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
@@ -183,7 +181,6 @@ const ArcadeRoom: React.FC = () => {
 
           if (distance <= step) {
             this.player.container.setPosition(this.targetX, this.targetY - 18);
-            this.playerShadow.setPosition(this.targetX, this.targetY + 18);
             updateAvatarRender(this.player, avatarCustomization, "front", false);
             const route = this.pendingRoute;
             this.targetX = null;
@@ -198,7 +195,6 @@ const ArcadeRoom: React.FC = () => {
           const nextX = Phaser.Math.Clamp(this.player.container.x + (dx / distance) * step, 18, width - 18);
           const nextY = Phaser.Math.Clamp(this.player.container.y + (dy / distance) * step, 38, height - 40);
           this.player.container.setPosition(nextX, nextY);
-          this.playerShadow.setPosition(nextX, nextY + 18);
           updateAvatarRender(
             this.player,
             avatarCustomization,
