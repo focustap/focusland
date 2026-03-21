@@ -180,7 +180,8 @@ const PlayerBadge: React.FC<{
   player: PlayerState;
   isActive: boolean;
   isViewer: boolean;
-}> = ({ player, isActive, isViewer }) => {
+  hideHealth?: boolean;
+}> = ({ player, isActive, isViewer, hideHealth = false }) => {
   return (
     <div className={`card-battle-badge${isActive ? " card-battle-badge--active" : ""}`}>
       <div>
@@ -188,7 +189,7 @@ const PlayerBadge: React.FC<{
         <span>{isViewer ? "You" : "Opponent"}</span>
       </div>
       <div className="card-battle-badge__stats">
-        <span>Health {player.health}</span>
+        {!hideHealth ? <span>Health {player.health}</span> : null}
         <span>Resource {player.currentResource}/{player.maxResource}</span>
         <span>Deck {player.deck.length}</span>
       </div>
@@ -282,6 +283,7 @@ const GameBoard: React.FC<GameBoardProps> = ({
             player={opponent}
             isActive={state.activePlayer !== viewerIndex}
             isViewer={false}
+            hideHealth
           />
           <div className="card-battle-arena-half card-battle-arena-half--top">
             <SidePiles player={opponent} flipped />
