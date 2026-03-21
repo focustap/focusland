@@ -6,11 +6,9 @@ import { AuthContext } from "../components/AuthProvider";
 import NavBar from "../components/NavBar";
 import AvatarSprite from "../components/AvatarSprite";
 import {
-  BODY_OPTIONS,
   DEFAULT_AVATAR_CUSTOMIZATION,
-  HEADWEAR_OPTIONS,
   normalizeAvatarCustomization,
-  OUTFIT_OPTIONS,
+  SKIN_OPTIONS,
   storeAvatarCustomization,
   getStoredAvatarCustomization,
   type AvatarCustomization
@@ -51,7 +49,7 @@ const Profile: React.FC = () => {
 
         const { data, error } = await supabase
           .from("profiles")
-          .select("username, color, dark_mode, gold")
+          .select("*")
           .eq("id", session.user.id)
           .maybeSingle();
 
@@ -166,93 +164,24 @@ const Profile: React.FC = () => {
                   aria-label="Choose accent color"
                 />
               </div>
-              <div className="info">The accent color still powers simple UI avatars and legacy tables. Your town look comes from the sprite selection below.</div>
-              <div className="field">
-                <span>Base body</span>
-                <div className="avatar-style-grid">
-                  {BODY_OPTIONS.map((style) => (
-                    <button
-                      type="button"
-                      key={`body-${style.id}`}
-                      className={
-                        avatarCustomization.body === style.id
-                          ? "avatar-style-button avatar-style-button--selected"
-                          : "avatar-style-button"
-                      }
-                      onClick={() => setAvatarCustomization((current) => ({ ...current, body: style.id }))}
-                      aria-label={`Use ${style.label}`}
-                    >
-                      <AvatarSprite customization={{ ...avatarCustomization, body: style.id, outfit: -1, headwear: -1 }} size={72} />
-                      <span>{style.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="field">
-                <span>Outfit</span>
-                <div className="avatar-style-grid">
+              <div className="info">Choose a full town skin. More unlockable skins can be added later without changing the avatar system again.</div>
+              <div className="avatar-style-grid">
+                {SKIN_OPTIONS.map((skin) => (
                   <button
                     type="button"
+                    key={skin.id}
                     className={
-                      avatarCustomization.outfit < 0
+                      avatarCustomization.skinId === skin.id
                         ? "avatar-style-button avatar-style-button--selected"
                         : "avatar-style-button"
                     }
-                    onClick={() => setAvatarCustomization((current) => ({ ...current, outfit: -1 }))}
+                    onClick={() => setAvatarCustomization({ skinId: skin.id })}
+                    aria-label={`Use ${skin.label}`}
                   >
-                    <AvatarSprite customization={{ ...avatarCustomization, outfit: -1 }} size={72} />
-                    <span>None</span>
+                    <AvatarSprite customization={{ skinId: skin.id }} size={72} />
+                    <span>{skin.label}</span>
                   </button>
-                  {OUTFIT_OPTIONS.map((style) => (
-                    <button
-                      type="button"
-                      key={`outfit-${style.id}`}
-                      className={
-                        avatarCustomization.outfit === style.id
-                          ? "avatar-style-button avatar-style-button--selected"
-                          : "avatar-style-button"
-                      }
-                      onClick={() => setAvatarCustomization((current) => ({ ...current, outfit: style.id }))}
-                      aria-label={`Use ${style.label}`}
-                    >
-                      <AvatarSprite customization={{ ...avatarCustomization, outfit: style.id }} size={72} />
-                      <span>{style.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="field">
-                <span>Headwear</span>
-                <div className="avatar-style-grid">
-                  <button
-                    type="button"
-                    className={
-                      avatarCustomization.headwear < 0
-                        ? "avatar-style-button avatar-style-button--selected"
-                        : "avatar-style-button"
-                    }
-                    onClick={() => setAvatarCustomization((current) => ({ ...current, headwear: -1 }))}
-                  >
-                    <AvatarSprite customization={{ ...avatarCustomization, headwear: -1 }} size={72} />
-                    <span>None</span>
-                  </button>
-                  {HEADWEAR_OPTIONS.map((style) => (
-                    <button
-                      type="button"
-                      key={`headwear-${style.id}`}
-                      className={
-                        avatarCustomization.headwear === style.id
-                          ? "avatar-style-button avatar-style-button--selected"
-                          : "avatar-style-button"
-                      }
-                      onClick={() => setAvatarCustomization((current) => ({ ...current, headwear: style.id }))}
-                      aria-label={`Use ${style.label}`}
-                    >
-                      <AvatarSprite customization={{ ...avatarCustomization, headwear: style.id }} size={72} />
-                      <span>{style.label}</span>
-                    </button>
-                  ))}
-                </div>
+                ))}
               </div>
             </div>
             <div className="color-swatch-grid">

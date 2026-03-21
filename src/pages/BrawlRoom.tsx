@@ -183,7 +183,7 @@ const BrawlRoom: React.FC = () => {
           if (distance <= step) {
             this.player.container.setPosition(this.targetX, this.targetY - 18);
             this.shadow.setPosition(this.targetX, this.targetY + 18);
-            updateAvatarRender(this.player, avatarCustomization);
+            updateAvatarRender(this.player, avatarCustomization, "front", false);
             const route = this.pendingRoute;
             this.targetX = null;
             this.targetY = null;
@@ -198,7 +198,18 @@ const BrawlRoom: React.FC = () => {
           const nextY = Phaser.Math.Clamp(this.player.container.y + (dy / distance) * step, 38, height - 40);
           this.player.container.setPosition(nextX, nextY);
           this.shadow.setPosition(nextX, nextY + 18);
-          updateAvatarRender(this.player, avatarCustomization);
+          updateAvatarRender(
+            this.player,
+            avatarCustomization,
+            Math.abs(dx) > Math.abs(dy)
+              ? dx < 0
+                ? "left"
+                : "right"
+              : dy < 0
+                ? "back"
+                : "front",
+            true
+          );
         }
       }
 

@@ -481,7 +481,7 @@ const Lobby: React.FC = () => {
               }
 
               current.customization = resolvedCustomization;
-              updateAvatarRender(current.render, resolvedCustomization);
+              updateAvatarRender(current.render, resolvedCustomization, current.render.facing, false);
             });
         } else {
           existing.targetX = row.x;
@@ -495,6 +495,8 @@ const Lobby: React.FC = () => {
         if (!player) return;
 
         this.otherPlayers.forEach((otherPlayer) => {
+          const dxToTarget = otherPlayer.targetX - otherPlayer.render.container.x;
+          const dyToTarget = otherPlayer.targetY - (otherPlayer.render.container.y - 18);
           const distance = Phaser.Math.Distance.Between(
             otherPlayer.render.container.x,
             otherPlayer.render.container.y - 18,
@@ -511,7 +513,18 @@ const Lobby: React.FC = () => {
               : Phaser.Math.Linear(otherPlayer.render.container.y - 18, otherPlayer.targetY, 0.14);
           otherPlayer.shadow.setPosition(nextX, nextY + 4);
           otherPlayer.render.container.setPosition(nextX, nextY + 18);
-          updateAvatarRender(otherPlayer.render, otherPlayer.customization);
+          updateAvatarRender(
+            otherPlayer.render,
+            otherPlayer.customization,
+            Math.abs(dxToTarget) > Math.abs(dyToTarget)
+              ? dxToTarget < 0
+                ? "left"
+                : "right"
+              : dyToTarget < 0
+                ? "back"
+                : "front",
+            distance >= 0.75
+          );
           otherPlayer.label.setPosition(nextX, nextY - 24);
         });
 
@@ -527,7 +540,7 @@ const Lobby: React.FC = () => {
         if (distance < arrivalThreshold) {
           player.container.setPosition(targetX, targetY + 18);
           playerShadow?.setPosition(targetX, targetY + 4);
-          updateAvatarRender(player, localAvatarCustomization);
+          updateAvatarRender(player, localAvatarCustomization, "front", false);
 
           // If a route is pending and we just arrived at its entrance, navigate once.
           const pendingRoute: string | undefined = (this as any).pendingRoute;
@@ -556,7 +569,18 @@ const Lobby: React.FC = () => {
           );
           player.container.setPosition(nextX, nextY);
           playerShadow?.setPosition(nextX, nextY - 14);
-          updateAvatarRender(player, localAvatarCustomization);
+          updateAvatarRender(
+            player,
+            localAvatarCustomization,
+            Math.abs(dx) > Math.abs(dy)
+              ? dx < 0
+                ? "left"
+                : "right"
+              : dy < 0
+                ? "back"
+                : "front",
+            true
+          );
         }
       }
     }

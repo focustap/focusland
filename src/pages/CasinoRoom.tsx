@@ -180,7 +180,7 @@ const CasinoRoom: React.FC = () => {
           if (distance <= step) {
             this.player.container.setPosition(this.targetX, this.targetY - 18);
             this.playerShadow.setPosition(this.targetX, this.targetY + 18);
-            updateAvatarRender(this.player, avatarCustomization);
+            updateAvatarRender(this.player, avatarCustomization, "front", false);
             const route = this.pendingRoute;
             this.targetX = null;
             this.targetY = null;
@@ -195,7 +195,18 @@ const CasinoRoom: React.FC = () => {
           const nextY = Phaser.Math.Clamp(this.player.container.y + (dy / distance) * step, 36, height - 42);
           this.player.container.setPosition(nextX, nextY);
           this.playerShadow.setPosition(nextX, nextY + 36);
-          updateAvatarRender(this.player, avatarCustomization);
+          updateAvatarRender(
+            this.player,
+            avatarCustomization,
+            Math.abs(dx) > Math.abs(dy)
+              ? dx < 0
+                ? "left"
+                : "right"
+              : dy < 0
+                ? "back"
+                : "front",
+            true
+          );
         }
       }
 
