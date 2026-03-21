@@ -81,6 +81,23 @@ export type TrapOnBoard = {
   faceDown: boolean;
 };
 
+export type PendingTrapPrompt =
+  | {
+      kind: "attack";
+      trapOwner: PlayerIndex;
+      trapInstanceId: string;
+      attackerOwner: PlayerIndex;
+      attackerId: string;
+      defenderId: string | null;
+      target: "unit" | "hero";
+    }
+  | {
+      kind: "spell";
+      trapOwner: PlayerIndex;
+      trapInstanceId: string;
+      spellOwner: PlayerIndex;
+    };
+
 export type PlayerState = {
   id: PlayerIndex;
   name: string;
@@ -100,6 +117,7 @@ export type GameState = {
   turnNumber: number;
   winner: PlayerIndex | null;
   log: string[];
+  pendingTrapPrompt: PendingTrapPrompt | null;
 };
 
 export type GameAction =
@@ -121,4 +139,8 @@ export type GameAction =
     }
   | {
       type: "restart";
+    }
+  | {
+      type: "respond-trap";
+      useTrap: boolean;
     };

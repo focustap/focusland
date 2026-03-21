@@ -6,9 +6,11 @@ import type {
   CardInstance,
   GameAction,
   GameState,
+  PendingTrapPrompt,
   PlayerIndex,
   PlayerState,
   SpellCardDefinition,
+  TrapCardDefinition,
   UnitOnBoard
 } from "./types";
 
@@ -28,7 +30,8 @@ const clonePlayer = (player: PlayerState): PlayerState => ({
 const cloneState = (state: GameState): GameState => ({
   ...state,
   players: [clonePlayer(state.players[0]), clonePlayer(state.players[1])],
-  log: [...state.log]
+  log: [...state.log],
+  pendingTrapPrompt: state.pendingTrapPrompt ? { ...state.pendingTrapPrompt } : null
 });
 
 const pushLog = (state: GameState, message: string) => {
@@ -166,54 +169,91 @@ const resolveSpell = (state: GameState, playerId: PlayerIndex, card: SpellCardDe
   });
 };
 
-const triggerSpellTrap = (state: GameState, spellOwnerId: PlayerIndex) => {
-  const trapOwnerId = otherPlayer(spellOwnerId);
-  const trapOwner = state.players[trapOwnerId];
-  const trapIndex = trapOwner.traps.findIndex((trap) => {
-    const trapDefinition = getCardById(trap.cardId);
-    return isTrapCard(trapDefinition) && trapDefinition.trigger === "enemy-spell";
-  });
+const getPendingTrapDefinition = (state: GameState) => {
+  const prompt = state.pendingTrapPrompt;
 
-  if (trapIndex < 0) {
-    return;
+  if (!prompt) {
+    return null;
   }
 
-  const trap = trapOwner.traps.splice(trapIndex, 1)[0];
-  const trapDefinition = getCardById(trap.cardId);
+  const trapOwner = state.players[prompt.trapOwner];
+  const trap = trapOwner.traps.find((item) => item.instanceId === prompt.trapInstanceId);
 
-  if (!isTrapCard(trapDefinition) || trapDefinition.effect.kind !== "damage-spell-owner") {
-    return;
+  if (!trap) {
+    return null;
   }
 
-  trapOwner.discard.push({
-    instanceId: trap.instanceId,
-    cardId: trap.cardId
-  });
-  state.players[spellOwnerId].health -= trapDefinition.effect.amount;
-  pushLog(
-    state,
-    `${trapOwner.name}'s ${trapDefinition.name} triggered and dealt ${trapDefinition.effect.amount} damage to ${state.players[spellOwnerId].name}.`
-  );
-  checkWinner(state);
+  const definition = getCardById(trap.cardId);
+  return isTrapCard(definition) ? definition : null;
 };
 
-const triggerAttackTrap = (state: GameState, attackerOwnerId: PlayerIndex, attackerId: string) => {
-  const trapOwnerId = otherPlayer(attackerOwnerId);
-  const trapOwner = state.players[trapOwnerId];
-  const trapIndex = trapOwner.traps.findIndex((trap) => {
-    const trapDefinition = getCardById(trap.cardId);
-    return isTrapCard(trapDefinition) && trapDefinition.trigger === "enemy-attack";
+const queueTrapPrompt = (state: GameState, prompt: PendingTrapPrompt) => {
+  state.pendingTrapPrompt = prompt;
+  pushLog(state, `${state.players[prompt.trapOwner].name} may trigger a trap.`);
+};
+
+const maybeQueueSpellTrap = (state: GameState, spellOwnerId: PlayerIndex) => {
+  const trapOwnerId = otherPlayer(spellOwnerId);
+  const trap = state.players[trapOwnerId].traps.find((item) => {
+    const definition = getCardById(item.cardId);
+    return isTrapCard(definition) && definition.trigger === "enemy-spell";
   });
 
-  if (trapIndex < 0) {
+  if (!trap) {
     return false;
   }
 
-  const trap = trapOwner.traps.splice(trapIndex, 1)[0];
-  const trapDefinition = getCardById(trap.cardId);
+  queueTrapPrompt(state, {
+    kind: "spell",
+    trapOwner: trapOwnerId,
+    trapInstanceId: trap.instanceId,
+    spellOwner: spellOwnerId
+  });
+  return true;
+};
 
-  if (!isTrapCard(trapDefinition) || trapDefinition.effect.kind !== "destroy-attacker") {
+const maybeQueueAttackTrap = (
+  state: GameState,
+  attackerOwnerId: PlayerIndex,
+  attackerId: string,
+  defenderId: string | null,
+  target: "unit" | "hero"
+) => {
+  const trapOwnerId = otherPlayer(attackerOwnerId);
+  const trap = state.players[trapOwnerId].traps.find((item) => {
+    const definition = getCardById(item.cardId);
+    return isTrapCard(definition) && definition.trigger === "enemy-attack";
+  });
+
+  if (!trap) {
     return false;
+  }
+
+  queueTrapPrompt(state, {
+    kind: "attack",
+    trapOwner: trapOwnerId,
+    trapInstanceId: trap.instanceId,
+    attackerOwner: attackerOwnerId,
+    attackerId,
+    defenderId,
+    target
+  });
+  return true;
+};
+
+const consumeTrap = (state: GameState, trapOwnerId: PlayerIndex, trapInstanceId: string) => {
+  const trapOwner = state.players[trapOwnerId];
+  const trapIndex = trapOwner.traps.findIndex((trap) => trap.instanceId === trapInstanceId);
+
+  if (trapIndex < 0) {
+    return null;
+  }
+
+  const trap = trapOwner.traps.splice(trapIndex, 1)[0];
+  const definition = getCardById(trap.cardId);
+
+  if (!isTrapCard(definition)) {
+    return null;
   }
 
   trapOwner.discard.push({
@@ -221,22 +261,133 @@ const triggerAttackTrap = (state: GameState, attackerOwnerId: PlayerIndex, attac
     cardId: trap.cardId
   });
 
-  const attackerBoard = state.players[attackerOwnerId].board;
-  const attackerIndex = attackerBoard.findIndex((unit) => unit.instanceId === attackerId);
+  return definition;
+};
 
-  if (attackerIndex >= 0) {
-    const destroyedAttacker = attackerBoard.splice(attackerIndex, 1)[0];
-    state.players[attackerOwnerId].discard.push({
-      instanceId: destroyedAttacker.instanceId,
-      cardId: destroyedAttacker.cardId
-    });
-    pushLog(
-      state,
-      `${trapOwner.name}'s ${trapDefinition.name} destroyed ${state.players[attackerOwnerId].name}'s ${getCardById(destroyedAttacker.cardId).name}.`
-    );
+const finishAttackUnit = (state: GameState, attackerId: string, defenderId: string) => {
+  const attackerOwnerId = state.activePlayer;
+  const defenderOwnerId = otherPlayer(attackerOwnerId);
+  const attackerOwner = state.players[attackerOwnerId];
+  const defenderOwner = state.players[defenderOwnerId];
+  const attacker = attackerOwner.board.find((unit) => unit.instanceId === attackerId);
+  const defender = defenderOwner.board.find((unit) => unit.instanceId === defenderId);
+
+  if (!attacker || !defender || !canUnitAttack(attacker)) {
+    return state;
   }
 
-  return trapDefinition.effect.cancelAttack;
+  const attackerCard = getCardById(attacker.cardId);
+  const defenderCard = getCardById(defender.cardId);
+
+  if (!isUnitCard(attackerCard) || !isUnitCard(defenderCard)) {
+    return state;
+  }
+
+  attacker.exhausted = true;
+  attacker.currentHealth -= defenderCard.attack;
+  defender.currentHealth -= attackerCard.attack;
+  pushLog(state, `${attackerCard.name} attacked ${defenderCard.name}.`);
+  cleanupUnits(state);
+  checkWinner(state);
+  return state;
+};
+
+const finishAttackHero = (state: GameState, attackerId: string) => {
+  const attackerOwnerId = state.activePlayer;
+  const defenderOwnerId = otherPlayer(attackerOwnerId);
+  const attackerOwner = state.players[attackerOwnerId];
+  const defenderOwner = state.players[defenderOwnerId];
+  const attacker = attackerOwner.board.find((unit) => unit.instanceId === attackerId);
+
+  if (!attacker || !canUnitAttack(attacker) || defenderOwner.board.length > 0) {
+    return state;
+  }
+
+  const attackerCard = getCardById(attacker.cardId);
+
+  if (!isUnitCard(attackerCard)) {
+    return state;
+  }
+
+  attacker.exhausted = true;
+  defenderOwner.health -= attackerCard.attack;
+  pushLog(
+    state,
+    `${attackerOwner.name}'s ${attackerCard.name} attacked ${defenderOwner.name} for ${attackerCard.attack}.`
+  );
+  checkWinner(state);
+  return state;
+};
+
+const resolveTrapPrompt = (state: GameState, useTrap: boolean) => {
+  const prompt = state.pendingTrapPrompt;
+
+  if (!prompt) {
+    return state;
+  }
+
+  const trapDefinition = getPendingTrapDefinition(state);
+  state.pendingTrapPrompt = null;
+
+  if (!trapDefinition) {
+    return state;
+  }
+
+  if (!useTrap) {
+    pushLog(state, `${state.players[prompt.trapOwner].name} declined to use ${trapDefinition.name}.`);
+
+    if (prompt.kind === "attack" && prompt.defenderId) {
+      return finishAttackUnit(state, prompt.attackerId, prompt.defenderId);
+    }
+
+    if (prompt.kind === "attack") {
+      return finishAttackHero(state, prompt.attackerId);
+    }
+
+    return state;
+  }
+
+  const consumedTrap = consumeTrap(state, prompt.trapOwner, prompt.trapInstanceId);
+
+  if (!consumedTrap) {
+    return state;
+  }
+
+  if (prompt.kind === "spell" && consumedTrap.effect.kind === "damage-spell-owner") {
+    state.players[prompt.spellOwner].health -= consumedTrap.effect.amount;
+    pushLog(
+      state,
+      `${state.players[prompt.trapOwner].name}'s ${consumedTrap.name} triggered and dealt ${consumedTrap.effect.amount} damage to ${state.players[prompt.spellOwner].name}.`
+    );
+    checkWinner(state);
+    return state;
+  }
+
+  if (prompt.kind === "attack" && consumedTrap.effect.kind === "destroy-attacker") {
+    const attackerBoard = state.players[prompt.attackerOwner].board;
+    const attackerIndex = attackerBoard.findIndex((unit) => unit.instanceId === prompt.attackerId);
+
+    if (attackerIndex >= 0) {
+      const destroyedAttacker = attackerBoard.splice(attackerIndex, 1)[0];
+      state.players[prompt.attackerOwner].discard.push({
+        instanceId: destroyedAttacker.instanceId,
+        cardId: destroyedAttacker.cardId
+      });
+      pushLog(
+        state,
+        `${state.players[prompt.trapOwner].name}'s ${consumedTrap.name} destroyed ${state.players[prompt.attackerOwner].name}'s ${getCardById(destroyedAttacker.cardId).name}.`
+      );
+    }
+
+    if (!consumedTrap.effect.cancelAttack) {
+      if (prompt.defenderId) {
+        return finishAttackUnit(state, prompt.attackerId, prompt.defenderId);
+      }
+      return finishAttackHero(state, prompt.attackerId);
+    }
+  }
+
+  return state;
 };
 
 const startTurn = (state: GameState, playerId: PlayerIndex) => {
@@ -270,7 +421,8 @@ export const createInitialGameState = (playerNames: [string, string] = PLAYER_NA
     activePlayer: 0,
     turnNumber: 0,
     winner: null,
-    log: []
+    log: [],
+    pendingTrapPrompt: null
   };
 
   drawCards(initialState, 0, STARTING_HAND_SIZE);
@@ -319,7 +471,7 @@ const playCard = (state: GameState, cardInstanceId: string) => {
     pushLog(state, `${activePlayer.name} cast ${card.name}.`);
     resolveSpell(state, state.activePlayer, card);
     if (state.winner === null) {
-      triggerSpellTrap(state, state.activePlayer);
+      maybeQueueSpellTrap(state, state.activePlayer);
     }
     return state;
   }
@@ -345,32 +497,11 @@ const attackUnit = (state: GameState, attackerId: string, defenderId: string) =>
     return state;
   }
 
-  const attackCanceled = triggerAttackTrap(state, attackerOwnerId, attackerId);
-  if (attackCanceled) {
+  if (maybeQueueAttackTrap(state, attackerOwnerId, attackerId, defenderId, "unit")) {
     return state;
   }
 
-  const currentAttacker = attackerOwner.board.find((unit) => unit.instanceId === attackerId);
-  const currentDefender = defenderOwner.board.find((unit) => unit.instanceId === defenderId);
-
-  if (!currentAttacker || !currentDefender) {
-    return state;
-  }
-
-  const attackerCard = getCardById(currentAttacker.cardId);
-  const defenderCard = getCardById(currentDefender.cardId);
-
-  if (!isUnitCard(attackerCard) || !isUnitCard(defenderCard)) {
-    return state;
-  }
-
-  currentAttacker.exhausted = true;
-  currentAttacker.currentHealth -= defenderCard.attack;
-  currentDefender.currentHealth -= attackerCard.attack;
-  pushLog(state, `${attackerCard.name} attacked ${defenderCard.name}.`);
-  cleanupUnits(state);
-  checkWinner(state);
-  return state;
+  return finishAttackUnit(state, attackerId, defenderId);
 };
 
 const attackHero = (state: GameState, attackerId: string) => {
@@ -384,31 +515,11 @@ const attackHero = (state: GameState, attackerId: string) => {
     return state;
   }
 
-  const attackCanceled = triggerAttackTrap(state, attackerOwnerId, attackerId);
-  if (attackCanceled) {
+  if (maybeQueueAttackTrap(state, attackerOwnerId, attackerId, null, "hero")) {
     return state;
   }
 
-  const currentAttacker = attackerOwner.board.find((unit) => unit.instanceId === attackerId);
-
-  if (!currentAttacker) {
-    return state;
-  }
-
-  const attackerCard = getCardById(currentAttacker.cardId);
-
-  if (!isUnitCard(attackerCard)) {
-    return state;
-  }
-
-  currentAttacker.exhausted = true;
-  defenderOwner.health -= attackerCard.attack;
-  pushLog(
-    state,
-    `${attackerOwner.name}'s ${attackerCard.name} attacked ${defenderOwner.name} for ${attackerCard.attack}.`
-  );
-  checkWinner(state);
-  return state;
+  return finishAttackHero(state, attackerId);
 };
 
 const endTurn = (state: GameState) => {
@@ -442,6 +553,8 @@ export const getTrapCard = (cardId: string) => {
   return isTrapCard(card) ? card : null;
 };
 
+export const getPendingTrapCard = (state: GameState): TrapCardDefinition | null => getPendingTrapDefinition(state);
+
 export const cardGameReducer = (state: GameState, action: GameAction): GameState => {
   if (action.type === "restart") {
     return createInitialGameState();
@@ -453,6 +566,10 @@ export const cardGameReducer = (state: GameState, action: GameAction): GameState
 
   const nextState = cloneState(state);
 
+  if (nextState.pendingTrapPrompt !== null && action.type !== "respond-trap") {
+    return nextState;
+  }
+
   switch (action.type) {
     case "play-card":
       return playCard(nextState, action.cardInstanceId);
@@ -462,6 +579,8 @@ export const cardGameReducer = (state: GameState, action: GameAction): GameState
       return attackHero(nextState, action.attackerId);
     case "end-turn":
       return endTurn(nextState);
+    case "respond-trap":
+      return resolveTrapPrompt(nextState, action.useTrap);
     default:
       return nextState;
   }

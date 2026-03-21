@@ -1,7 +1,7 @@
 import React from "react";
 import ActionLog from "./ActionLog";
 import CardView from "./CardView";
-import { canUnitAttack, getCard } from "../../lib/card-game/engine";
+import { canUnitAttack, getCard, getPendingTrapCard } from "../../lib/card-game/engine";
 import type { GameState, PlayerIndex, PlayerState, TrapOnBoard, UnitOnBoard } from "../../lib/card-game/types";
 
 type GameBoardProps = {
@@ -12,12 +12,14 @@ type GameBoardProps = {
   isConnected: boolean;
   isHost: boolean;
   selectedAttackerId: string | null;
+  canRespondToTrap: boolean;
   onSelectAttacker: (attackerId: string | null) => void;
   onAttackUnit: (attackerId: string, defenderId: string) => void;
   onAttackHero: (attackerId: string) => void;
   onPlayCard: (cardInstanceId: string) => void;
   onEndTurn: () => void;
   onRestart: () => void;
+  onRespondToTrap: (useTrap: boolean) => void;
 };
 
 const MAX_UNITS = 5;
@@ -209,12 +211,14 @@ const GameBoard: React.FC<GameBoardProps> = ({
   isConnected,
   isHost,
   selectedAttackerId,
+  canRespondToTrap,
   onSelectAttacker,
   onAttackUnit,
   onAttackHero,
   onPlayCard,
   onEndTurn,
-  onRestart
+  onRestart,
+  onRespondToTrap
 }) => {
   const viewer = viewerIndex !== null ? state.players[viewerIndex] : null;
   const opponent =
@@ -222,6 +226,12 @@ const GameBoard: React.FC<GameBoardProps> = ({
   const selectedAttacker = viewer?.board.find((unit) => unit.instanceId === selectedAttackerId) ?? null;
   const canAttackHeroDirectly =
     canAct && selectedAttacker !== null && canUnitAttack(selectedAttacker) && opponent.board.length === 0;
+  const pendingTrapCard = getPendingTrapCard(state);
+  const trapPromptText = state.pendingTrapPrompt
+    ? canRespondToTrap && pendingTrapCard
+      ? `${state.players[state.pendingTrapPrompt.trapOwner].name}, use ${pendingTrapCard.name}?`
+      : "Waiting for trap response."
+    : null;
 
   return (
     <div className="card-battle-table-wrap">
@@ -247,6 +257,31 @@ const GameBoard: React.FC<GameBoardProps> = ({
           ) : null}
         </div>
       </div>
+
+      {trapPromptText ? (
+        <div className="warning" style={{ marginTop: 0 }}>
+          {trapPromptText}
+          <span style={{ marginLeft: "0.75rem" }}>
+            {canRespondToTrap ? (
+              <>
+                <button className="primary-button" type="button" onClick={() => onRespondToTrap(true)}>
+                  Use trap
+                </button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => onRespondToTrap(false)}
+                  style={{ marginLeft: "0.5rem" }}
+                >
+                  Skip
+                </button>
+              </>
+            ) : (
+              "Waiting for trap response."
+            )}
+          </span>
+        </div>
+      ) : null}
 
       <div className="card-battle-table">
         <section className="card-battle-side card-battle-side--top">

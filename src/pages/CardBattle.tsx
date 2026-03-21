@@ -67,10 +67,16 @@ const CardBattle: React.FC = () => {
 
   const isHost = Boolean(currentUserId && seatedPlayers[0]?.userId === currentUserId);
   const hasTwoPlayers = seatedPlayers.length === 2;
+  const canRespondToTrap =
+    hasTwoPlayers &&
+    currentSeatIndex !== null &&
+    gameState.pendingTrapPrompt !== null &&
+    gameState.pendingTrapPrompt.trapOwner === currentSeatIndex;
   const canAct =
     hasTwoPlayers &&
     currentSeatIndex !== null &&
     gameState.winner === null &&
+    gameState.pendingTrapPrompt === null &&
     gameState.activePlayer === currentSeatIndex;
 
   useEffect(() => {
@@ -265,6 +271,7 @@ const CardBattle: React.FC = () => {
           isConnected={connected}
           isHost={isHost}
           selectedAttackerId={selectedAttackerId}
+          canRespondToTrap={canRespondToTrap}
           onSelectAttacker={setSelectedAttackerId}
           onAttackUnit={(attackerId, defenderId) => {
             void sendAction({
@@ -304,6 +311,12 @@ const CardBattle: React.FC = () => {
               type: "broadcast",
               event: "card-state",
               payload: nextState
+            });
+          }}
+          onRespondToTrap={(useTrap) => {
+            void sendAction({
+              type: "respond-trap",
+              useTrap
             });
           }}
         />
