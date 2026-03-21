@@ -555,19 +555,16 @@ const Casino: React.FC = () => {
     }
 
     const currentTablePlayers = getTablePlayers(players, soloMode);
-    const chips =
-      Object.keys(gameState.chips).length > 0
-        ? currentTablePlayers.reduce<Record<string, number>>((acc, player) => {
-            acc[player.userId] = gameState.chips[player.userId] ?? 0;
-            return acc;
-          }, {})
-        : (() => {
-            const humanIds = players.map((player) => player.userId);
-            return fetchGoldBalances(humanIds).then((balances) => ({
-              ...balances,
-              ...(soloMode && players.length === 1 ? { [AI_PLAYER_ID]: Math.max(250, balances[humanIds[0]] ?? 250) } : {})
-            }));
-          })();
+    const humanIds = players.map((player) => player.userId);
+    const liveBalances = await fetchGoldBalances(humanIds);
+    const chips = currentTablePlayers.reduce<Record<string, number>>((acc, player) => {
+      if (player.userId === AI_PLAYER_ID) {
+        acc[player.userId] = Math.max(250, liveBalances[humanIds[0]] ?? 250);
+      } else {
+        acc[player.userId] = liveBalances[player.userId] ?? 0;
+      }
+      return acc;
+    }, {});
 
     const openingBets =
       soloMode && players.length === 1
