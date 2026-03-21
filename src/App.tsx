@@ -8,6 +8,7 @@ const BrawlPvE = lazy(() => import("./pages/BrawlPvE"));
 const BrawlPvEWorld = lazy(() => import("./pages/BrawlPvEWorld"));
 const ArcadeRoom = lazy(() => import("./pages/ArcadeRoom"));
 const BrawlRoom = lazy(() => import("./pages/BrawlRoom"));
+const CardBattle = lazy(() => import("./pages/CardBattle"));
 const Casino = lazy(() => import("./pages/Casino"));
 const CasinoRoom = lazy(() => import("./pages/CasinoRoom"));
 const CatchGame = lazy(() => import("./pages/CatchGame"));
@@ -115,6 +116,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <ArcadeRoom />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/arcade/cards"
+            element={
+              <ProtectedRoute>
+                <CardBattle />
               </ProtectedRoute>
             }
           />

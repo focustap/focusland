@@ -20,13 +20,13 @@ type SkinDefinition = {
 };
 
 export const SKIN_OPTIONS: SkinDefinition[] = [
-  { id: 0, key: "abigail", label: "Abigail", assetBaseName: "abigail" },
-  { id: 1, key: "alex", label: "Alex", assetBaseName: "alex" },
-  { id: 2, key: "caroline", label: "Caroline", assetBaseName: "caroline" },
-  { id: 3, key: "demetrius", label: "Demetrius", assetBaseName: "demetrius" },
-  { id: 4, key: "elliott", label: "Elliott", assetBaseName: "elliott" },
-  { id: 5, key: "vincent", label: "Vincent", assetBaseName: "vincent", scaleY: 1.18 },
-  { id: 6, key: "vincent-winter", label: "Vincent (Winter)", assetBaseName: "vincent-winter", scaleY: 1.18 }
+  { id: 0, key: "abigail", label: "Skin 1", assetBaseName: "abigail" },
+  { id: 1, key: "alex", label: "Skin 2", assetBaseName: "alex" },
+  { id: 2, key: "caroline", label: "Skin 3", assetBaseName: "caroline" },
+  { id: 3, key: "demetrius", label: "Skin 4", assetBaseName: "demetrius" },
+  { id: 4, key: "elliott", label: "Skin 5", assetBaseName: "elliott" },
+  { id: 5, key: "vincent", label: "Skin 6", assetBaseName: "vincent", scaleY: 1.18 },
+  { id: 6, key: "vincent-winter", label: "Skin 7", assetBaseName: "vincent-winter", scaleY: 1.18 }
 ];
 
 export const DEFAULT_AVATAR_CUSTOMIZATION: AvatarCustomization = {

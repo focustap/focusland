@@ -1,0 +1,20 @@
+export const STARTER_DECK: string[] = [
+  "spark-scout",
+  "spark-scout",
+  "iron-guard",
+  "iron-guard",
+  "iron-guard",
+  "dusk-duelist",
+  "dusk-duelist",
+  "river-serpent",
+  "river-serpent",
+  "siege-golem",
+  "ember-shot",
+  "ember-shot",
+  "tactical-insight",
+  "tactical-insight",
+  "flame-sweep",
+  "ambush-snare",
+  "ambush-snare",
+  "spellwire"
+];

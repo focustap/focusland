@@ -882,3 +882,278 @@ body[data-theme="dark"] .brawl-pick-card span {
   }
 }
 
+.card-battle-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  background:
+    radial-gradient(circle at top, rgba(59, 130, 246, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(241, 245, 249, 0.98));
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
+}
+
+.card-battle-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.card-battle-topbar h2,
+.card-battle-topbar p {
+  margin: 0;
+}
+
+.card-battle-topbar p {
+  margin-top: 0.4rem;
+  color: color-mix(in srgb, var(--page-text) 72%, transparent 28%);
+}
+
+.card-battle-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--card-border);
+  font-size: 0.92rem;
+}
+
+.card-battle-player {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 1.1rem;
+  border-radius: 1rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--card-border);
+}
+
+.card-battle-player strong,
+.card-battle-player span {
+  display: block;
+}
+
+.card-battle-player span {
+  color: color-mix(in srgb, var(--page-text) 72%, transparent 28%);
+  font-size: 0.92rem;
+}
+
+.card-battle-player--active {
+  border-color: rgba(79, 70, 229, 0.38);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.card-battle-player__meta {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.card-battle-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.card-battle-row__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.card-battle-row__head span {
+  color: color-mix(in srgb, var(--page-text) 68%, transparent 32%);
+  font-size: 0.9rem;
+}
+
+.card-battle-row__cards,
+.card-battle-hand {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.8rem;
+}
+
+.card-battle-hand__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.card-battle-card {
+  min-height: 216px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.9rem;
+  border-radius: 1rem;
+  text-align: left;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: #ffffff;
+  color: var(--page-text);
+}
+
+.card-battle-card--clickable {
+  cursor: pointer;
+}
+
+.card-battle-card--selected {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 26px rgba(79, 70, 229, 0.18);
+  border-color: rgba(79, 70, 229, 0.5);
+}
+
+.card-battle-card--unit {
+  background: linear-gradient(180deg, #eff6ff, #ffffff 45%);
+}
+
+.card-battle-card--spell {
+  background: linear-gradient(180deg, #fff7ed, #ffffff 45%);
+}
+
+.card-battle-card--trap,
+.card-battle-card--hidden {
+  background: linear-gradient(180deg, #faf5ff, #ffffff 45%);
+}
+
+.card-battle-card__topline,
+.card-battle-card__stats,
+.card-battle-card__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.card-battle-card__type,
+.card-battle-card__status {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  color: color-mix(in srgb, var(--page-text) 62%, transparent 38%);
+}
+
+.card-battle-card__cost {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font-weight: 800;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.card-battle-card strong {
+  font-size: 1rem;
+}
+
+.card-battle-card__text {
+  font-size: 0.9rem;
+  color: color-mix(in srgb, var(--page-text) 74%, transparent 26%);
+}
+
+.card-battle-card__stats {
+  margin-top: auto;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.card-battle-empty {
+  margin: 0;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: var(--panel-bg);
+  border: 1px dashed rgba(148, 163, 184, 0.36);
+  color: color-mix(in srgb, var(--page-text) 70%, transparent 30%);
+}
+
+.card-battle-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--card-border);
+}
+
+.card-battle-log__list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.card-battle-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.7);
+  z-index: 20;
+}
+
+.card-battle-overlay__panel {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1.5rem;
+  border-radius: 1.25rem;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.28);
+}
+
+.card-battle-overlay__panel p {
+  margin: 0;
+}
+
+body[data-theme="dark"] .card-battle-shell {
+  background:
+    radial-gradient(circle at top, rgba(96, 165, 250, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+body[data-theme="dark"] .card-battle-card {
+  background: rgba(15, 23, 42, 0.98);
+  border-color: rgba(148, 163, 184, 0.2);
+  color: #f8fafc;
+}
+
+body[data-theme="dark"] .card-battle-card--unit {
+  background: linear-gradient(180deg, rgba(30, 64, 175, 0.32), rgba(15, 23, 42, 0.98) 45%);
+}
+
+body[data-theme="dark"] .card-battle-card--spell {
+  background: linear-gradient(180deg, rgba(180, 83, 9, 0.3), rgba(15, 23, 42, 0.98) 45%);
+}
+
+body[data-theme="dark"] .card-battle-card--trap,
+body[data-theme="dark"] .card-battle-card--hidden {
+  background: linear-gradient(180deg, rgba(126, 34, 206, 0.28), rgba(15, 23, 42, 0.98) 45%);
+}
+
+@media (max-width: 760px) {
+  .card-battle-topbar,
+  .card-battle-player {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .card-battle-player__meta {
+    justify-content: flex-start;
+  }
+}
+
