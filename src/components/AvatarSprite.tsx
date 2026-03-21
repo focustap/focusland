@@ -4,28 +4,59 @@ import {
   AVATAR_FRAME_WIDTH,
   AVATAR_SHEET_COLUMNS,
   AVATAR_SHEET_PATH,
-  clampAvatarStyle,
+  AVATAR_SHEET_ROWS,
   getAvatarFrame,
-  type AvatarFacing
+  normalizeAvatarCustomization,
+  type AvatarCustomization
 } from "../lib/avatarSprites";
 
+type LayerProps = {
+  frame: number | null;
+  size: number;
+  baseUrl: string;
+};
+
+const Layer: React.FC<LayerProps> = ({ frame, size, baseUrl }) => {
+  if (frame == null) {
+    return null;
+  }
+
+  const column = frame % AVATAR_SHEET_COLUMNS;
+  const row = Math.floor(frame / AVATAR_SHEET_COLUMNS);
+  const width = AVATAR_SHEET_COLUMNS * size;
+  const height = AVATAR_SHEET_ROWS * size;
+
+  return (
+    <img
+      src={`${baseUrl}${AVATAR_SHEET_PATH}`}
+      alt=""
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        left: `-${column * size}px`,
+        top: `-${row * size}px`,
+        width,
+        height,
+        imageRendering: "pixelated",
+        pointerEvents: "none"
+      }}
+    />
+  );
+};
+
 type Props = {
-  styleIndex: number;
-  facing?: AvatarFacing;
+  customization: AvatarCustomization;
   size?: number;
   className?: string;
 };
 
 const AvatarSprite: React.FC<Props> = ({
-  styleIndex,
-  facing = "front",
+  customization,
   size = 84,
   className
 }) => {
   const assetBase = import.meta.env.BASE_URL;
-  const frame = getAvatarFrame(clampAvatarStyle(styleIndex), facing);
-  const column = frame % AVATAR_SHEET_COLUMNS;
-  const row = Math.floor(frame / AVATAR_SHEET_COLUMNS);
+  const resolved = normalizeAvatarCustomization(customization);
 
   return (
     <div
@@ -34,13 +65,15 @@ const AvatarSprite: React.FC<Props> = ({
         width: size,
         height: size,
         borderRadius: 14,
-        backgroundImage: `url(${assetBase}${AVATAR_SHEET_PATH})`,
-        backgroundRepeat: "no-repeat",
-        backgroundSize: `${AVATAR_SHEET_COLUMNS * size}px auto`,
-        backgroundPosition: `-${column * size}px -${row * size}px`,
-        imageRendering: "pixelated"
+        overflow: "hidden",
+        position: "relative",
+        background: "rgba(15, 23, 42, 0.08)"
       }}
-    />
+    >
+      <Layer frame={getAvatarFrame(resolved, "body")} size={size} baseUrl={assetBase} />
+      <Layer frame={getAvatarFrame(resolved, "outfit")} size={size} baseUrl={assetBase} />
+      <Layer frame={getAvatarFrame(resolved, "headwear")} size={size} baseUrl={assetBase} />
+    </div>
   );
 };
 

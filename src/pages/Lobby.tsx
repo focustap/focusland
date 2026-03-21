@@ -6,12 +6,14 @@ import { useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import Phaser from "phaser";
 import {
-  clampAvatarStyle,
-  createAvatarImage,
-  DEFAULT_AVATAR_STYLE,
-  getStoredAvatarStyle,
+  createAvatarRender,
+  DEFAULT_AVATAR_CUSTOMIZATION,
+  getStoredAvatarCustomization,
   loadAvatarSpriteSheet,
-  updateAvatarImage
+  normalizeAvatarCustomization,
+  updateAvatarRender,
+  type AvatarCustomization,
+  type AvatarRender
 } from "../lib/avatarSprites";
 import { DEFAULT_PROFILE_COLOR, normalizeProfileColor } from "../lib/profileColor";
 import { supabase } from "../lib/supabase";
@@ -59,8 +61,9 @@ const Lobby: React.FC = () => {
 
       const username: string | null = (profile?.username as string) ?? session.user.email ?? null;
       const profileColor = normalizeProfileColor((profile?.color as string | null) ?? DEFAULT_PROFILE_COLOR);
-      const localAvatarStyle = clampAvatarStyle(
-        Number((profile as { avatar_style?: number | null } | null)?.avatar_style ?? getStoredAvatarStyle())
+      const localAvatarCustomization = normalizeAvatarCustomization(
+        (profile as { avatar_customization?: Partial<AvatarCustomization> | null } | null)?.avatar_customization
+        ?? getStoredAvatarCustomization()
       );
 
       if (isUnmounted || !containerRef.current) {
@@ -92,7 +95,7 @@ const Lobby: React.FC = () => {
         navigate(route);
       };
 
-      let player: Phaser.GameObjects.Image | null = null;
+      let player: AvatarRender | null = null;
       let playerShadow: Phaser.GameObjects.Ellipse | null = null;
       let targetX: number | null = null;
       let targetY: number | null = null;
@@ -111,16 +114,16 @@ const Lobby: React.FC = () => {
         otherPlayers: Map<
           string,
           {
-            sprite: Phaser.GameObjects.Image;
+            render: AvatarRender;
             shadow: Phaser.GameObjects.Ellipse;
             label: Phaser.GameObjects.Text;
             targetX: number;
             targetY: number;
             lastSeenAt: number;
-            avatarStyle: number;
+            customization: AvatarCustomization;
           }
         > = new Map();
-        avatarStyleCache: Map<string, number> = new Map();
+        avatarCustomizationCache: Map<string, AvatarCustomization> = new Map();
 
         localUserId: string;
         localUsername: string | null;
@@ -152,7 +155,7 @@ const Lobby: React.FC = () => {
           .setDepth(20);
 
         playerShadow = this.add.ellipse(width / 2, height / 2 + 42, 28, 12, 0x020617, 0.3).setDepth(11);
-        player = createAvatarImage(this, width / 2, height / 2 + 56, localAvatarStyle, "front", 12, 0.34);
+        player = createAvatarRender(this, width / 2, height / 2 + 56, localAvatarCustomization, 12, 0.34);
 
         const handlePageHide = () => {
           void removePresenceForUser({ userId, roomName: LOBBY_ROOM_NAME });
@@ -165,14 +168,14 @@ const Lobby: React.FC = () => {
         };
 
           // Start "last sent" position at the initial spawn location.
-          this.lastSentX = player.x;
-          this.lastSentY = player.y;
+          this.lastSentX = player.container.x;
+          this.lastSentY = player.container.y;
 
           void upsertInitialPresence({
           userId,
           username,
-          x: player.x,
-          y: player.y - 18,
+          x: player.container.x,
+          y: player.container.y - 18,
           color: profileColor
         });
 
@@ -184,8 +187,8 @@ const Lobby: React.FC = () => {
 
               // Only send an update if the player actually moved
               // more than a tiny amount since last send.
-              const currentX = player.x;
-              const currentY = player.y - 18;
+              const currentX = player.container.x;
+              const currentY = player.container.y - 18;
               const movedDistance = Math.hypot(currentX - this.lastSentX, currentY - this.lastSentY);
               if (movedDistance < 1) {
                 return;
@@ -210,8 +213,8 @@ const Lobby: React.FC = () => {
 
               void updatePlayerPosition({
                 userId,
-                x: player.x,
-                y: player.y - 18
+                x: player.container.x,
+                y: player.container.y - 18
               });
             }
           });
@@ -426,7 +429,7 @@ const Lobby: React.FC = () => {
 
         if (eventType === "DELETE") {
           if (existing) {
-            existing.sprite.destroy();
+            existing.render.container.destroy();
             existing.shadow.destroy();
             existing.label.destroy();
             this.otherPlayers.delete(row.user_id);
@@ -435,9 +438,9 @@ const Lobby: React.FC = () => {
         }
 
         if (!existing) {
-          const avatarStyle = this.avatarStyleCache.get(row.user_id) ?? DEFAULT_AVATAR_STYLE;
+          const customization = this.avatarCustomizationCache.get(row.user_id) ?? DEFAULT_AVATAR_CUSTOMIZATION;
           const shadow = this.add.ellipse(row.x, row.y + 4, 28, 12, 0x020617, 0.28).setDepth(11);
-          const sprite = createAvatarImage(this, row.x, row.y + 18, avatarStyle, "front", 12, 0.34);
+          const render = createAvatarRender(this, row.x, row.y + 18, customization, 12, 0.34);
           const label = this.add.text(row.x, row.y - 24, row.username ?? "Player", {
             fontSize: "12px",
             color: "#f8fafc",
@@ -448,13 +451,13 @@ const Lobby: React.FC = () => {
           label.setDepth(13);
 
           this.otherPlayers.set(row.user_id, {
-            sprite,
+            render,
             shadow,
             label,
             targetX: row.x,
             targetY: row.y,
             lastSeenAt: Date.now(),
-            avatarStyle
+            customization
           });
 
           void supabase
@@ -467,17 +470,18 @@ const Lobby: React.FC = () => {
                 return;
               }
 
-              const resolvedStyle = clampAvatarStyle(
-                Number((remoteProfile as { avatar_style?: number | null }).avatar_style ?? DEFAULT_AVATAR_STYLE)
+              const resolvedCustomization = normalizeAvatarCustomization(
+                (remoteProfile as { avatar_customization?: Partial<AvatarCustomization> | null }).avatar_customization
+                ?? DEFAULT_AVATAR_CUSTOMIZATION
               );
-              this.avatarStyleCache.set(row.user_id, resolvedStyle);
+              this.avatarCustomizationCache.set(row.user_id, resolvedCustomization);
               const current = this.otherPlayers.get(row.user_id);
               if (!current) {
                 return;
               }
 
-              current.avatarStyle = resolvedStyle;
-              updateAvatarImage(current.sprite, resolvedStyle, "front");
+              current.customization = resolvedCustomization;
+              updateAvatarRender(current.render, resolvedCustomization);
             });
         } else {
           existing.targetX = row.x;
@@ -492,22 +496,22 @@ const Lobby: React.FC = () => {
 
         this.otherPlayers.forEach((otherPlayer) => {
           const distance = Phaser.Math.Distance.Between(
-            otherPlayer.sprite.x,
-            otherPlayer.sprite.y - 18,
+            otherPlayer.render.container.x,
+            otherPlayer.render.container.y - 18,
             otherPlayer.targetX,
             otherPlayer.targetY
           );
           const nextX =
             distance < 0.75
               ? otherPlayer.targetX
-              : Phaser.Math.Linear(otherPlayer.sprite.x, otherPlayer.targetX, 0.14);
+              : Phaser.Math.Linear(otherPlayer.render.container.x, otherPlayer.targetX, 0.14);
           const nextY =
             distance < 0.75
               ? otherPlayer.targetY
-              : Phaser.Math.Linear(otherPlayer.sprite.y - 18, otherPlayer.targetY, 0.14);
+              : Phaser.Math.Linear(otherPlayer.render.container.y - 18, otherPlayer.targetY, 0.14);
           otherPlayer.shadow.setPosition(nextX, nextY + 4);
-          otherPlayer.sprite.setPosition(nextX, nextY + 18);
-          updateAvatarImage(otherPlayer.sprite, otherPlayer.avatarStyle, nextY < otherPlayer.targetY ? "front" : "back");
+          otherPlayer.render.container.setPosition(nextX, nextY + 18);
+          updateAvatarRender(otherPlayer.render, otherPlayer.customization);
           otherPlayer.label.setPosition(nextX, nextY - 24);
         });
 
@@ -516,14 +520,14 @@ const Lobby: React.FC = () => {
           return;
         }
 
-        const dx = targetX - player.x;
-        const dy = targetY - player.y;
+        const dx = targetX - player.container.x;
+        const dy = targetY - player.container.y;
         const distance = Math.hypot(dx, dy);
 
         if (distance < arrivalThreshold) {
-          player.setPosition(targetX, targetY + 18);
+          player.container.setPosition(targetX, targetY + 18);
           playerShadow?.setPosition(targetX, targetY + 4);
-          updateAvatarImage(player, localAvatarStyle, "front");
+          updateAvatarRender(player, localAvatarCustomization);
 
           // If a route is pending and we just arrived at its entrance, navigate once.
           const pendingRoute: string | undefined = (this as any).pendingRoute;
@@ -541,18 +545,18 @@ const Lobby: React.FC = () => {
           const step = (walkSpeed * delta) / 1000;
           const moveDistance = Math.min(step, distance);
           const nextX = Phaser.Math.Clamp(
-            player.x + (dx / distance) * moveDistance,
+            player.container.x + (dx / distance) * moveDistance,
             12,
             width - 12
           );
           const nextY = Phaser.Math.Clamp(
-            player.y + (dy / distance) * moveDistance,
+            player.container.y + (dy / distance) * moveDistance,
             34,
             height - 2
           );
-          player.setPosition(nextX, nextY);
+          player.container.setPosition(nextX, nextY);
           playerShadow?.setPosition(nextX, nextY - 14);
-          updateAvatarImage(player, localAvatarStyle, dy < 0 ? "back" : "front");
+          updateAvatarRender(player, localAvatarCustomization);
         }
       }
     }

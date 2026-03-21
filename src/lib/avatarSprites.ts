@@ -1,66 +1,112 @@
 import Phaser from "phaser";
 
-export const AVATAR_STORAGE_KEY = "focusland-avatar-style";
+export const AVATAR_STORAGE_KEY = "focusland-avatar-customization";
 export const AVATAR_SHEET_KEY = "focusland-avatar-sheet";
 export const AVATAR_SHEET_PATH = "assets/avatar/charactermodels.png";
 export const AVATAR_FRAME_WIDTH = 128;
 export const AVATAR_FRAME_HEIGHT = 128;
 export const AVATAR_SHEET_COLUMNS = 8;
-export const DEFAULT_AVATAR_STYLE = 0;
+export const AVATAR_SHEET_ROWS = 12;
 
-type AvatarStyle = {
-  id: number;
-  label: string;
-  frontFrame: number;
-  backFrame: number;
-};
-
-const AVATAR_ROW_GROUPS = [
-  { backRow: 4, frontRow: 5, label: "Wanderer" },
-  { backRow: 6, frontRow: 7, label: "Adept" },
-  { backRow: 8, frontRow: 9, label: "Scout" }
-];
-
-export const AVATAR_STYLES: AvatarStyle[] = AVATAR_ROW_GROUPS.flatMap((group, groupIndex) =>
-  Array.from({ length: AVATAR_SHEET_COLUMNS }, (_, column) => ({
-    id: groupIndex * AVATAR_SHEET_COLUMNS + column,
-    label: `${group.label} ${column + 1}`,
-    frontFrame: group.frontRow * AVATAR_SHEET_COLUMNS + column,
-    backFrame: group.backRow * AVATAR_SHEET_COLUMNS + column
-  }))
-);
+const BODY_FRONT_ROWS = [1, 2];
+const OUTFIT_ROWS = [8, 9];
+const HEADWEAR_ROWS = [10, 11];
 
 export type AvatarFacing = "front" | "back";
 
-export function clampAvatarStyle(style?: number | null) {
-  if (typeof style !== "number" || Number.isNaN(style)) {
-    return DEFAULT_AVATAR_STYLE;
-  }
+export type AvatarCustomization = {
+  body: number;
+  outfit: number;
+  headwear: number;
+};
 
-  const normalized = Math.max(0, Math.min(AVATAR_STYLES.length - 1, Math.floor(style)));
-  return normalized;
+type AvatarOption = {
+  id: number;
+  label: string;
+  frame: number;
+};
+
+function buildOptions(rows: number[], label: string) {
+  return rows.flatMap((row, rowIndex) =>
+    Array.from({ length: AVATAR_SHEET_COLUMNS }, (_, column) => ({
+      id: rowIndex * AVATAR_SHEET_COLUMNS + column,
+      label: `${label} ${rowIndex * AVATAR_SHEET_COLUMNS + column + 1}`,
+      frame: row * AVATAR_SHEET_COLUMNS + column
+    }))
+  );
 }
 
-export function getStoredAvatarStyle() {
+export const BODY_OPTIONS = buildOptions(BODY_FRONT_ROWS, "Body");
+export const OUTFIT_OPTIONS = buildOptions(OUTFIT_ROWS, "Outfit");
+export const HEADWEAR_OPTIONS = buildOptions(HEADWEAR_ROWS, "Headwear");
+
+export const DEFAULT_AVATAR_CUSTOMIZATION: AvatarCustomization = {
+  body: 0,
+  outfit: -1,
+  headwear: -1
+};
+
+function clampLayer(value: number | null | undefined, max: number, allowNone = false) {
+  if (allowNone && (value == null || value < 0 || Number.isNaN(value))) {
+    return -1;
+  }
+
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(max - 1, Math.floor(value)));
+}
+
+export function normalizeAvatarCustomization(
+  value?: Partial<AvatarCustomization> | null
+): AvatarCustomization {
+  return {
+    body: clampLayer(value?.body, BODY_OPTIONS.length, false),
+    outfit: clampLayer(value?.outfit, OUTFIT_OPTIONS.length, true),
+    headwear: clampLayer(value?.headwear, HEADWEAR_OPTIONS.length, true)
+  };
+}
+
+export function getStoredAvatarCustomization() {
   if (typeof window === "undefined") {
-    return DEFAULT_AVATAR_STYLE;
+    return DEFAULT_AVATAR_CUSTOMIZATION;
   }
 
-  const value = Number(window.localStorage.getItem(AVATAR_STORAGE_KEY));
-  return clampAvatarStyle(value);
+  try {
+    const raw = window.localStorage.getItem(AVATAR_STORAGE_KEY);
+    if (!raw) {
+      return DEFAULT_AVATAR_CUSTOMIZATION;
+    }
+
+    return normalizeAvatarCustomization(JSON.parse(raw) as Partial<AvatarCustomization>);
+  } catch {
+    return DEFAULT_AVATAR_CUSTOMIZATION;
+  }
 }
 
-export function storeAvatarStyle(style: number) {
+export function storeAvatarCustomization(value: AvatarCustomization) {
   if (typeof window === "undefined") {
     return;
   }
 
-  window.localStorage.setItem(AVATAR_STORAGE_KEY, String(clampAvatarStyle(style)));
+  window.localStorage.setItem(AVATAR_STORAGE_KEY, JSON.stringify(normalizeAvatarCustomization(value)));
 }
 
-export function getAvatarFrame(style: number, facing: AvatarFacing) {
-  const avatar = AVATAR_STYLES[clampAvatarStyle(style)];
-  return facing === "back" ? avatar.backFrame : avatar.frontFrame;
+function getFrameFromOption(options: AvatarOption[], id: number) {
+  return options[clampLayer(id, options.length, false)].frame;
+}
+
+export function getAvatarFrame(customization: AvatarCustomization, layer: "body" | "outfit" | "headwear") {
+  if (layer === "body") {
+    return getFrameFromOption(BODY_OPTIONS, customization.body);
+  }
+
+  if (layer === "outfit") {
+    return customization.outfit < 0 ? null : getFrameFromOption(OUTFIT_OPTIONS, customization.outfit);
+  }
+
+  return customization.headwear < 0 ? null : getFrameFromOption(HEADWEAR_OPTIONS, customization.headwear);
 }
 
 export function loadAvatarSpriteSheet(scene: Phaser.Scene, baseUrl: string) {
@@ -74,26 +120,60 @@ export function loadAvatarSpriteSheet(scene: Phaser.Scene, baseUrl: string) {
   });
 }
 
-export function createAvatarImage(
+export type AvatarRender = {
+  container: Phaser.GameObjects.Container;
+  body: Phaser.GameObjects.Image;
+  outfit?: Phaser.GameObjects.Image;
+  headwear?: Phaser.GameObjects.Image;
+  customization: AvatarCustomization;
+};
+
+export function createAvatarRender(
   scene: Phaser.Scene,
   x: number,
   y: number,
-  style: number,
-  facing: AvatarFacing,
+  customization: AvatarCustomization,
   depth = 10,
   scale = 0.34
-) {
-  return scene.add
-    .image(x, y, AVATAR_SHEET_KEY, getAvatarFrame(style, facing))
-    .setOrigin(0.5, 1)
-    .setScale(scale)
-    .setDepth(depth);
+): AvatarRender {
+  const resolved = normalizeAvatarCustomization(customization);
+  const body = scene.add.image(0, 0, AVATAR_SHEET_KEY, getAvatarFrame(resolved, "body") ?? 0).setOrigin(0.5, 1).setScale(scale);
+  const children: Phaser.GameObjects.GameObject[] = [body];
+  const outfitFrame = getAvatarFrame(resolved, "outfit");
+  const headwearFrame = getAvatarFrame(resolved, "headwear");
+  let outfit: Phaser.GameObjects.Image | undefined;
+  let headwear: Phaser.GameObjects.Image | undefined;
+
+  if (outfitFrame != null) {
+    outfit = scene.add.image(0, 0, AVATAR_SHEET_KEY, outfitFrame).setOrigin(0.5, 1).setScale(scale);
+    children.push(outfit);
+  }
+
+  if (headwearFrame != null) {
+    headwear = scene.add.image(0, 0, AVATAR_SHEET_KEY, headwearFrame).setOrigin(0.5, 1).setScale(scale);
+    children.push(headwear);
+  }
+
+  const container = scene.add.container(x, y, children).setDepth(depth);
+  return { container, body, outfit, headwear, customization: resolved };
 }
 
-export function updateAvatarImage(
-  image: Phaser.GameObjects.Image,
-  style: number,
-  facing: AvatarFacing
-) {
-  image.setFrame(getAvatarFrame(style, facing));
+export function updateAvatarRender(render: AvatarRender, customization: AvatarCustomization) {
+  const resolved = normalizeAvatarCustomization(customization);
+  render.customization = resolved;
+  render.body.setFrame(getAvatarFrame(resolved, "body") ?? 0);
+
+  const outfitFrame = getAvatarFrame(resolved, "outfit");
+  if (outfitFrame == null) {
+    render.outfit?.setVisible(false);
+  } else if (render.outfit) {
+    render.outfit.setVisible(true).setFrame(outfitFrame);
+  }
+
+  const headwearFrame = getAvatarFrame(resolved, "headwear");
+  if (headwearFrame == null) {
+    render.headwear?.setVisible(false);
+  } else if (render.headwear) {
+    render.headwear.setVisible(true).setFrame(headwearFrame);
+  }
 }

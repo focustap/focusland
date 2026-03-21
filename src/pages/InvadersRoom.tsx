@@ -3,11 +3,13 @@ import { useNavigate } from "react-router-dom";
 import NavBar from "../components/NavBar";
 import Phaser from "phaser";
 import {
-  clampAvatarStyle,
-  createAvatarImage,
-  getStoredAvatarStyle,
+  createAvatarRender,
+  getStoredAvatarCustomization,
   loadAvatarSpriteSheet,
-  updateAvatarImage
+  normalizeAvatarCustomization,
+  updateAvatarRender,
+  type AvatarCustomization,
+  type AvatarRender
 } from "../lib/avatarSprites";
 import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } from "../lib/profileColor";
 import { supabase } from "../lib/supabase";
@@ -40,7 +42,7 @@ const InvadersRoom: React.FC = () => {
       const width = 780;
       const height = 500;
       let playerColor = profileColorToNumber(DEFAULT_PROFILE_COLOR);
-      let avatarStyle = getStoredAvatarStyle();
+      let avatarCustomization = getStoredAvatarCustomization();
 
       const {
         data: { session }
@@ -56,7 +58,10 @@ const InvadersRoom: React.FC = () => {
         playerColor = profileColorToNumber(
           normalizeProfileColor((profile?.color as string | null) ?? DEFAULT_PROFILE_COLOR)
         );
-        avatarStyle = clampAvatarStyle(Number((profile as { avatar_style?: number | null } | null)?.avatar_style ?? avatarStyle));
+        avatarCustomization = normalizeAvatarCustomization(
+          (profile as { avatar_customization?: Partial<AvatarCustomization> | null } | null)?.avatar_customization
+          ?? avatarCustomization
+        );
       }
 
       if (isUnmounted || !containerRef.current) {
@@ -64,7 +69,7 @@ const InvadersRoom: React.FC = () => {
       }
 
       class HangarScene extends Phaser.Scene {
-        player!: Phaser.GameObjects.Image;
+        player!: AvatarRender;
         shadow!: Phaser.GameObjects.Ellipse;
         targetX: number | null = null;
         targetY: number | null = null;
@@ -127,7 +132,7 @@ const InvadersRoom: React.FC = () => {
           });
 
           this.shadow = this.add.ellipse(140, height - 84, 28, 12, 0x020617, 0.28);
-          this.player = createAvatarImage(this, 140, height - 84, avatarStyle, "front", 12, 0.34);
+          this.player = createAvatarRender(this, 140, height - 84, avatarCustomization, 12, 0.34);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
@@ -156,15 +161,15 @@ const InvadersRoom: React.FC = () => {
             return;
           }
 
-          const dx = this.targetX - this.player.x;
-          const dy = this.targetY - this.player.y;
+          const dx = this.targetX - this.player.container.x;
+          const dy = this.targetY - this.player.container.y;
           const distance = Math.hypot(dx, dy);
           const step = (230 * delta) / 1000;
 
           if (distance <= step) {
-            this.player.setPosition(this.targetX, this.targetY - 18);
+            this.player.container.setPosition(this.targetX, this.targetY - 18);
             this.shadow.setPosition(this.targetX, this.targetY + 18);
-            updateAvatarImage(this.player, avatarStyle, "front");
+            updateAvatarRender(this.player, avatarCustomization);
             const route = this.pendingRoute;
             this.targetX = null;
             this.targetY = null;
@@ -175,11 +180,11 @@ const InvadersRoom: React.FC = () => {
             return;
           }
 
-          const nextX = Phaser.Math.Clamp(this.player.x + (dx / distance) * step, 18, width - 18);
-          const nextY = Phaser.Math.Clamp(this.player.y + (dy / distance) * step, 38, height - 40);
-          this.player.setPosition(nextX, nextY);
+          const nextX = Phaser.Math.Clamp(this.player.container.x + (dx / distance) * step, 18, width - 18);
+          const nextY = Phaser.Math.Clamp(this.player.container.y + (dy / distance) * step, 38, height - 40);
+          this.player.container.setPosition(nextX, nextY);
           this.shadow.setPosition(nextX, nextY + 18);
-          updateAvatarImage(this.player, avatarStyle, dy < 0 ? "back" : "front");
+          updateAvatarRender(this.player, avatarCustomization);
         }
       }
 
