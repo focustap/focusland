@@ -22,6 +22,7 @@ const Lobby: React.FC = () => {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  const assetBase = import.meta.env.BASE_URL;
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) {
@@ -55,14 +56,14 @@ const Lobby: React.FC = () => {
         return () => {};
       }
 
-      const width = 640;
-      const height = 480;
+      const width = 800;
+      const height = 520;
 
       // Simple structure to describe a building zone.
       type Building = {
         name: string;
         color: number;
-        body: Phaser.GameObjects.Rectangle | null;
+        body: Phaser.GameObjects.Zone | null;
         entranceX: number;
         entranceY: number;
         route: string;
@@ -70,8 +71,6 @@ const Lobby: React.FC = () => {
         y: number;
         width: number;
         height: number;
-        labelColor: string;
-        roofOffsetX: number;
       };
 
       // This function will be called when the player reaches an entrance.
@@ -120,44 +119,27 @@ const Lobby: React.FC = () => {
           this.localUsername = username;
         }
 
+        preload() {
+          this.load.image("lobby-town", `${assetBase}assets/lobby/tiny-town/sample.png`);
+        }
+
         create() {
-        this.cameras.main.setBackgroundColor("#09111f");
+        this.cameras.main.setBackgroundColor("#050816");
 
-        this.add.rectangle(width / 2, height / 2, width - 18, height - 18, 0x152238);
-        this.add.rectangle(width / 2, height / 2, width - 36, height - 36, 0x1f7a4c);
-        this.add.rectangle(width / 2, height / 2, width - 60, height - 60, 0x3f9c5c, 0.18);
-        this.add.circle(width / 2, height / 2 + 8, 56, 0x0f172a, 0.3);
-        this.add.circle(width / 2, height / 2 + 8, 38, 0x7dd3fc, 0.85);
-        this.add.circle(width / 2, height / 2 + 8, 22, 0xe0f2fe, 0.7);
+        const bg = this.add.image(width / 2, height / 2, "lobby-town");
+        bg.setDisplaySize(width, 448);
+        bg.setY(height / 2 + 8);
 
-        const pathColor = 0xd6c5a1;
-        this.add.rectangle(width / 2, height / 2 + 8, 380, 28, pathColor);
-        this.add.rectangle(width / 2, height / 2 + 8, 28, 250, pathColor);
-        this.add.rectangle(width / 2, height / 2 + 8, 120, 120, 0xe8dcc2);
-        this.add.rectangle(width / 2, height / 2 + 8, 88, 88, 0xf6eee0);
-
-        const addTree = (x: number, y: number) => {
-          this.add.rectangle(x, y + 18, 12, 26, 0x7c4a1c);
-          this.add.circle(x, y, 18, 0x1d7a46);
-          this.add.circle(x - 12, y + 6, 12, 0x155e37);
-          this.add.circle(x + 12, y + 6, 12, 0x2ca35e);
-        };
-
-        [
-          [182, 154],
-          [462, 154],
-          [182, 326],
-          [462, 326],
-          [250, 105],
-          [392, 105],
-          [248, 380],
-          [394, 380]
-        ].forEach(([x, y]) => addTree(x, y));
+        this.add.rectangle(width / 2, 32, width, 82, 0x050816, 0.34).setDepth(1);
+        this.add.rectangle(width / 2, height - 18, width, 110, 0x020617, 0.28).setDepth(1);
+        this.add.rectangle(width / 2, height / 2, width - 16, height - 16, 0x000000, 0)
+          .setStrokeStyle(2, 0xffffff, 0.08)
+          .setDepth(20);
 
         const localColor = profileColorToNumber(profileColor);
 
         // Player in the center of the room.
-        player = this.add.rectangle(width / 2, height / 2 + 60, 24, 32, localColor);
+        player = this.add.rectangle(width / 2 - 8, height / 2 + 44, 24, 32, localColor).setDepth(12);
 
         const handlePageHide = () => {
           void removePresenceForUser({ userId, roomName: LOBBY_ROOM_NAME });
@@ -260,160 +242,146 @@ const Lobby: React.FC = () => {
             name: "Casino",
             color: 0xe11d48,
             body: null,
-            entranceX: width / 2,
-            entranceY: 80,
+            entranceX: 186,
+            entranceY: 142,
             route: "/casino",
-            x: width / 2,
-            y: 68,
-            width: 134,
-            height: 72,
-            labelColor: "#4c0519",
-            roofOffsetX: 70
+            x: 184,
+            y: 112,
+            width: 120,
+            height: 94
           },
           {
             name: "Profile House",
             color: 0x3b82f6,
             body: null,
-            entranceX: 120,
-            entranceY: height / 2,
+            entranceX: 292,
+            entranceY: 314,
             route: "/profile",
-            x: 84,
-            y: height / 2 - 8,
-            width: 108,
-            height: 82,
-            labelColor: "#172554",
-            roofOffsetX: 60
+            x: 286,
+            y: 306,
+            width: 118,
+            height: 90
           },
           {
             name: "Arena",
             color: 0xf59e0b,
             body: null,
-            entranceX: 120,
-            entranceY: 80,
+            entranceX: 665,
+            entranceY: 356,
             route: "/arena",
-            x: 92,
-            y: 82,
-            width: 112,
-            height: 66,
-            labelColor: "#451a03",
-            roofOffsetX: 62
+            x: 678,
+            y: 326,
+            width: 146,
+            height: 134
           },
           {
             name: "Records House",
             color: 0x22c55e,
             body: null,
-            entranceX: width / 2,
-            entranceY: height - 80,
+            entranceX: 514,
+            entranceY: 168,
             route: "/leaderboard",
-            x: width / 2,
-            y: height - 62,
-            width: 128,
-            height: 74,
-            labelColor: "#052e16",
-            roofOffsetX: 70
+            x: 520,
+            y: 150,
+            width: 120,
+            height: 82
           },
           {
             name: "Hangar",
             color: 0x06b6d4,
             body: null,
-            entranceX: width - 120,
-            entranceY: 80,
+            entranceX: 642,
+            entranceY: 182,
             route: "/hangar",
-            x: width - 92,
-            y: 82,
+            x: 648,
+            y: 162,
             width: 118,
-            height: 66,
-            labelColor: "#083344",
-            roofOffsetX: 66
+            height: 82
           },
           {
             name: "Arcade",
             color: 0x8b5cf6,
             body: null,
-            entranceX: width - 120,
-            entranceY: height / 2,
+            entranceX: 286,
+            entranceY: 142,
             route: "/arcade",
-            x: width - 86,
-            y: height / 2 - 8,
-            width: 120,
-            height: 84,
-            labelColor: "#2e1065",
-            roofOffsetX: 68
+            x: 286,
+            y: 110,
+            width: 116,
+            height: 88
           }
         ];
 
         const drawBuilding = (building: Building) => {
-          const roofColor = Phaser.Display.Color.IntegerToColor(building.color)
-            .darken(20)
-            .color;
-          const roofBaseY = building.y - building.height / 2;
-          const body = this.add.rectangle(
-            building.x,
-            building.y,
-            building.width,
-            building.height,
-            building.color
-          );
-          this.add.triangle(
-            building.x + building.roofOffsetX,
-            roofBaseY + 11,
-            -building.width / 2 - 6,
-            8,
-            building.width / 2 + 6,
-            8,
-            0,
-            -28,
-            roofColor
-          );
-          this.add.rectangle(
-            building.x,
-            roofBaseY + 4,
-            building.width + 6,
-            10,
-            roofColor
-          );
-          this.add.rectangle(
-            building.x,
-            building.y + building.height / 2 - 14,
-            22,
-            28,
-            0x5b3419
-          );
-          this.add.rectangle(
-            building.x - building.width / 4,
-            building.y + 4,
-            16,
-            18,
-            0xfef3c7
-          );
-          this.add.rectangle(
-            building.x + building.width / 4,
-            building.y + 4,
-            16,
-            18,
-            0xfef3c7
-          );
-          const signWidth = Math.max(72, building.name.length * 8 + 18);
-          this.add.rectangle(
-            building.x,
-            building.y + building.height / 2 + 16,
-            signWidth,
-            18,
-            0xf8fafc
-          );
-          this.add
-            .text(building.x, building.y + building.height / 2 + 16, building.name, {
-              fontSize: "13px",
-              color: building.labelColor,
-              fontStyle: "bold"
-            })
-            .setOrigin(0.5);
-          building.body = body;
+          const glow = this.add.circle(building.entranceX, building.entranceY + 6, 22, building.color, 0.28).setDepth(7);
+          const marker = this.add.circle(building.entranceX, building.entranceY + 2, 11, building.color, 0.9)
+            .setStrokeStyle(2, 0xffffff, 0.88)
+            .setDepth(8);
+          const zone = this.add.zone(building.entranceX, building.entranceY, building.width, building.height).setDepth(6);
+          const tagWidth = Math.max(96, building.name.length * 8 + 22);
+          const tag = this.add.rectangle(building.entranceX, building.entranceY - 28, tagWidth, 22, 0x0f172a, 0.9)
+            .setStrokeStyle(1, building.color, 0.9)
+            .setDepth(9);
+          const label = this.add.text(building.entranceX, building.entranceY - 28, building.name, {
+            fontFamily: "\"Trebuchet MS\", system-ui, sans-serif",
+            fontSize: "13px",
+            color: "#f8fafc",
+            fontStyle: "bold"
+          }).setOrigin(0.5).setDepth(10);
+          const guide = this.add.text(building.entranceX, building.entranceY + 24, "Click to enter", {
+            fontFamily: "\"Trebuchet MS\", system-ui, sans-serif",
+            fontSize: "11px",
+            color: "#dbeafe"
+          }).setOrigin(0.5).setDepth(9);
+
+          this.tweens.add({
+            targets: [glow, marker],
+            scale: { from: 0.96, to: 1.08 },
+            alpha: { from: glow.alpha, to: 0.52 },
+            duration: 1100,
+            yoyo: true,
+            repeat: -1
+          });
+
+          this.tweens.add({
+            targets: guide,
+            y: guide.y + 3,
+            alpha: { from: 0.92, to: 0.48 },
+            duration: 950,
+            yoyo: true,
+            repeat: -1
+          });
+
+          tag.setData("route", building.route);
+          label.setData("route", building.route);
+          guide.setData("route", building.route);
+          marker.setData("route", building.route);
+          zone.setData("route", building.route);
+          building.body = zone;
         };
 
         buildings.forEach((building) => {
           drawBuilding(building);
         });
+
+        const hubHeader = this.add.rectangle(width / 2, 34, 370, 46, 0x0f172a, 0.72)
+          .setStrokeStyle(1, 0xffffff, 0.08)
+          .setDepth(15);
+        const hubTitle = this.add.text(width / 2, 24, "Focusland Town Square", {
+          fontFamily: "Georgia, serif",
+          fontSize: "21px",
+          color: "#f8fafc",
+          fontStyle: "bold"
+        }).setOrigin(0.5).setDepth(16);
+        const hubSubtitle = this.add.text(width / 2, 44, "Walk the town and step onto a marker to enter each destination.", {
+          fontFamily: "\"Trebuchet MS\", system-ui, sans-serif",
+          fontSize: "11px",
+          color: "#cbd5e1"
+        }).setOrigin(0.5).setDepth(16);
+
+        hubHeader.setAlpha(0.86);
+        hubTitle.setAlpha(0.98);
+        hubSubtitle.setAlpha(0.95);
 
         // Handle clicks: walk to clicked position.
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
@@ -455,12 +423,15 @@ const Lobby: React.FC = () => {
         const colorNumber = profileColorToNumber(row.color);
 
         if (!existing) {
-          const rect = this.add.rectangle(row.x, row.y, 24, 32, colorNumber);
+          const rect = this.add.rectangle(row.x, row.y, 24, 32, colorNumber).setDepth(12);
           const label = this.add.text(row.x, row.y - 24, row.username ?? "Player", {
             fontSize: "12px",
-            color: "#111827"
+            color: "#f8fafc",
+            stroke: "#0f172a",
+            strokeThickness: 3
           });
           label.setOrigin(0.5);
+          label.setDepth(13);
 
           this.otherPlayers.set(row.user_id, {
             rect,
@@ -585,14 +556,14 @@ return () => {
       return (
     <div className="page">
       <NavBar />
-      <div className="content card">
+      <div className="content card" style={{ maxWidth: 860 }}>
         <h2>Town Lobby</h2>
-        <p>Click on the floor to walk, then enter the Casino, Arcade, Arena, Hangar, or Records House from the main hub.</p>
+        <p>Walk through the town square and click one of the glowing markers to head into the Casino, Arcade, Arena, Hangar, Records House, or Profile House.</p>
         <div
           ref={containerRef}
           style={{
             width: "100%",
-            maxWidth: 640,
+            maxWidth: 800,
             margin: "1rem auto"
           }}
         />
