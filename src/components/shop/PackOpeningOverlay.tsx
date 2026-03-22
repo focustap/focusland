@@ -46,6 +46,7 @@ const PackOpeningOverlay: React.FC<PackOpeningOverlayProps> = ({
 
   const allRevealed = revealedCount >= revealCards.length;
   const showEnergy = stage === "charging" || stage === "burst";
+  const showRevealGrid = stage === "reveal" || stage === "complete";
 
   return (
     <div className="pack-opening-overlay">
@@ -75,66 +76,68 @@ const PackOpeningOverlay: React.FC<PackOpeningOverlayProps> = ({
           ) : null}
         </div>
 
-        <div className="pack-opening-reveal-grid">
-          {revealCards.map((card, index) => {
-            const isRevealed = index < revealedCount;
-            const isNext = index === revealedCount;
-            const definition = CARD_INDEX[card.cardId];
-            return (
-              <button
-                key={`${card.cardId}-${index}`}
-                type="button"
-                className={
-                  isRevealed
-                    ? "pack-opening-card pack-opening-card--revealed"
-                    : isNext && stage !== "charging" && stage !== "burst"
-                      ? "pack-opening-card pack-opening-card--next"
-                      : "pack-opening-card"
-                }
-                onClick={isNext && !allRevealed ? onRevealNext : undefined}
-                disabled={!isNext || allRevealed}
-                style={{ ["--rarity-color" as string]: getRarityColor(card.rarity) }}
-              >
-                <div className="pack-opening-card__inner">
-                  <div className="pack-opening-card__face pack-opening-card__face--back">
-                    <div className="pack-opening-card__packmark">{pack.name}</div>
-                    <strong>Tap to reveal</strong>
+        {showRevealGrid ? (
+          <div className="pack-opening-reveal-grid">
+            {revealCards.map((card, index) => {
+              const isRevealed = index < revealedCount;
+              const isNext = index === revealedCount;
+              const definition = CARD_INDEX[card.cardId];
+              return (
+                <button
+                  key={`${card.cardId}-${index}`}
+                  type="button"
+                  className={
+                    isRevealed
+                      ? "pack-opening-card pack-opening-card--revealed"
+                      : isNext
+                        ? "pack-opening-card pack-opening-card--next"
+                        : "pack-opening-card"
+                  }
+                  onClick={isNext && !allRevealed ? onRevealNext : undefined}
+                  disabled={!isNext || allRevealed}
+                  style={{ ["--rarity-color" as string]: getRarityColor(card.rarity) }}
+                >
+                  <div className="pack-opening-card__inner">
+                    <div className="pack-opening-card__face pack-opening-card__face--back">
+                      <div className="pack-opening-card__packmark">{pack.name}</div>
+                      <strong>Tap to reveal</strong>
+                    </div>
+                    <div className="pack-opening-card__face pack-opening-card__face--front">
+                      {isRevealed ? (
+                        <>
+                          <CardView
+                            cardId={card.cardId}
+                            infoTooltip={
+                              definition ? (
+                                <>
+                                  <strong>{rarityLabel(card.rarity)}</strong>
+                                  <br />
+                                  Set: {definition.set}
+                                  <br />
+                                  Family: {definition.family}
+                                  <br />
+                                  Type: {definition.type}
+                                  <br />
+                                  {card.isFoil ? "Foil finish" : "Standard finish"}
+                                </>
+                              ) : null
+                            }
+                          />
+                          <div className="pack-opening-card__meta">
+                            <span>{rarityLabel(card.rarity)}</span>
+                            {card.isFoil ? <strong>Foil</strong> : null}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="pack-opening-card__placeholder" />
+                      )}
+                    </div>
                   </div>
-                  <div className="pack-opening-card__face pack-opening-card__face--front">
-                    {isRevealed ? (
-                      <>
-                        <CardView
-                          cardId={card.cardId}
-                          infoTooltip={
-                            definition ? (
-                              <>
-                                <strong>{rarityLabel(card.rarity)}</strong>
-                                <br />
-                                Set: {definition.set}
-                                <br />
-                                Family: {definition.family}
-                                <br />
-                                Type: {definition.type}
-                                <br />
-                                {card.isFoil ? "Foil finish" : "Standard finish"}
-                              </>
-                            ) : null
-                          }
-                        />
-                        <div className="pack-opening-card__meta">
-                          <span>{rarityLabel(card.rarity)}</span>
-                          {card.isFoil ? <strong>Foil</strong> : null}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="pack-opening-card__placeholder" />
-                    )}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
         <div className="pack-opening-footer">
           <div>
