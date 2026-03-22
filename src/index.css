@@ -2101,6 +2101,35 @@ body[data-theme="dark"] .brawl-pick-card span {
   gap: 1rem;
 }
 
+.pack-opening-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.pack-opening-summary__item {
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.78), rgba(15, 23, 42, 0.5));
+  color: #e2e8f0;
+}
+
+.pack-opening-summary__item span {
+  display: block;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.pack-opening-summary__item strong {
+  display: block;
+  margin-top: 0.4rem;
+  font-size: 1.1rem;
+  color: #f8fafc;
+}
+
 .pack-opening-card {
   perspective: 1200px;
   min-height: 320px;
@@ -2329,6 +2358,10 @@ body[data-theme="dark"] .card-battle-card--hidden {
 
   .pack-opening-reveal-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pack-opening-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .card-battle-topbar,

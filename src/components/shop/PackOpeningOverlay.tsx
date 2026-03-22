@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import CardView from "../card-game/CardView";
 import { CARD_INDEX } from "../../lib/card-game/cards";
-import { getRarityColor, type PackRevealCard } from "../../lib/card-game/packOpening";
+import { getRarityColor, type CardRarity, type PackRevealCard } from "../../lib/card-game/packOpening";
 import type { ShopPackProduct } from "../../lib/shop";
 
 export type PackOpeningStage = "charging" | "burst" | "reveal" | "complete";
@@ -31,6 +31,14 @@ const rarityLabel = (rarity: PackRevealCard["rarity"]) => {
   }
 };
 
+const rarityRank: Record<CardRarity, number> = {
+  common: 0,
+  uncommon: 1,
+  rare: 2,
+  epic: 3,
+  legendary: 4
+};
+
 const PackOpeningOverlay: React.FC<PackOpeningOverlayProps> = ({
   open,
   pack,
@@ -47,6 +55,40 @@ const PackOpeningOverlay: React.FC<PackOpeningOverlayProps> = ({
   const allRevealed = revealedCount >= revealCards.length;
   const showEnergy = stage === "charging" || stage === "burst";
   const showRevealGrid = stage === "reveal" || stage === "complete";
+  const canAdvance = showRevealGrid && !allRevealed;
+  const canClose = stage === "complete" || revealCards.length === 0;
+
+  const revealSummary = useMemo(() => {
+    const foilCount = revealCards.filter((card) => card.isFoil).length;
+    const highestRarity = revealCards.reduce<CardRarity>(
+      (best, card) => (rarityRank[card.rarity] > rarityRank[best] ? card.rarity : best),
+      "common"
+    );
+
+    return {
+      foilCount,
+      highestRarity,
+      highRarityCount: revealCards.filter((card) => rarityRank[card.rarity] >= rarityRank.rare).length
+    };
+  }, [revealCards]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && canClose) {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+
+      if ((event.key === " " || event.key === "Enter") && canAdvance) {
+        event.preventDefault();
+        onRevealNext();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [canAdvance, canClose, onClose, onRevealNext]);
 
   return (
     <div className="pack-opening-overlay">
@@ -74,6 +116,25 @@ const PackOpeningOverlay: React.FC<PackOpeningOverlayProps> = ({
               ))}
             </div>
           ) : null}
+        </div>
+
+        <div className="pack-opening-summary">
+          <div className="pack-opening-summary__item">
+            <span>Progress</span>
+            <strong>{Math.min(revealedCount, revealCards.length)}/{revealCards.length}</strong>
+          </div>
+          <div className="pack-opening-summary__item">
+            <span>Best hit</span>
+            <strong>{rarityLabel(revealSummary.highestRarity)}</strong>
+          </div>
+          <div className="pack-opening-summary__item">
+            <span>Rare+</span>
+            <strong>{revealSummary.highRarityCount}</strong>
+          </div>
+          <div className="pack-opening-summary__item">
+            <span>Foils</span>
+            <strong>{revealSummary.foilCount}</strong>
+          </div>
         </div>
 
         {showRevealGrid ? (
@@ -147,10 +208,10 @@ const PackOpeningOverlay: React.FC<PackOpeningOverlayProps> = ({
                 ? "The pack is winding up."
                 : allRevealed
                   ? "Everything is on the table."
-                  : "Reveal the next card."}
+                  : "Reveal the next card. Press Space or Enter to keep the flow moving."}
             </p>
           </div>
-          <button type="button" className="primary-button" onClick={allRevealed ? onClose : onRevealNext}>
+          <button type="button" className="primary-button" disabled={!allRevealed && !canAdvance} onClick={allRevealed ? onClose : onRevealNext}>
             {allRevealed ? "Back to shop" : "Reveal next"}
           </button>
         </div>

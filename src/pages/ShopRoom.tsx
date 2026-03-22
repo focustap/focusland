@@ -45,6 +45,9 @@ type Hotspot = {
 
 type PackSort = "qty" | "name" | "price";
 
+const PACK_OPENING_CHARGE_MS = 950;
+const PACK_OPENING_BURST_MS = 460;
+
 const panelStyle: React.CSSProperties = {
   background: "linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.92))",
   border: "1px solid rgba(148, 163, 184, 0.22)",
@@ -371,7 +374,7 @@ const ShopRoom: React.FC = () => {
       playPackChargeSound();
       const timerId = window.setTimeout(() => {
         setOpeningStage("burst");
-      }, 950);
+      }, PACK_OPENING_CHARGE_MS);
       return () => window.clearTimeout(timerId);
     }
 
@@ -379,7 +382,7 @@ const ShopRoom: React.FC = () => {
       playPackBurstSound();
       const timerId = window.setTimeout(() => {
         setOpeningStage("reveal");
-      }, 620);
+      }, PACK_OPENING_BURST_MS);
       return () => window.clearTimeout(timerId);
     }
   }, [openingPack, openingCards.length, openingStage]);
