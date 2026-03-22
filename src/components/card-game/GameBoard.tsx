@@ -13,6 +13,11 @@ type GameBoardProps = {
   isHost: boolean;
   selectedAttackerId: string | null;
   canRespondToTrap: boolean;
+  animatedAttackerId: string | null;
+  impactedUnitId: string | null;
+  impactedHeroSide: "top" | "bottom" | null;
+  drawPulseSide: "top" | "bottom" | null;
+  showTurnBanner: boolean;
   onSelectAttacker: (attackerId: string | null) => void;
   onAttackUnit: (attackerId: string, defenderId: string) => void;
   onAttackHero: (attackerId: string) => void;
@@ -29,9 +34,20 @@ const ZoneSlots: React.FC<{
   selectedAttackerId?: string | null;
   canSelect?: boolean;
   canTarget?: boolean;
+  animatedAttackerId?: string | null;
+  impactedUnitId?: string | null;
   onSelectAttacker?: (attackerId: string | null) => void;
   onAttackUnit?: (defenderId: string) => void;
-}> = ({ units, selectedAttackerId = null, canSelect = false, canTarget = false, onSelectAttacker, onAttackUnit }) => {
+}> = ({
+  units,
+  selectedAttackerId = null,
+  canSelect = false,
+  canTarget = false,
+  animatedAttackerId = null,
+  impactedUnitId = null,
+  onSelectAttacker,
+  onAttackUnit
+}) => {
   const slots = Array.from({ length: MAX_UNITS }, (_, index) => units[index] ?? null);
 
   return (
@@ -43,9 +59,8 @@ const ZoneSlots: React.FC<{
             unit={unit}
             selected={selectedAttackerId === unit.instanceId}
             clickable={(canSelect && canUnitAttack(unit)) || canTarget}
-            statusLabel={
-              unit.summoningSick ? "Summoning sick" : unit.exhausted ? "Spent" : "Ready"
-            }
+            className={`${animatedAttackerId === unit.instanceId ? " card-battle-card--attack-lunge" : ""}${impactedUnitId === unit.instanceId ? " card-battle-card--impact" : ""}`.trim()}
+            statusLabel={unit.summoningSick ? "Summoning sick" : unit.exhausted ? "Spent" : "Ready"}
             onClick={
               canSelect && canUnitAttack(unit)
                 ? () => onSelectAttacker?.(selectedAttackerId === unit.instanceId ? null : unit.instanceId)
@@ -88,9 +103,10 @@ const TrapSlots: React.FC<{
 const SidePiles: React.FC<{
   player: PlayerState;
   flipped?: boolean;
-}> = ({ player, flipped = false }) => {
+  drawPulse?: boolean;
+}> = ({ player, flipped = false, drawPulse = false }) => {
   return (
-    <div className={`card-battle-piles${flipped ? " card-battle-piles--flipped" : ""}`}>
+    <div className={`card-battle-piles${flipped ? " card-battle-piles--flipped" : ""}${drawPulse ? " card-battle-piles--draw-pulse" : ""}`}>
       <div className="card-battle-pile">
         <div className="card-battle-pile__card" />
         <strong>Deck</strong>
@@ -108,8 +124,9 @@ const SidePiles: React.FC<{
 const HandFan: React.FC<{
   player: PlayerState | null;
   canAct: boolean;
+  drawPulse?: boolean;
   onPlayCard: (cardInstanceId: string) => void;
-}> = ({ player, canAct, onPlayCard }) => {
+}> = ({ player, canAct, drawPulse = false, onPlayCard }) => {
   if (!player) {
     return (
       <div className="card-battle-hand-fan">
@@ -127,7 +144,7 @@ const HandFan: React.FC<{
   }
 
   return (
-    <div className="card-battle-hand-fan">
+    <div className={`card-battle-hand-fan${drawPulse ? " card-battle-hand-fan--draw-pulse" : ""}`}>
       {player.hand.map((card, index) => {
         const rotation = (index - (player.hand.length - 1) / 2) * 4;
         const definition = getCard(card.cardId);
@@ -135,6 +152,7 @@ const HandFan: React.FC<{
           canAct &&
           player.currentResource >= definition.cost &&
           !(definition.type === "unit" && player.board.length >= MAX_UNITS);
+
         return (
           <div
             key={card.instanceId}
@@ -163,11 +181,11 @@ const HandFan: React.FC<{
   );
 };
 
-const HandBacks: React.FC<{ count: number }> = ({ count }) => {
+const HandBacks: React.FC<{ count: number; drawPulse?: boolean }> = ({ count, drawPulse = false }) => {
   const visibleCount = Math.min(6, count);
 
   return (
-    <div className="card-battle-backs">
+    <div className={`card-battle-backs${drawPulse ? " card-battle-backs--draw-pulse" : ""}`}>
       {Array.from({ length: visibleCount }, (_, index) => (
         <div key={`back-${index}`} className="card-battle-back" />
       ))}
@@ -205,6 +223,11 @@ const GameBoard: React.FC<GameBoardProps> = ({
   isHost,
   selectedAttackerId,
   canRespondToTrap,
+  animatedAttackerId,
+  impactedUnitId,
+  impactedHeroSide,
+  drawPulseSide,
+  showTurnBanner,
   onSelectAttacker,
   onAttackUnit,
   onAttackHero,
@@ -214,8 +237,7 @@ const GameBoard: React.FC<GameBoardProps> = ({
   onRespondToTrap
 }) => {
   const viewer = viewerIndex !== null ? state.players[viewerIndex] : null;
-  const opponent =
-    viewerIndex !== null ? state.players[viewerIndex === 0 ? 1 : 0] : state.players[1];
+  const opponent = viewerIndex !== null ? state.players[viewerIndex === 0 ? 1 : 0] : state.players[1];
   const selectedAttacker = viewer?.board.find((unit) => unit.instanceId === selectedAttackerId) ?? null;
   const canAttackHeroDirectly =
     canAct &&
@@ -230,6 +252,8 @@ const GameBoard: React.FC<GameBoardProps> = ({
 
   return (
     <div className="card-battle-table-wrap">
+      {showTurnBanner ? <div className="card-battle-turn-banner">YOUR TURN</div> : null}
+
       <div className="card-battle-rail">
         <div className="card-battle-rail__group">
           <strong>TapDeck Online Duel</strong>
@@ -280,16 +304,12 @@ const GameBoard: React.FC<GameBoardProps> = ({
 
       <div className="card-battle-table">
         <section className="card-battle-side card-battle-side--top">
-          <PlayerBadge
-            player={opponent}
-            isActive={state.activePlayer !== viewerIndex}
-            isViewer={false}
-          />
+          <PlayerBadge player={opponent} isActive={state.activePlayer !== viewerIndex} isViewer={false} />
           <div className="card-battle-arena-half card-battle-arena-half--top">
-            <SidePiles player={opponent} flipped />
+            <SidePiles player={opponent} flipped drawPulse={drawPulseSide === "top"} />
             <div className="card-battle-lanes">
               <button
-                className={`card-battle-hero-slot${canAttackHeroDirectly ? " card-battle-hero-slot--targetable" : ""}`}
+                className={`card-battle-hero-slot${canAttackHeroDirectly ? " card-battle-hero-slot--targetable" : ""}${impactedHeroSide === "top" ? " card-battle-hero-slot--impact" : ""}`}
                 type="button"
                 onClick={selectedAttacker ? () => onAttackHero(selectedAttacker.instanceId) : undefined}
                 disabled={!canAttackHeroDirectly}
@@ -302,11 +322,13 @@ const GameBoard: React.FC<GameBoardProps> = ({
               <ZoneSlots
                 units={opponent.board}
                 canTarget={Boolean(selectedAttacker && canAct)}
+                animatedAttackerId={animatedAttackerId}
+                impactedUnitId={impactedUnitId}
                 onAttackUnit={(defenderId) =>
                   selectedAttacker ? onAttackUnit(selectedAttacker.instanceId, defenderId) : undefined
                 }
               />
-              <HandBacks count={opponent.hand.length} />
+              <HandBacks count={opponent.hand.length} drawPulse={drawPulseSide === "top"} />
             </div>
           </div>
         </section>
@@ -314,7 +336,11 @@ const GameBoard: React.FC<GameBoardProps> = ({
         <section className="card-battle-center">
           <div className="card-battle-center__token">
             <span>{viewer ? `Seat ${viewer.id + 1}` : "Spectator"}</span>
-            {state.winner !== null ? <strong>{state.players[state.winner].name} wins</strong> : <strong>{canAct ? "Your turn" : "Waiting"}</strong>}
+            {state.winner !== null ? (
+              <strong>{state.players[state.winner].name} wins</strong>
+            ) : (
+              <strong>{canAct ? "Your turn" : "Waiting"}</strong>
+            )}
           </div>
           <ActionLog entries={state.log} />
         </section>
@@ -322,27 +348,25 @@ const GameBoard: React.FC<GameBoardProps> = ({
         <section className="card-battle-side card-battle-side--bottom">
           {viewer ? (
             <>
-              <PlayerBadge
-                player={viewer}
-                isActive={state.activePlayer === viewerIndex}
-                isViewer
-              />
+              <PlayerBadge player={viewer} isActive={state.activePlayer === viewerIndex} isViewer />
               <div className="card-battle-arena-half">
-                <SidePiles player={viewer} />
+                <SidePiles player={viewer} drawPulse={drawPulseSide === "bottom"} />
                 <div className="card-battle-lanes">
                   <ZoneSlots
                     units={viewer.board}
                     selectedAttackerId={selectedAttackerId}
                     canSelect={canAct}
+                    animatedAttackerId={animatedAttackerId}
+                    impactedUnitId={impactedUnitId}
                     onSelectAttacker={onSelectAttacker}
                   />
                   <TrapSlots traps={viewer.traps} reveal />
-                  <div className="card-battle-hero-slot card-battle-hero-slot--self">
+                  <div className={`card-battle-hero-slot card-battle-hero-slot--self${impactedHeroSide === "bottom" ? " card-battle-hero-slot--impact" : ""}`}>
                     <span>{viewer.name}</span>
                     <strong>{viewer.health}</strong>
                     <small>Health</small>
                   </div>
-                  <HandFan player={viewer} canAct={canAct} onPlayCard={onPlayCard} />
+                  <HandFan player={viewer} canAct={canAct} drawPulse={drawPulseSide === "bottom"} onPlayCard={onPlayCard} />
                 </div>
               </div>
             </>

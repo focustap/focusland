@@ -10,6 +10,7 @@ type CardViewProps = {
   clickable?: boolean;
   statusLabel?: string;
   footer?: React.ReactNode;
+  className?: string;
   onClick?: () => void;
 };
 
@@ -21,10 +22,11 @@ const CardView: React.FC<CardViewProps> = ({
   clickable = false,
   statusLabel,
   footer,
+  className = "",
   onClick
 }) => {
   if (hidden) {
-    const hiddenClasses = `card-battle-card card-battle-card--hidden${selected ? " card-battle-card--selected" : ""}${clickable ? " card-battle-card--clickable" : ""}`;
+    const hiddenClasses = `card-battle-card card-battle-card--hidden${selected ? " card-battle-card--selected" : ""}${clickable ? " card-battle-card--clickable" : ""}${className ? ` ${className}` : ""}`;
 
     if (onClick) {
       return (
@@ -52,7 +54,7 @@ const CardView: React.FC<CardViewProps> = ({
     return null;
   }
 
-  const classes = `card-battle-card card-battle-card--${definition.type}${selected ? " card-battle-card--selected" : ""}${clickable ? " card-battle-card--clickable" : ""}`;
+  const classes = `card-battle-card card-battle-card--${definition.type}${selected ? " card-battle-card--selected" : ""}${clickable ? " card-battle-card--clickable" : ""}${className ? ` ${className}` : ""}`;
   const content = (
     <>
       <div className="card-battle-card__topline">

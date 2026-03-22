@@ -6,13 +6,19 @@ import { getActiveDeckList } from "../lib/card-game/deckBuilding";
 import { loadDeckStateForCurrentUser } from "../lib/card-game/deckStorage";
 import { recordCardDuelWin } from "../lib/progression";
 import { supabase } from "../lib/supabase";
-import type { GameAction, GameState } from "../lib/card-game/types";
+import { TAPDECK_AUDIO, createTapDeckTrack, ensureAudioPlayback, syncTrackToTimestamp } from "../lib/tapDeckAudio";
+import type { GameAction, GameState, PlayerIndex } from "../lib/card-game/types";
 
 type PlayerPresence = {
   userId: string;
   username: string;
   onlineAt: string;
   deckList?: string[];
+};
+
+type BattleMusicPayload = {
+  trackIndex: number;
+  startAtMs: number;
 };
 
 const ROOM_NAME = "focusland-card-duel";
@@ -49,15 +55,28 @@ const CardBattle: React.FC = () => {
   const [connected, setConnected] = useState(false);
   const [roomFull, setRoomFull] = useState(false);
   const [status, setStatus] = useState("Joining duel room...");
+  const [animatedAttackerId, setAnimatedAttackerId] = useState<string | null>(null);
+  const [impactedUnitId, setImpactedUnitId] = useState<string | null>(null);
+  const [impactedHeroSide, setImpactedHeroSide] = useState<"top" | "bottom" | null>(null);
+  const [drawPulseSide, setDrawPulseSide] = useState<"top" | "bottom" | null>(null);
+  const [showTurnBanner, setShowTurnBanner] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const stateRef = useRef<GameState>(WAITING_STATE);
+  const previousStateRef = useRef<GameState | null>(null);
   const startedPairKeyRef = useRef<string | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
   const playersRef = useRef<PlayerPresence[]>([]);
   const localDeckRef = useRef<string[]>([]);
   const recordedWinKeyRef = useRef<string | null>(null);
+  const attackTimeoutRef = useRef<number | null>(null);
+  const drawTimeoutRef = useRef<number | null>(null);
+  const turnBannerTimeoutRef = useRef<number | null>(null);
+  const battleMusicRef = useRef<HTMLAudioElement | null>(null);
+  const battleTrackIndexRef = useRef<number>(-1);
+  const battleUnlockCleanupRef = useRef<(() => void) | null>(null);
 
   const applyIncomingState = (nextState: GameState) => {
+    previousStateRef.current = stateRef.current;
     stateRef.current = nextState;
     setGameState(nextState);
   };
@@ -86,15 +105,49 @@ const CardBattle: React.FC = () => {
     gameState.pendingTrapPrompt === null &&
     gameState.activePlayer === currentSeatIndex;
 
+  const playSharedBattleTrack = (payload: BattleMusicPayload) => {
+    const trackSrc = TAPDECK_AUDIO.battleTracks[payload.trackIndex];
+    if (!trackSrc) {
+      return;
+    }
+
+    const audio = battleMusicRef.current;
+    if (!audio || audio.src !== trackSrc) {
+      if (battleMusicRef.current) {
+        battleMusicRef.current.pause();
+      }
+
+      const nextAudio = createTapDeckTrack(trackSrc, 0.28);
+      nextAudio.onended = () => {
+        if (currentUserIdRef.current && playersRef.current[0]?.userId === currentUserIdRef.current) {
+          const nextTrackIndex = (payload.trackIndex + 1 + Math.floor(Math.random() * 2)) % TAPDECK_AUDIO.battleTracks.length;
+          battleTrackIndexRef.current = nextTrackIndex;
+          void channelRef.current?.send({
+            type: "broadcast",
+            event: "tapdeck-music",
+            payload: {
+              trackIndex: nextTrackIndex,
+              startAtMs: Date.now() + 250
+            } satisfies BattleMusicPayload
+          });
+        }
+      };
+      battleMusicRef.current = nextAudio;
+    }
+
+    battleTrackIndexRef.current = payload.trackIndex;
+    syncTrackToTimestamp(battleMusicRef.current, payload.startAtMs);
+    battleUnlockCleanupRef.current?.();
+    battleUnlockCleanupRef.current = ensureAudioPlayback(battleMusicRef.current);
+  };
+
   useEffect(() => {
     if (currentSeatIndex === null) {
       setSelectedAttackerId(null);
       return;
     }
 
-    const selectedUnit = gameState.players[currentSeatIndex].board.find(
-      (unit) => unit.instanceId === selectedAttackerId
-    );
+    const selectedUnit = gameState.players[currentSeatIndex].board.find((unit) => unit.instanceId === selectedAttackerId);
 
     if (!selectedUnit || !canUnitAttack(selectedUnit) || !canAct) {
       setSelectedAttackerId(null);
@@ -116,19 +169,108 @@ const CardBattle: React.FC = () => {
   }, [currentSeatIndex, gameState.turnNumber, gameState.winner, players]);
 
   useEffect(() => {
+    const previous = previousStateRef.current;
+    if (!previous) {
+      return;
+    }
+
+    const sides: Array<{ player: PlayerIndex; side: "top" | "bottom" }> =
+      currentSeatIndex === 0
+        ? [
+            { player: 1, side: "top" },
+            { player: 0, side: "bottom" }
+          ]
+        : currentSeatIndex === 1
+          ? [
+              { player: 0, side: "top" },
+              { player: 1, side: "bottom" }
+            ]
+          : [
+              { player: 0, side: "top" },
+              { player: 1, side: "bottom" }
+            ];
+
+    for (const entry of sides) {
+      const prevPlayer = previous.players[entry.player];
+      const nextPlayer = gameState.players[entry.player];
+      if (nextPlayer.hand.length > prevPlayer.hand.length && nextPlayer.deck.length < prevPlayer.deck.length) {
+        window.clearTimeout(drawTimeoutRef.current ?? undefined);
+        setDrawPulseSide(entry.side);
+        drawTimeoutRef.current = window.setTimeout(() => setDrawPulseSide(null), 850);
+        break;
+      }
+    }
+
+    let nextAnimatedAttackerId: string | null = null;
+    let nextImpactedUnitId: string | null = null;
+    let nextImpactedHeroSide: "top" | "bottom" | null = null;
+
+    for (const attackSide of sides) {
+      const defenseSide = sides.find((item) => item.player !== attackSide.player);
+      if (!defenseSide) {
+        continue;
+      }
+
+      const prevAttackerBoard = previous.players[attackSide.player].board;
+      const nextAttackerBoard = gameState.players[attackSide.player].board;
+      const freshlySpent = nextAttackerBoard.find((unit) => {
+        const before = prevAttackerBoard.find((entry) => entry.instanceId === unit.instanceId);
+        return before && !before.exhausted && unit.exhausted;
+      });
+
+      if (!freshlySpent) {
+        continue;
+      }
+
+      nextAnimatedAttackerId = freshlySpent.instanceId;
+      const prevDefender = previous.players[defenseSide.player];
+      const nextDefender = gameState.players[defenseSide.player];
+      const impactedUnit = nextDefender.board.find((unit) => {
+        const before = prevDefender.board.find((entry) => entry.instanceId === unit.instanceId);
+        return before && unit.currentHealth < before.currentHealth;
+      });
+
+      if (impactedUnit) {
+        nextImpactedUnitId = impactedUnit.instanceId;
+      } else if (nextDefender.health < prevDefender.health) {
+        nextImpactedHeroSide = defenseSide.side;
+      }
+      break;
+    }
+
+    if (nextAnimatedAttackerId || nextImpactedUnitId || nextImpactedHeroSide) {
+      window.clearTimeout(attackTimeoutRef.current ?? undefined);
+      setAnimatedAttackerId(nextAnimatedAttackerId);
+      setImpactedUnitId(nextImpactedUnitId);
+      setImpactedHeroSide(nextImpactedHeroSide);
+      attackTimeoutRef.current = window.setTimeout(() => {
+        setAnimatedAttackerId(null);
+        setImpactedUnitId(null);
+        setImpactedHeroSide(null);
+      }, 700);
+    }
+  }, [currentSeatIndex, gameState]);
+
+  useEffect(() => {
+    if (!canAct) {
+      return;
+    }
+
+    window.clearTimeout(turnBannerTimeoutRef.current ?? undefined);
+    setShowTurnBanner(true);
+    turnBannerTimeoutRef.current = window.setTimeout(() => setShowTurnBanner(false), 1600);
+  }, [canAct, gameState.turnNumber]);
+
+  useEffect(() => {
     let isUnmounted = false;
 
     const syncPresence = () => {
       const channel = channelRef.current;
-
       if (!channel) {
         return;
       }
 
-      const presentPlayers = getPlayersFromPresence(
-        channel.presenceState() as Record<string, PlayerPresence[]>
-      );
-
+      const presentPlayers = getPlayersFromPresence(channel.presenceState() as Record<string, PlayerPresence[]>);
       if (isUnmounted) {
         return;
       }
@@ -137,12 +279,13 @@ const CardBattle: React.FC = () => {
       setPlayers(presentPlayers);
       setRoomFull(
         presentPlayers.length > 2 &&
-        !presentPlayers.slice(0, 2).some((player) => player.userId === currentUserIdRef.current)
+          !presentPlayers.slice(0, 2).some((player) => player.userId === currentUserIdRef.current)
       );
 
       if (presentPlayers.length < 2) {
         startedPairKeyRef.current = null;
         setStatus("Waiting for a second player...");
+        battleMusicRef.current?.pause();
         applyIncomingState(createInitialGameState());
         return;
       }
@@ -168,6 +311,17 @@ const CardBattle: React.FC = () => {
           type: "broadcast",
           event: "card-state",
           payload: nextState
+        });
+
+        const openingTrackIndex = Math.floor(Math.random() * TAPDECK_AUDIO.battleTracks.length);
+        battleTrackIndexRef.current = openingTrackIndex;
+        void channel.send({
+          type: "broadcast",
+          event: "tapdeck-music",
+          payload: {
+            trackIndex: openingTrackIndex,
+            startAtMs: Date.now() + 800
+          } satisfies BattleMusicPayload
         });
       }
     };
@@ -210,6 +364,9 @@ const CardBattle: React.FC = () => {
       channel.on("broadcast", { event: "card-state" }, ({ payload }) => {
         applyIncomingState(payload as GameState);
       });
+      channel.on("broadcast", { event: "tapdeck-music" }, ({ payload }) => {
+        playSharedBattleTrack(payload as BattleMusicPayload);
+      });
       channel.on("broadcast", { event: "card-action" }, ({ payload }) => {
         const localPlayers = playersRef.current.slice(0, 2);
         const localIsHost = localPlayers[0]?.userId === currentUserIdRef.current;
@@ -249,6 +406,17 @@ const CardBattle: React.FC = () => {
     return () => {
       isUnmounted = true;
       setConnected(false);
+      battleUnlockCleanupRef.current?.();
+      battleMusicRef.current?.pause();
+      if (attackTimeoutRef.current) {
+        window.clearTimeout(attackTimeoutRef.current);
+      }
+      if (drawTimeoutRef.current) {
+        window.clearTimeout(drawTimeoutRef.current);
+      }
+      if (turnBannerTimeoutRef.current) {
+        window.clearTimeout(turnBannerTimeoutRef.current);
+      }
       const channel = channelRef.current;
       if (channel) {
         void supabase.removeChannel(channel);
@@ -301,6 +469,11 @@ const CardBattle: React.FC = () => {
           isHost={isHost}
           selectedAttackerId={selectedAttackerId}
           canRespondToTrap={canRespondToTrap}
+          animatedAttackerId={animatedAttackerId}
+          impactedUnitId={impactedUnitId}
+          impactedHeroSide={impactedHeroSide}
+          drawPulseSide={drawPulseSide}
+          showTurnBanner={showTurnBanner}
           onSelectAttacker={setSelectedAttackerId}
           onAttackUnit={(attackerId, defenderId) => {
             void sendAction({
@@ -331,19 +504,25 @@ const CardBattle: React.FC = () => {
               return;
             }
 
-            const nextState = createInitialGameState([
-              seatedPlayers[0].username,
-              seatedPlayers[1].username
-            ], [
-              seatedPlayers[0].deckList ?? localDeckRef.current,
-              seatedPlayers[1].deckList ?? localDeckRef.current
-            ]);
+            const nextState = createInitialGameState(
+              [seatedPlayers[0].username, seatedPlayers[1].username],
+              [seatedPlayers[0].deckList ?? localDeckRef.current, seatedPlayers[1].deckList ?? localDeckRef.current]
+            );
             recordedWinKeyRef.current = null;
             applyIncomingState(nextState);
             void channelRef.current.send({
               type: "broadcast",
               event: "card-state",
               payload: nextState
+            });
+            const openingTrackIndex = Math.floor(Math.random() * TAPDECK_AUDIO.battleTracks.length);
+            void channelRef.current.send({
+              type: "broadcast",
+              event: "tapdeck-music",
+              payload: {
+                trackIndex: openingTrackIndex,
+                startAtMs: Date.now() + 800
+              } satisfies BattleMusicPayload
             });
           }}
           onRespondToTrap={(useTrap) => {

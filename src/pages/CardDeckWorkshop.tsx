@@ -12,6 +12,7 @@ import {
   type StoredDeckState
 } from "../lib/card-game/deckBuilding";
 import { loadDeckStateForCurrentUser, saveDeckStateForCurrentUser } from "../lib/card-game/deckStorage";
+import { TAPDECK_AUDIO, createTapDeckTrack, ensureAudioPlayback } from "../lib/tapDeckAudio";
 import type { CardFamily, CardType } from "../lib/card-game/types";
 
 const TYPE_FILTERS: Array<{ value: "all" | CardType; label: string }> = [
@@ -45,6 +46,17 @@ const CardDeckWorkshop: React.FC = () => {
       setDeckState(loadedState);
       setEditingSlotId(loadedState.activeSlotId);
     })();
+  }, []);
+
+  useEffect(() => {
+    const audio = createTapDeckTrack(TAPDECK_AUDIO.deckRoom, 0.22);
+    audio.loop = true;
+    const cleanupUnlock = ensureAudioPlayback(audio);
+
+    return () => {
+      cleanupUnlock();
+      audio.pause();
+    };
   }, []);
 
   const editingSlot = deckState?.slots.find((slot) => slot.id === editingSlotId) ?? null;
