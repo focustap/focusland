@@ -11,6 +11,7 @@ type CardViewProps = {
   statusLabel?: string;
   footer?: React.ReactNode;
   className?: string;
+  infoTooltip?: React.ReactNode;
   onClick?: () => void;
 };
 
@@ -23,6 +24,7 @@ const CardView: React.FC<CardViewProps> = ({
   statusLabel,
   footer,
   className = "",
+  infoTooltip,
   onClick
 }) => {
   if (hidden) {
@@ -61,6 +63,12 @@ const CardView: React.FC<CardViewProps> = ({
         <span className="card-battle-card__cost">{definition.cost}</span>
         <span className="card-battle-card__type">{definition.type}</span>
       </div>
+      {infoTooltip ? (
+        <span className="card-battle-card__info">
+          <span className="card-battle-card__info-dot">i</span>
+          <span className="card-battle-card__tooltip">{infoTooltip}</span>
+        </span>
+      ) : null}
       <div className={`card-battle-card__art card-battle-card__art--${definition.visualTheme}`}>
         <span>{definition.artLabel}</span>
       </div>

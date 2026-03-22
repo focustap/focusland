@@ -13,8 +13,9 @@ import {
   getStoredAvatarCustomization,
   type AvatarCustomization
 } from "../lib/avatarSprites";
+import { loadInventoryForCurrentUser } from "../lib/playerInventory";
 import { DEFAULT_PROFILE_COLOR, normalizeProfileColor } from "../lib/profileColor";
-import { loadShopState, ownsSkin } from "../lib/shop";
+import { ownsSkin } from "../lib/shop";
 import { supabase } from "../lib/supabase";
 
 const PROFILE_COLORS = [
@@ -61,29 +62,24 @@ const Profile: React.FC = () => {
         }
 
         if (data) {
+          const nextCustomization = normalizeAvatarCustomization(
+            (data as { avatar_customization?: Partial<AvatarCustomization> | null }).avatar_customization
+            ?? getStoredAvatarCustomization()
+          );
+          const inventoryResult = await loadInventoryForCurrentUser(nextCustomization.skinId);
           setUsername(data.username ?? "");
           setRectangleColor(normalizeProfileColor(data.color));
-          setAvatarCustomization(
-            normalizeAvatarCustomization(
-              (data as { avatar_customization?: Partial<AvatarCustomization> | null }).avatar_customization
-              ?? getStoredAvatarCustomization()
-            )
-          );
-          setOwnedSkinIds(
-            loadShopState(
-              normalizeAvatarCustomization(
-                (data as { avatar_customization?: Partial<AvatarCustomization> | null }).avatar_customization
-                ?? getStoredAvatarCustomization()
-              ).skinId
-            ).ownedSkinIds
-          );
+          setAvatarCustomization(nextCustomization);
+          setOwnedSkinIds(inventoryResult.inventory.ownedSkinIds);
           setGold(Number((data as { gold?: number | null }).gold ?? 0));
           if (typeof data.dark_mode === "boolean") {
             setDarkMode(data.dark_mode);
           }
         } else {
-          setAvatarCustomization(getStoredAvatarCustomization());
-          setOwnedSkinIds(loadShopState(getStoredAvatarCustomization().skinId).ownedSkinIds);
+          const nextCustomization = getStoredAvatarCustomization();
+          const inventoryResult = await loadInventoryForCurrentUser(nextCustomization.skinId);
+          setAvatarCustomization(nextCustomization);
+          setOwnedSkinIds(inventoryResult.inventory.ownedSkinIds);
         }
       } finally {
         setLoading(false);

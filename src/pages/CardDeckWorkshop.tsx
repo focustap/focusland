@@ -7,11 +7,13 @@ import {
   countsToDeckList,
   deckListToCounts,
   getDeckSummary,
+  limitDeckListToCollection,
   type DeckCounts,
   type SavedDeckSlot,
   type StoredDeckState
 } from "../lib/card-game/deckBuilding";
 import { loadDeckStateForCurrentUser, saveDeckStateForCurrentUser } from "../lib/card-game/deckStorage";
+import { loadInventoryForCurrentUser } from "../lib/playerInventory";
 import { TAPDECK_AUDIO, createTapDeckTrack, ensureAudioPlayback } from "../lib/tapDeckAudio";
 import type { CardFamily, CardType } from "../lib/card-game/types";
 
@@ -39,12 +41,25 @@ const CardDeckWorkshop: React.FC = () => {
   const [message, setMessage] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<"all" | CardType>("all");
   const [familyFilter, setFamilyFilter] = useState<"all" | CardFamily>("all");
+  const [collection, setCollection] = useState<Record<string, number>>({});
 
   useEffect(() => {
     void (async () => {
-      const loadedState = await loadDeckStateForCurrentUser();
-      setDeckState(loadedState);
+      const [loadedState, inventoryResult] = await Promise.all([
+        loadDeckStateForCurrentUser(),
+        loadInventoryForCurrentUser()
+      ]);
+      const nextCollection = inventoryResult.inventory.cardCollection;
+      const normalizedState: StoredDeckState = {
+        ...loadedState,
+        slots: loadedState.slots.map((slot) => ({
+          ...slot,
+          cardIds: limitDeckListToCollection(slot.cardIds, nextCollection)
+        }))
+      };
+      setDeckState(normalizedState);
       setEditingSlotId(loadedState.activeSlotId);
+      setCollection(nextCollection);
     })();
   }, []);
 
@@ -196,11 +211,16 @@ const CardDeckWorkshop: React.FC = () => {
                     className="secondary-button"
                     type="button"
                     onClick={() => {
+                      const limitedCards = limitDeckListToCollection(preset.cardIds, collection);
                       updateEditingSlot((slot) => ({
                         ...slot,
-                        cardIds: [...preset.cardIds]
+                        cardIds: [...limitedCards]
                       }));
-                      setMessage(`Loaded preset into ${editingSlot.name}: ${preset.name}`);
+                      setMessage(
+                        limitedCards.length === preset.cardIds.length
+                          ? `Loaded preset into ${editingSlot.name}: ${preset.name}`
+                          : `Loaded ${limitedCards.length}/${preset.cardIds.length} cards from ${preset.name}. Missing copies stayed out because you do not own them yet.`
+                      );
                     }}
                   >
                     Copy to selected slot
@@ -251,17 +271,30 @@ const CardDeckWorkshop: React.FC = () => {
           <div className="deck-workshop-grid">
             {filteredCards.map((card) => {
               const count = counts[card.id] ?? 0;
-              const canAdd = count < 2 && summary.totalCards < 30;
+              const ownedCount = Math.max(0, Math.floor(collection[card.id] ?? 0));
+              const canAdd = count < Math.min(2, ownedCount) && summary.totalCards < 30;
 
               return (
                 <div key={card.id} className="deck-workshop-card">
                   <CardView
                     cardId={card.id}
+                    infoTooltip={
+                      <>
+                        <strong>{ownedCount} owned</strong>
+                        <br />
+                        Family: {card.family}
+                        <br />
+                        Set: {card.set}
+                        <br />
+                        Type: {card.type}
+                      </>
+                    }
                     footer={
                       <div className="deck-workshop-card__footer">
                         <div className="deck-workshop-card__meta">
                           <span>{card.family}</span>
                           <span>{card.set}</span>
+                          <span>{ownedCount} owned</span>
                         </div>
                         <div className="deck-workshop-card__controls">
                           <button
@@ -302,6 +335,7 @@ const CardDeckWorkshop: React.FC = () => {
                       </div>
                     }
                   />
+                  {ownedCount === 0 ? <div className="warning">Open packs in the shop to unlock this card.</div> : null}
                 </div>
               );
             })}

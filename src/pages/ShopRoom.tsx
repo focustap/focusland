@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import Phaser from "phaser";
 import NavBar from "../components/NavBar";
 import AvatarSprite from "../components/AvatarSprite";
+import PackOpeningOverlay, { type PackOpeningStage } from "../components/shop/PackOpeningOverlay";
 import {
   createAvatarRender,
   getStoredAvatarCustomization,
@@ -14,20 +15,21 @@ import {
   type AvatarCustomization,
   type AvatarRender
 } from "../lib/avatarSprites";
+import { openPack, type PackRevealCard } from "../lib/card-game/packOpening";
 import { getCurrentUserGold, applyGoldDelta } from "../lib/progression";
+import { loadInventoryForCurrentUser, saveInventoryForCurrentUser } from "../lib/playerInventory";
+import { playPackBurstSound, playPackChargeSound, playRevealSound } from "../lib/packOpeningAudio";
 import { DEFAULT_PROFILE_COLOR, normalizeProfileColor } from "../lib/profileColor";
 import { createRoomPresenceController, ROOM_NAMES, type RoomPresenceController } from "../lib/roomPresenceController";
 import {
-  addCardPack,
-  loadShopState,
+  normalizeCollection,
+  normalizeOwnedSkinIds,
   ownsSkin,
-  saveShopState,
   SHOP_PACK_PRODUCTS,
   SHOP_SKIN_PRODUCTS,
-  unlockSkin,
+  type ShopInventory,
   type ShopPackProduct,
-  type ShopSkinProduct,
-  type ShopState
+  type ShopSkinProduct
 } from "../lib/shop";
 import { supabase } from "../lib/supabase";
 
@@ -41,11 +43,14 @@ type Hotspot = {
   entranceY: number;
 };
 
+type PackSort = "qty" | "name" | "price";
+
 const panelStyle: React.CSSProperties = {
-  background: "rgba(15, 23, 42, 0.78)",
-  border: "1px solid rgba(148, 163, 184, 0.28)",
-  borderRadius: 16,
-  padding: 16
+  background: "linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(30, 41, 59, 0.92))",
+  border: "1px solid rgba(148, 163, 184, 0.22)",
+  borderRadius: 20,
+  padding: 18,
+  boxShadow: "0 18px 38px rgba(15, 23, 42, 0.18)"
 };
 
 const ShopRoom: React.FC = () => {
@@ -54,17 +59,51 @@ const ShopRoom: React.FC = () => {
   const gameRef = useRef<Phaser.Game | null>(null);
   const assetBase = import.meta.env.BASE_URL;
   const [gold, setGold] = useState(0);
-  const [shopState, setShopState] = useState<ShopState>(() => loadShopState());
+  const [inventory, setInventory] = useState<ShopInventory>({
+    ownedSkinIds: [0],
+    unopenedPacks: {},
+    cardCollection: {}
+  });
   const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>(getStoredAvatarCustomization());
   const [status, setStatus] = useState<string | null>(null);
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
+  const [packSort, setPackSort] = useState<PackSort>("qty");
+  const [openingPackId, setOpeningPackId] = useState<string | null>(null);
+  const [openingCards, setOpeningCards] = useState<PackRevealCard[]>([]);
+  const [openingStage, setOpeningStage] = useState<PackOpeningStage>("charging");
+  const [revealedCount, setRevealedCount] = useState(0);
+  const [inventoryReady, setInventoryReady] = useState(false);
+
+  const openingPack = useMemo(
+    () => SHOP_PACK_PRODUCTS.find((product) => product.id === openingPackId) ?? null,
+    [openingPackId]
+  );
 
   const ownedPackSummary = useMemo(
     () =>
-      SHOP_PACK_PRODUCTS.filter((pack) => (shopState.cardPacks[pack.id] ?? 0) > 0)
-        .map((pack) => `${pack.name} x${shopState.cardPacks[pack.id]}`)
+      SHOP_PACK_PRODUCTS.filter((pack) => (inventory.unopenedPacks[pack.id] ?? 0) > 0)
+        .map((pack) => `${pack.name} x${inventory.unopenedPacks[pack.id]}`)
         .join(", "),
-    [shopState.cardPacks]
+    [inventory.unopenedPacks]
+  );
+
+  const sortedPacks = useMemo(() => {
+    const copy = [...SHOP_PACK_PRODUCTS];
+    copy.sort((left, right) => {
+      if (packSort === "qty") {
+        return (inventory.unopenedPacks[right.id] ?? 0) - (inventory.unopenedPacks[left.id] ?? 0) || left.name.localeCompare(right.name);
+      }
+      if (packSort === "price") {
+        return left.price - right.price || left.name.localeCompare(right.name);
+      }
+      return left.name.localeCompare(right.name);
+    });
+    return copy;
+  }, [inventory.unopenedPacks, packSort]);
+
+  const collectionSize = useMemo(
+    () => Object.values(inventory.cardCollection).reduce((sum, count) => sum + count, 0),
+    [inventory.cardCollection]
   );
 
   useEffect(() => {
@@ -90,8 +129,10 @@ const ShopRoom: React.FC = () => {
         (profile as { avatar_customization?: Partial<AvatarCustomization> | null } | null)?.avatar_customization
         ?? getStoredAvatarCustomization()
       );
-      const nextGold = await getCurrentUserGold();
-      const nextShopState = loadShopState(nextCustomization.skinId);
+      const [nextGold, inventoryResult] = await Promise.all([
+        getCurrentUserGold(),
+        loadInventoryForCurrentUser(nextCustomization.skinId)
+      ]);
 
       if (cancelled) {
         return;
@@ -100,7 +141,15 @@ const ShopRoom: React.FC = () => {
       storeAvatarCustomization(nextCustomization);
       setAvatarCustomization(nextCustomization);
       setGold(nextGold);
-      setShopState(nextShopState);
+      setInventory(inventoryResult.inventory);
+      setInventoryReady(true);
+      setStatus(
+        inventoryResult.persistedToDatabase
+          ? "Inventory synced."
+          : inventoryResult.errorMessage
+            ? `Inventory is using local fallback: ${inventoryResult.errorMessage}`
+            : "Inventory is using local fallback."
+      );
     };
 
     void loadState();
@@ -163,30 +212,30 @@ const ShopRoom: React.FC = () => {
         }
 
         create() {
-          this.cameras.main.setBackgroundColor("#1f1608");
-          this.add.rectangle(width / 2, height / 2, width, height, 0x2a1d0d);
-          this.add.rectangle(width / 2, 106, width - 64, 168, 0x5b3b13).setStrokeStyle(3, 0xfbbf24, 0.7);
-          this.add.rectangle(210, 238, 184, 96, 0x0f766e, 0.28).setStrokeStyle(2, 0x5eead4, 0.9);
-          this.add.rectangle(570, 238, 184, 96, 0x7c2d12, 0.28).setStrokeStyle(2, 0xfdba74, 0.9);
-          this.add.rectangle(width / 2, height - 84, width - 120, 120, 0x3f2a12);
-          this.add.text(width / 2, 34, "Focusland Shop", {
+          this.cameras.main.setBackgroundColor("#1d1408");
+          this.add.rectangle(width / 2, height / 2, width, height, 0x1d1408);
+          this.add.rectangle(width / 2, 100, width - 70, 160, 0x5a3412).setStrokeStyle(3, 0xfbbf24, 0.7);
+          this.add.rectangle(216, 238, 210, 98, 0x14532d, 0.3).setStrokeStyle(2, 0x86efac, 0.9);
+          this.add.rectangle(564, 238, 210, 98, 0x7c2d12, 0.3).setStrokeStyle(2, 0xfdba74, 0.9);
+          this.add.rectangle(width / 2, height - 88, width - 120, 122, 0x38210f);
+          this.add.text(width / 2, 34, "Focusland Grand Bazaar", {
             color: "#fde68a",
             fontSize: "28px",
             fontStyle: "bold"
           }).setOrigin(0.5);
-          this.add.text(210, 214, "Skin Stall", {
+          this.add.text(width / 2, 112, "Skins on the left. Packs on the right. The vault opens below.", {
+            color: "#fff7ed",
+            fontSize: "16px"
+          }).setOrigin(0.5);
+          this.add.text(216, 214, "Skin Counter", {
             color: "#ecfeff",
             fontSize: "24px",
             fontStyle: "bold"
           }).setOrigin(0.5);
-          this.add.text(570, 214, "Card Packs", {
+          this.add.text(564, 214, "Pack Vault", {
             color: "#fff7ed",
             fontSize: "24px",
             fontStyle: "bold"
-          }).setOrigin(0.5);
-          this.add.text(width / 2, 114, "Spend gold on skins and packs. More inventory can plug in here later.", {
-            color: "#fef3c7",
-            fontSize: "16px"
           }).setOrigin(0.5);
 
           this.hotspots.push({
@@ -313,8 +362,50 @@ const ShopRoom: React.FC = () => {
     };
   }, [navigate, assetBase]);
 
+  useEffect(() => {
+    if (!openingPack || !openingCards.length) {
+      return;
+    }
+
+    if (openingStage === "charging") {
+      playPackChargeSound();
+      const timerId = window.setTimeout(() => {
+        setOpeningStage("burst");
+      }, 950);
+      return () => window.clearTimeout(timerId);
+    }
+
+    if (openingStage === "burst") {
+      playPackBurstSound();
+      const timerId = window.setTimeout(() => {
+        setOpeningStage("reveal");
+      }, 620);
+      return () => window.clearTimeout(timerId);
+    }
+  }, [openingPack, openingCards.length, openingStage]);
+
+  useEffect(() => {
+    if (openingStage === "reveal" && revealedCount === openingCards.length && openingCards.length > 0) {
+      setOpeningStage("complete");
+      setStatus(`Opened ${openingPack?.name}. ${openingCards.filter((card) => card.rarity === "epic" || card.rarity === "legendary").length > 0 ? "A high-rarity hit dropped." : "Pack added to collection."}`);
+    }
+  }, [openingCards, openingPack?.name, openingStage, revealedCount]);
+
+  const persistInventory = async (nextInventory: ShopInventory, successText: string) => {
+    const result = await saveInventoryForCurrentUser(nextInventory);
+    setInventory(result.inventory);
+    setStatus(
+      result.persistedToDatabase
+        ? successText
+        : result.errorMessage
+          ? `${successText} Inventory saved locally because the profile inventory columns are not available yet. ${result.errorMessage}`
+          : `${successText} Inventory saved locally.`
+    );
+    return result.inventory;
+  };
+
   const handleSkinPurchase = async (product: ShopSkinProduct) => {
-    if (ownsSkin(shopState, product.skinId)) {
+    if (ownsSkin(inventory, product.skinId)) {
       setStatus(`${product.name} is already unlocked.`);
       return;
     }
@@ -325,14 +416,14 @@ const ShopRoom: React.FC = () => {
     }
 
     setBusyItemId(product.id);
-    setStatus(null);
     try {
       const nextGold = await applyGoldDelta(-product.price);
-      const nextState = unlockSkin(shopState, product.skinId);
-      saveShopState(nextState);
-      setShopState(nextState);
+      const nextInventory: ShopInventory = {
+        ...inventory,
+        ownedSkinIds: normalizeOwnedSkinIds([...inventory.ownedSkinIds, product.skinId])
+      };
+      await persistInventory(nextInventory, `${product.name} unlocked.`);
       setGold(nextGold);
-      setStatus(`${product.name} unlocked.`);
     } catch {
       setStatus(`Could not buy ${product.name}.`);
     } finally {
@@ -341,13 +432,12 @@ const ShopRoom: React.FC = () => {
   };
 
   const handleEquipSkin = async (product: ShopSkinProduct) => {
-    if (!ownsSkin(shopState, product.skinId)) {
+    if (!ownsSkin(inventory, product.skinId)) {
       setStatus(`Buy ${product.name} before equipping it.`);
       return;
     }
 
     setBusyItemId(product.id);
-    setStatus(null);
     try {
       const nextCustomization = normalizeAvatarCustomization({ ...avatarCustomization, skinId: product.skinId });
       const {
@@ -370,9 +460,6 @@ const ShopRoom: React.FC = () => {
 
       storeAvatarCustomization(nextCustomization);
       setAvatarCustomization(nextCustomization);
-      const nextState = loadShopState(nextCustomization.skinId);
-      saveShopState(nextState);
-      setShopState(nextState);
       setStatus(`${product.name} equipped.`);
     } catch {
       setStatus(`Could not equip ${product.name}.`);
@@ -388,14 +475,17 @@ const ShopRoom: React.FC = () => {
     }
 
     setBusyItemId(product.id);
-    setStatus(null);
     try {
       const nextGold = await applyGoldDelta(-product.price);
-      const nextState = addCardPack(shopState, product.id);
-      saveShopState(nextState);
-      setShopState(nextState);
+      const nextInventory: ShopInventory = {
+        ...inventory,
+        unopenedPacks: {
+          ...inventory.unopenedPacks,
+          [product.id]: (inventory.unopenedPacks[product.id] ?? 0) + 1
+        }
+      };
+      await persistInventory(nextInventory, `${product.name} added to your vault.`);
       setGold(nextGold);
-      setStatus(`${product.name} added to your stash.`);
     } catch {
       setStatus(`Could not buy ${product.name}.`);
     } finally {
@@ -403,97 +493,212 @@ const ShopRoom: React.FC = () => {
     }
   };
 
+  const handleStartOpening = async (pack: ShopPackProduct) => {
+    if ((inventory.unopenedPacks[pack.id] ?? 0) <= 0) {
+      setStatus(`No ${pack.name} left to open.`);
+      return;
+    }
+
+    setBusyItemId(pack.id);
+    try {
+      const reveal = openPack(pack.id);
+      const nextInventory: ShopInventory = {
+        ...inventory,
+        unopenedPacks: {
+          ...inventory.unopenedPacks,
+          [pack.id]: Math.max(0, (inventory.unopenedPacks[pack.id] ?? 0) - 1)
+        },
+        cardCollection: normalizeCollection(
+          reveal.reduce<Record<string, number>>(
+            (collection, card) => {
+              collection[card.cardId] = (collection[card.cardId] ?? 0) + 1;
+              return collection;
+            },
+            { ...inventory.cardCollection }
+          )
+        )
+      };
+
+      const savedInventory = await persistInventory(nextInventory, `${pack.name} cracked.`);
+      setInventory(savedInventory);
+      setOpeningPackId(pack.id);
+      setOpeningCards(reveal);
+      setOpeningStage("charging");
+      setRevealedCount(0);
+    } catch {
+      setStatus(`Could not open ${pack.name}.`);
+    } finally {
+      setBusyItemId(null);
+    }
+  };
+
+  const handleRevealNext = () => {
+    if (openingStage !== "reveal") {
+      return;
+    }
+
+    const nextCard = openingCards[revealedCount];
+    if (!nextCard) {
+      return;
+    }
+
+    playRevealSound(nextCard.rarity);
+    setRevealedCount((current) => current + 1);
+  };
+
+  const handleCloseOpening = () => {
+    setOpeningPackId(null);
+    setOpeningCards([]);
+    setOpeningStage("charging");
+    setRevealedCount(0);
+  };
+
   return (
     <div className="page">
       <NavBar />
-      <div className="content card" style={{ maxWidth: 980 }}>
+      <div className="content card" style={{ maxWidth: 1180 }}>
         <h2>Shop</h2>
-        <p>Walk into the shop, then use your gold below to unlock skins and stock up on TapDeck packs.</p>
+        <p>Buy skins, build a real pack vault, and crack packs one reveal at a time.</p>
         <div ref={containerRef} style={{ width: "100%", maxWidth: 780, margin: "1rem auto" }} />
-        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
-          <section style={panelStyle}>
-            <strong>Wallet</strong>
-            <p style={{ margin: "0.5rem 0" }}>Gold: {gold}</p>
-            <p style={{ margin: "0.5rem 0" }}>
-              Equipped skin: {SHOP_SKIN_PRODUCTS.find((product) => product.skinId === avatarCustomization.skinId)?.name ?? "Abigail"}
-            </p>
-            <p style={{ margin: 0 }}>
-              Packs owned: {ownedPackSummary || "None yet"}
-            </p>
+        <div className="shop-room-grid">
+          <section style={panelStyle} className="shop-room-panel">
+            <div className="shop-room-panel__top">
+              <div>
+                <strong>Wallet</strong>
+                <p>Gold: {gold}</p>
+              </div>
+              <div>
+                <strong>Collection</strong>
+                <p>{collectionSize} total cards</p>
+              </div>
+              <div>
+                <strong>Pack vault</strong>
+                <p>{ownedPackSummary || "Empty"}</p>
+              </div>
+            </div>
+            <div className="shop-room-status">{inventoryReady ? status ?? "The shop is open." : "Loading shop inventory..."}</div>
           </section>
-          <section style={panelStyle}>
-            <strong>Status</strong>
-            <p style={{ margin: "0.5rem 0 0" }}>{status ?? "The shop is open."}</p>
+          <section style={panelStyle} className="shop-room-panel">
+            <div className="shop-room-avatar-row">
+              <AvatarSprite customization={avatarCustomization} size={80} className="profile-avatar-preview" />
+              <div>
+                <strong>Equipped skin</strong>
+                <p>{SHOP_SKIN_PRODUCTS.find((product) => product.skinId === avatarCustomization.skinId)?.name ?? "Abigail"}</p>
+              </div>
+            </div>
           </section>
         </div>
-        <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", marginTop: 16 }}>
-          <section style={panelStyle}>
-            <h3 style={{ marginTop: 0 }}>Skins</h3>
-            {SHOP_SKIN_PRODUCTS.map((product) => {
-              const unlocked = ownsSkin(shopState, product.skinId);
-              const equipped = avatarCustomization.skinId === product.skinId;
-              return (
-                <div key={product.id} style={{ borderTop: "1px solid rgba(148, 163, 184, 0.18)", paddingTop: 12, marginTop: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <AvatarSprite customization={{ skinId: product.skinId }} size={56} />
+
+        <div className="shop-room-grid">
+          <section style={panelStyle} className="shop-room-panel">
+            <h3>Skins</h3>
+            <div className="shop-skin-grid">
+              {SHOP_SKIN_PRODUCTS.map((product) => {
+                const unlocked = ownsSkin(inventory, product.skinId);
+                const equipped = avatarCustomization.skinId === product.skinId;
+                return (
+                  <article key={product.id} className="shop-skin-card">
+                    <AvatarSprite customization={{ skinId: product.skinId }} size={72} />
                     <div>
                       <strong>{product.name}</strong>
-                      <p style={{ margin: "0.25rem 0" }}>{product.description}</p>
+                      <p>{product.description}</p>
                       <span>{product.price} gold</span>
                     </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      disabled={unlocked || busyItemId === product.id}
-                      onClick={() => {
-                        void handleSkinPurchase(product);
-                      }}
-                    >
-                      {unlocked ? "Unlocked" : busyItemId === product.id ? "Working..." : "Buy"}
-                    </button>
-                    <button
-                      type="button"
-                      className="primary-button"
-                      disabled={!unlocked || equipped || busyItemId === product.id}
-                      onClick={() => {
-                        void handleEquipSkin(product);
-                      }}
-                    >
-                      {equipped ? "Equipped" : "Equip"}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+                    <div className="shop-skin-card__actions">
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={unlocked || busyItemId === product.id}
+                        onClick={() => {
+                          void handleSkinPurchase(product);
+                        }}
+                      >
+                        {unlocked ? "Unlocked" : busyItemId === product.id ? "Working..." : "Buy"}
+                      </button>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        disabled={!unlocked || equipped || busyItemId === product.id}
+                        onClick={() => {
+                          void handleEquipSkin(product);
+                        }}
+                      >
+                        {equipped ? "Equipped" : "Equip"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </section>
-          <section style={panelStyle}>
-            <h3 style={{ marginTop: 0 }}>Card Packs</h3>
-            {SHOP_PACK_PRODUCTS.map((product) => (
-              <div key={product.id} style={{ borderTop: "1px solid rgba(148, 163, 184, 0.18)", paddingTop: 12, marginTop: 12 }}>
-                <strong>{product.name}</strong>
-                <p style={{ margin: "0.25rem 0" }}>{product.description}</p>
-                <p style={{ margin: "0.25rem 0" }}>
-                  {product.price} gold
-                  {" · "}
-                  Owned: {shopState.cardPacks[product.id] ?? 0}
-                </p>
-                <button
-                  type="button"
-                  className="primary-button"
-                  disabled={busyItemId === product.id}
-                  onClick={() => {
-                    void handlePackPurchase(product);
-                  }}
-                >
-                  {busyItemId === product.id ? "Working..." : "Buy pack"}
-                </button>
-              </div>
-            ))}
+
+          <section style={panelStyle} className="shop-room-panel">
+            <div className="shop-pack-head">
+              <h3>Pack Vault</h3>
+              <label className="field">
+                <span>Sort</span>
+                <select value={packSort} onChange={(event) => setPackSort(event.target.value as PackSort)}>
+                  <option value="qty">Most owned</option>
+                  <option value="name">Name</option>
+                  <option value="price">Price</option>
+                </select>
+              </label>
+            </div>
+            <div className="shop-pack-grid">
+              {sortedPacks.map((product) => {
+                const count = inventory.unopenedPacks[product.id] ?? 0;
+                return (
+                  <article
+                    key={product.id}
+                    className="shop-pack-card"
+                    style={{ ["--pack-accent" as string]: product.accent, ["--pack-soft" as string]: product.accentSoft, ["--pack-glow" as string]: product.glow }}
+                  >
+                    <div className="shop-pack-card__shine" />
+                    <div className="shop-pack-card__visual">
+                      <strong>{product.name}</strong>
+                      <span>{count} unopened</span>
+                    </div>
+                    <p>{product.description}</p>
+                    <div className="shop-pack-card__actions">
+                      <span>{product.price} gold</span>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={busyItemId === product.id}
+                        onClick={() => {
+                          void handlePackPurchase(product);
+                        }}
+                      >
+                        {busyItemId === product.id ? "Working..." : "Buy pack"}
+                      </button>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        disabled={count <= 0 || busyItemId === product.id}
+                        onClick={() => {
+                          void handleStartOpening(product);
+                        }}
+                      >
+                        Open now
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </section>
         </div>
       </div>
+
+      <PackOpeningOverlay
+        open={Boolean(openingPack)}
+        pack={openingPack}
+        stage={openingStage}
+        revealCards={openingCards}
+        revealedCount={revealedCount}
+        onRevealNext={handleRevealNext}
+        onClose={handleCloseOpening}
+      />
     </div>
   );
 };

@@ -143,6 +143,23 @@ export function countsToDeckList(counts: DeckCounts): string[] {
   return sanitizeDeckList(deckList);
 }
 
+export function limitDeckListToCollection(cardIds: string[], collection: Record<string, number>) {
+  const usedCounts: Record<string, number> = {};
+  const limited: string[] = [];
+
+  for (const cardId of sanitizeDeckList(cardIds)) {
+    const ownedCount = Math.max(0, Math.floor(collection[cardId] ?? 0));
+    if ((usedCounts[cardId] ?? 0) >= ownedCount) {
+      continue;
+    }
+
+    usedCounts[cardId] = (usedCounts[cardId] ?? 0) + 1;
+    limited.push(cardId);
+  }
+
+  return limited;
+}
+
 export function getDeckSummary(counts: DeckCounts) {
   const totalCards = Object.values(counts).reduce((total, count) => total + count, 0);
   const overLimit = totalCards > MAX_DECK_SIZE;

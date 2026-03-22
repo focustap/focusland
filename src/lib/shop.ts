@@ -1,7 +1,5 @@
 import { SKIN_OPTIONS } from "./avatarSprites";
 
-const SHOP_STORAGE_KEY = "focusland-shop-state";
-
 export type ShopSkinProduct = {
   id: string;
   skinId: number;
@@ -15,11 +13,16 @@ export type ShopPackProduct = {
   name: string;
   description: string;
   price: number;
+  accent: string;
+  accentSoft: string;
+  glow: string;
+  familyPool: Array<"starter" | "ember" | "tide" | "wild" | "sky" | "iron" | "lunar">;
 };
 
-export type ShopState = {
+export type ShopInventory = {
   ownedSkinIds: number[];
-  cardPacks: Record<string, number>;
+  unopenedPacks: Record<string, number>;
+  cardCollection: Record<string, number>;
 };
 
 export const SHOP_SKIN_PRODUCTS: ShopSkinProduct[] = [
@@ -32,73 +35,59 @@ export const SHOP_SKIN_PRODUCTS: ShopSkinProduct[] = [
 ];
 
 export const SHOP_PACK_PRODUCTS: ShopPackProduct[] = [
-  { id: "starter-plus", name: "Starter Plus Pack", description: "Basic deck staples for new builds.", price: 45 },
-  { id: "ember-pack", name: "Ember Pack", description: "Aggressive red card bundle.", price: 80 },
-  { id: "tide-pack", name: "Tide Pack", description: "Tempo and control blue cards.", price: 80 },
-  { id: "wild-pack", name: "Wild Pack", description: "Ramp and beast support cards.", price: 95 }
+  {
+    id: "starter-plus",
+    name: "Starter Plus Pack",
+    description: "Core staples with a clean upgrade slot.",
+    price: 45,
+    accent: "#60a5fa",
+    accentSoft: "rgba(96, 165, 250, 0.34)",
+    glow: "#bfdbfe",
+    familyPool: ["starter"]
+  },
+  {
+    id: "ember-pack",
+    name: "Ember Pack",
+    description: "Aggressive red pressure with hot chase cards.",
+    price: 80,
+    accent: "#f97316",
+    accentSoft: "rgba(249, 115, 22, 0.36)",
+    glow: "#fdba74",
+    familyPool: ["ember", "starter"]
+  },
+  {
+    id: "tide-pack",
+    name: "Tide Pack",
+    description: "Tempo spells, bounce, and control tools.",
+    price: 80,
+    accent: "#38bdf8",
+    accentSoft: "rgba(56, 189, 248, 0.34)",
+    glow: "#bae6fd",
+    familyPool: ["tide", "lunar", "starter"]
+  },
+  {
+    id: "wild-pack",
+    name: "Wild Pack",
+    description: "Board growth, sticky units, and ambushes.",
+    price: 95,
+    accent: "#84cc16",
+    accentSoft: "rgba(132, 204, 22, 0.34)",
+    glow: "#d9f99d",
+    familyPool: ["wild", "iron", "starter"]
+  }
 ];
 
-function normalizeSkinIds(skinIds: number[]) {
+export function normalizeOwnedSkinIds(skinIds: number[]) {
   const validIds = new Set(SKIN_OPTIONS.map((skin) => skin.id));
   return Array.from(new Set(skinIds.filter((skinId) => validIds.has(skinId)))).sort((left, right) => left - right);
 }
 
-export function loadShopState(currentSkinId?: number): ShopState {
-  if (typeof window === "undefined") {
-    return {
-      ownedSkinIds: normalizeSkinIds([0, currentSkinId ?? 0]),
-      cardPacks: {}
-    };
-  }
-
-  try {
-    const raw = window.localStorage.getItem(SHOP_STORAGE_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Partial<ShopState>) : {};
-    return {
-      ownedSkinIds: normalizeSkinIds([0, currentSkinId ?? 0, ...((parsed.ownedSkinIds as number[] | undefined) ?? [])]),
-      cardPacks: Object.fromEntries(
-        Object.entries(parsed.cardPacks ?? {}).filter(([, count]) => Number.isFinite(count) && Number(count) > 0)
-      )
-    };
-  } catch {
-    return {
-      ownedSkinIds: normalizeSkinIds([0, currentSkinId ?? 0]),
-      cardPacks: {}
-    };
-  }
+export function ownsSkin(inventory: Pick<ShopInventory, "ownedSkinIds">, skinId: number) {
+  return inventory.ownedSkinIds.includes(skinId);
 }
 
-export function saveShopState(state: ShopState) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(
-    SHOP_STORAGE_KEY,
-    JSON.stringify({
-      ownedSkinIds: normalizeSkinIds(state.ownedSkinIds),
-      cardPacks: state.cardPacks
-    })
+export function normalizeCollection(collection: Record<string, number>) {
+  return Object.fromEntries(
+    Object.entries(collection).filter(([, count]) => Number.isFinite(count) && Number(count) > 0).map(([cardId, count]) => [cardId, Math.floor(count)])
   );
-}
-
-export function ownsSkin(state: ShopState, skinId: number) {
-  return state.ownedSkinIds.includes(skinId);
-}
-
-export function unlockSkin(state: ShopState, skinId: number): ShopState {
-  return {
-    ...state,
-    ownedSkinIds: normalizeSkinIds([...state.ownedSkinIds, skinId])
-  };
-}
-
-export function addCardPack(state: ShopState, packId: string): ShopState {
-  return {
-    ...state,
-    cardPacks: {
-      ...state.cardPacks,
-      [packId]: (state.cardPacks[packId] ?? 0) + 1
-    }
-  };
 }
