@@ -153,4 +153,6 @@ export async function recordCardDuelWin() {
   if (error) {
     throw error;
   }
+
+  await applyGoldDelta(175);
 }

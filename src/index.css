@@ -1975,7 +1975,7 @@ body[data-theme="dark"] .brawl-pick-card span {
   background:
     radial-gradient(circle at center, rgba(30, 41, 59, 0.46), rgba(2, 6, 23, 0.94)),
     rgba(2, 6, 23, 0.9);
-  backdrop-filter: blur(14px);
+  backdrop-filter: blur(8px);
 }
 
 .pack-opening-shell {
@@ -1987,6 +1987,7 @@ body[data-theme="dark"] .brawl-pick-card span {
   gap: 1.2rem;
   padding: 1.4rem;
   border-radius: 1.75rem;
+  contain: layout paint;
   border: 1px solid color-mix(in srgb, var(--pack-accent) 52%, rgba(148, 163, 184, 0.18));
   background:
     radial-gradient(circle at top, var(--pack-soft), transparent 44%),
@@ -2024,13 +2025,12 @@ body[data-theme="dark"] .brawl-pick-card span {
 
 .pack-opening-energy__beam {
   position: absolute;
-  width: 10px;
+  width: 8px;
   height: 92%;
   border-radius: 999px;
   background: linear-gradient(180deg, rgba(255,255,255,0), var(--pack-glow), rgba(255,255,255,0));
   transform: rotate(var(--beam-rotation, 0deg));
   opacity: 0;
-  filter: blur(2px);
   animation: pack-beam-pulse 1.6s ease-in-out infinite;
 }
 
@@ -2107,6 +2107,7 @@ body[data-theme="dark"] .brawl-pick-card span {
   border: none;
   padding: 0;
   cursor: default;
+  contain: layout paint;
 }
 
 .pack-opening-card--next {
@@ -2119,6 +2120,7 @@ body[data-theme="dark"] .brawl-pick-card span {
   height: 100%;
   min-height: 320px;
   transform-style: preserve-3d;
+  will-change: transform;
   transition: transform 0.82s cubic-bezier(0.2, 0.9, 0.2, 1);
 }
 
@@ -2163,6 +2165,16 @@ body[data-theme="dark"] .brawl-pick-card span {
   overflow: visible;
 }
 
+.pack-opening-card__placeholder {
+  flex: 1;
+  min-height: 260px;
+  border-radius: 1.1rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--rarity-color) 12%, transparent), transparent 42%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.82), rgba(15, 23, 42, 0.56));
+}
+
 .pack-opening-card__meta {
   display: flex;
   justify-content: space-between;
@@ -2173,7 +2185,7 @@ body[data-theme="dark"] .brawl-pick-card span {
   background: rgba(15, 23, 42, 0.72);
   color: #f8fafc;
   border: 1px solid color-mix(in srgb, var(--rarity-color) 28%, rgba(255, 255, 255, 0.12));
-  box-shadow: 0 0 28px color-mix(in srgb, var(--rarity-color) 14%, transparent);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--rarity-color) 10%, transparent);
 }
 
 .pack-opening-footer {

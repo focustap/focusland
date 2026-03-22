@@ -45,6 +45,7 @@ const PackOpeningOverlay: React.FC<PackOpeningOverlayProps> = ({
   }
 
   const allRevealed = revealedCount >= revealCards.length;
+  const showEnergy = stage === "charging" || stage === "burst";
 
   return (
     <div className="pack-opening-overlay">
@@ -61,15 +62,17 @@ const PackOpeningOverlay: React.FC<PackOpeningOverlayProps> = ({
               {stage === "charging" ? "Charging the hit..." : stage === "burst" ? "Crack the seal." : allRevealed ? "Full reveal complete." : "Flip through the haul."}
             </div>
           </div>
-          <div className="pack-opening-energy">
-            {Array.from({ length: 10 }).map((_, index) => (
-              <span
-                key={index}
-                className="pack-opening-energy__beam"
-                style={{ animationDelay: `${index * 0.08}s`, ["--beam-rotation" as string]: `${index * 18}deg` }}
-              />
-            ))}
-          </div>
+          {showEnergy ? (
+            <div className="pack-opening-energy">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <span
+                  key={index}
+                  className="pack-opening-energy__beam"
+                  style={{ animationDelay: `${index * 0.1}s`, ["--beam-rotation" as string]: `${index * 30}deg` }}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="pack-opening-reveal-grid">
@@ -98,28 +101,34 @@ const PackOpeningOverlay: React.FC<PackOpeningOverlayProps> = ({
                     <strong>Tap to reveal</strong>
                   </div>
                   <div className="pack-opening-card__face pack-opening-card__face--front">
-                    <CardView
-                      cardId={card.cardId}
-                      infoTooltip={
-                        definition ? (
-                          <>
-                            <strong>{rarityLabel(card.rarity)}</strong>
-                            <br />
-                            Set: {definition.set}
-                            <br />
-                            Family: {definition.family}
-                            <br />
-                            Type: {definition.type}
-                            <br />
-                            {card.isFoil ? "Foil finish" : "Standard finish"}
-                          </>
-                        ) : null
-                      }
-                    />
-                    <div className="pack-opening-card__meta">
-                      <span>{rarityLabel(card.rarity)}</span>
-                      {card.isFoil ? <strong>Foil</strong> : null}
-                    </div>
+                    {isRevealed ? (
+                      <>
+                        <CardView
+                          cardId={card.cardId}
+                          infoTooltip={
+                            definition ? (
+                              <>
+                                <strong>{rarityLabel(card.rarity)}</strong>
+                                <br />
+                                Set: {definition.set}
+                                <br />
+                                Family: {definition.family}
+                                <br />
+                                Type: {definition.type}
+                                <br />
+                                {card.isFoil ? "Foil finish" : "Standard finish"}
+                              </>
+                            ) : null
+                          }
+                        />
+                        <div className="pack-opening-card__meta">
+                          <span>{rarityLabel(card.rarity)}</span>
+                          {card.isFoil ? <strong>Foil</strong> : null}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="pack-opening-card__placeholder" />
+                    )}
                   </div>
                 </div>
               </button>

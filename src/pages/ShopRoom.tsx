@@ -73,6 +73,7 @@ const ShopRoom: React.FC = () => {
   const [openingStage, setOpeningStage] = useState<PackOpeningStage>("charging");
   const [revealedCount, setRevealedCount] = useState(0);
   const [inventoryReady, setInventoryReady] = useState(false);
+  const inventoryRef = useRef(inventory);
 
   const openingPack = useMemo(
     () => SHOP_PACK_PRODUCTS.find((product) => product.id === openingPackId) ?? null,
@@ -105,6 +106,10 @@ const ShopRoom: React.FC = () => {
     () => Object.values(inventory.cardCollection).reduce((sum, count) => sum + count, 0),
     [inventory.cardCollection]
   );
+
+  useEffect(() => {
+    inventoryRef.current = inventory;
+  }, [inventory]);
 
   useEffect(() => {
     let cancelled = false;
@@ -392,7 +397,10 @@ const ShopRoom: React.FC = () => {
   }, [openingCards, openingPack?.name, openingStage, revealedCount]);
 
   const persistInventory = async (nextInventory: ShopInventory, successText: string) => {
+    inventoryRef.current = nextInventory;
+    setInventory(nextInventory);
     const result = await saveInventoryForCurrentUser(nextInventory);
+    inventoryRef.current = result.inventory;
     setInventory(result.inventory);
     setStatus(
       result.persistedToDatabase
@@ -477,11 +485,12 @@ const ShopRoom: React.FC = () => {
     setBusyItemId(product.id);
     try {
       const nextGold = await applyGoldDelta(-product.price);
+      const currentInventory = inventoryRef.current;
       const nextInventory: ShopInventory = {
-        ...inventory,
+        ...currentInventory,
         unopenedPacks: {
-          ...inventory.unopenedPacks,
-          [product.id]: (inventory.unopenedPacks[product.id] ?? 0) + 1
+          ...currentInventory.unopenedPacks,
+          [product.id]: (currentInventory.unopenedPacks[product.id] ?? 0) + 1
         }
       };
       await persistInventory(nextInventory, `${product.name} added to your vault.`);
@@ -494,7 +503,9 @@ const ShopRoom: React.FC = () => {
   };
 
   const handleStartOpening = async (pack: ShopPackProduct) => {
-    if ((inventory.unopenedPacks[pack.id] ?? 0) <= 0) {
+    const currentInventory = inventoryRef.current;
+
+    if ((currentInventory.unopenedPacks[pack.id] ?? 0) <= 0) {
       setStatus(`No ${pack.name} left to open.`);
       return;
     }
@@ -503,10 +514,10 @@ const ShopRoom: React.FC = () => {
     try {
       const reveal = openPack(pack.id);
       const nextInventory: ShopInventory = {
-        ...inventory,
+        ...currentInventory,
         unopenedPacks: {
-          ...inventory.unopenedPacks,
-          [pack.id]: Math.max(0, (inventory.unopenedPacks[pack.id] ?? 0) - 1)
+          ...currentInventory.unopenedPacks,
+          [pack.id]: Math.max(0, (currentInventory.unopenedPacks[pack.id] ?? 0) - 1)
         },
         cardCollection: normalizeCollection(
           reveal.reduce<Record<string, number>>(
@@ -514,7 +525,7 @@ const ShopRoom: React.FC = () => {
               collection[card.cardId] = (collection[card.cardId] ?? 0) + 1;
               return collection;
             },
-            { ...inventory.cardCollection }
+            { ...currentInventory.cardCollection }
           )
         )
       };
