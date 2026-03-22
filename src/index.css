@@ -1618,6 +1618,29 @@ body[data-theme="dark"] .brawl-pick-card span {
   gap: 0.9rem;
 }
 
+.deck-workshop-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.deck-workshop-section__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.deck-workshop-section__head h3,
+.deck-workshop-section__head span {
+  margin: 0;
+}
+
+.deck-workshop-section__head span {
+  font-size: 0.88rem;
+  color: color-mix(in srgb, var(--page-text) 68%, transparent 32%);
+}
+
 .deck-workshop-slot-row,
 .deck-workshop-presets {
   display: grid;
@@ -1636,6 +1659,9 @@ body[data-theme="dark"] .brawl-pick-card span {
   border: 1px solid var(--card-border);
   background: var(--panel-bg);
   color: var(--page-text);
+}
+
+.deck-workshop-slot {
   cursor: pointer;
 }
 
@@ -1648,6 +1674,10 @@ body[data-theme="dark"] .brawl-pick-card span {
 .deck-workshop-slot--selected {
   border-color: rgba(79, 70, 229, 0.5);
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+}
+
+.deck-workshop-preset button {
+  margin-top: 0.35rem;
 }
 
 .deck-workshop-toolbar {
@@ -1752,6 +1782,11 @@ body[data-theme="dark"] .card-battle-card--hidden {
   }
 
   .deck-workshop-meta {
+    align-items: flex-start;
+  }
+
+  .deck-workshop-section__head {
+    flex-direction: column;
     align-items: flex-start;
   }
 

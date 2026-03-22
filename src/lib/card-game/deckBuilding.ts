@@ -3,8 +3,8 @@ import { STARTER_DECK } from "./decks";
 
 export const MAX_DECK_SIZE = 30;
 export const MAX_COPIES_PER_CARD = 2;
-export const DECK_SLOT_COUNT = 3;
-export const LOCAL_DECK_STORAGE_KEY = "focusland-card-decks-v2";
+export const DECK_SLOT_COUNT = 6;
+export const LOCAL_DECK_STORAGE_KEY = "focusland-card-decks-v3";
 
 export type DeckCounts = Record<string, number>;
 
@@ -14,130 +14,87 @@ export type SavedDeckSlot = {
   cardIds: string[];
 };
 
+export type DeckPreset = {
+  id: string;
+  name: string;
+  description: string;
+  cardIds: string[];
+};
+
 export type StoredDeckState = {
   slots: SavedDeckSlot[];
   activeSlotId: string;
 };
 
-const SLOT_IDS = ["slot-1", "slot-2", "slot-3"] as const;
+const SLOT_IDS = ["slot-1", "slot-2", "slot-3", "slot-4", "slot-5", "slot-6"] as const;
 
 const createDeckList = (cardIds: string[]) => sanitizeDeckList(cardIds);
 
-export const DECK_PRESETS: Array<{
-  id: string;
-  name: string;
-  description: string;
-  cardIds: string[];
-}> = [
+export const DECK_PRESETS: DeckPreset[] = [
   {
     id: "starter-balance",
     name: "Starter Balance",
-    description: "Steady curve with removal, draw, and a few trap checks.",
-    cardIds: createDeckList([
-      "spark-scout",
-      "spark-scout",
-      "iron-guard",
-      "iron-guard",
-      "dusk-duelist",
-      "dusk-duelist",
-      "vine-lurker",
-      "vine-lurker",
-      "river-serpent",
-      "river-serpent",
-      "lunar-mage",
-      "lunar-mage",
-      "storm-rider",
-      "storm-rider",
-      "siege-golem",
-      "siege-golem",
-      "ember-shot",
-      "ember-shot",
-      "tactical-insight",
-      "tactical-insight",
-      "river-mist",
-      "river-mist",
-      "flame-sweep",
-      "flame-sweep",
-      "ambush-snare",
-      "ambush-snare",
-      "spellwire",
-      "spellwire",
-      "spark-burst",
-      "spark-burst"
-    ])
+    description: "Starter-only list with anti-air, healing, buffs, and spell tax.",
+    cardIds: createDeckList(STARTER_DECK)
   },
   {
     id: "sky-rush",
     name: "Sky Rush",
-    description: "Fast pressure deck built around flying and swift attackers.",
+    description: "Flying pressure backed by ranged support and tempo bounce.",
     cardIds: createDeckList([
-      "spark-scout",
-      "spark-scout",
-      "dawn-courier",
-      "dawn-courier",
-      "gale-falcon",
-      "gale-falcon",
-      "bronze-charger",
-      "bronze-charger",
-      "dusk-duelist",
-      "dusk-duelist",
-      "sky-drake",
-      "sky-drake",
-      "storm-rider",
-      "storm-rider",
-      "ember-shot",
-      "ember-shot",
-      "spark-burst",
-      "spark-burst",
-      "tactical-insight",
-      "tactical-insight",
-      "river-mist",
-      "river-mist",
-      "flame-sweep",
-      "flame-sweep",
-      "ambush-snare",
-      "ambush-snare",
-      "mirror-rune",
-      "mirror-rune",
-      "spellwire",
-      "spellwire"
+      "cloud-skirmisher", "cloud-skirmisher", "windstep-ranger", "windstep-ranger", "thunderwing-ace", "thunderwing-ace",
+      "skyglass-spotter", "skyglass-spotter", "gale-sentinel", "gale-sentinel", "horizon-spearhawk", "horizon-spearhawk",
+      "cirrus-raider", "cirrus-raider", "tailwind-charge", "tailwind-charge", "pinion-volley", "pinion-volley",
+      "updraft-blessing", "updraft-blessing", "clean-break", "clean-break", "storm-tariff", "storm-tariff",
+      "watchtower-archer", "watchtower-archer", "gale-falcon", "gale-falcon", "null-sigil", "null-sigil"
     ])
   },
   {
-    id: "stone-vine-lock",
-    name: "Stone Vine Lock",
-    description: "Bulkier units and sticky traps for slower board control.",
+    id: "iron-fortress",
+    name: "Iron Fortress",
+    description: "Guard-heavy control deck with repair tools and heavy blockers.",
     cardIds: createDeckList([
-      "iron-guard",
-      "iron-guard",
-      "vine-lurker",
-      "vine-lurker",
-      "lunar-mage",
-      "lunar-mage",
-      "river-serpent",
-      "river-serpent",
-      "siege-golem",
-      "siege-golem",
-      "stone-warden",
-      "stone-warden",
-      "ember-shot",
-      "ember-shot",
-      "tactical-insight",
-      "tactical-insight",
-      "river-mist",
-      "river-mist",
-      "storm-surge",
-      "storm-surge",
-      "flame-sweep",
-      "flame-sweep",
-      "ambush-snare",
-      "ambush-snare",
-      "bramble-pit",
-      "bramble-pit",
-      "mirror-rune",
-      "mirror-rune",
-      "spellwire",
-      "spellwire"
+      "iron-guard", "iron-guard", "trench-sentinel", "trench-sentinel", "pike-engineer", "pike-engineer",
+      "bastion-smith", "bastion-smith", "banner-captain", "banner-captain", "clockbolt-sniper", "clockbolt-sniper",
+      "steelclad-rhino", "steelclad-rhino", "bulwark-titan", "bulwark-titan", "repair-order", "repair-order",
+      "shield-march", "shield-march", "hammer-fall", "hammer-fall", "recall-to-arms", "recall-to-arms",
+      "counterweight", "counterweight", "stone-warden", "stone-warden", "watchtower-archer", "watchtower-archer"
+    ])
+  },
+  {
+    id: "wild-root",
+    name: "Wild Root",
+    description: "Sticky board deck with guard bodies, stealth threats, and reclaim spells.",
+    cardIds: createDeckList([
+      "canopy-stalker", "canopy-stalker", "thorn-archer", "thorn-archer", "seed-carrier", "seed-carrier",
+      "savage-sapling", "savage-sapling", "moss-howler", "moss-howler", "rot-bloom-witch", "rot-bloom-witch",
+      "briar-guardian", "briar-guardian", "vineback-giant", "vineback-giant", "forest-call", "forest-call",
+      "root-snag", "root-snag", "rebloom", "rebloom", "sap-surge", "sap-surge",
+      "thorn-barricade", "thorn-barricade", "watchtower-archer", "watchtower-archer", "anchor-flip", "anchor-flip"
+    ])
+  },
+  {
+    id: "ember-blitz",
+    name: "Ember Blitz",
+    description: "Fast burn deck that still carries ranged answers and some spell tax.",
+    cardIds: createDeckList([
+      "cinder-runner", "cinder-runner", "ash-hexer", "ash-hexer", "flare-priest", "flare-priest",
+      "blaze-raider", "blaze-raider", "ember-duelist", "ember-duelist", "furnace-drake", "furnace-drake",
+      "pyre-hound", "pyre-hound", "smokestack-ogre", "smokestack-ogre", "flash-fuel", "flash-fuel",
+      "spark-burst", "spark-burst", "ember-shot", "ember-shot", "scorchtip", "scorchtip",
+      "rally-the-flame", "rally-the-flame", "wildfire-ring", "wildfire-ring", "ember-levy", "ember-levy"
+    ])
+  },
+  {
+    id: "tide-moon",
+    name: "Tide Moon",
+    description: "Draw, bounce, and anti-air control with efficient spell-tax backup.",
+    cardIds: createDeckList([
+      "mist-channeler", "mist-channeler", "harbor-turtle", "harbor-turtle", "pearl-diver", "pearl-diver",
+      "undertow-mage", "undertow-mage", "moonshot-arcanist", "moonshot-arcanist", "eclipse-sage", "eclipse-sage",
+      "flood-drake", "flood-drake", "starweaver", "starweaver", "undertow", "undertow",
+      "tidal-focus", "tidal-focus", "foresight", "foresight", "freeze-current", "freeze-current",
+      "moonwell", "moonwell", "starfall", "starfall", "mana-lattice", "mana-lattice"
     ])
   }
 ];
@@ -178,7 +135,6 @@ export function countsToDeckList(counts: DeckCounts): string[] {
 
   Object.entries(counts).forEach(([cardId, count]) => {
     const safeCount = Math.min(MAX_COPIES_PER_CARD, Math.max(0, count));
-
     for (let index = 0; index < safeCount; index += 1) {
       deckList.push(cardId);
     }
@@ -202,14 +158,11 @@ export function getDeckSummary(counts: DeckCounts) {
 
 export function createDefaultDeckState(): StoredDeckState {
   return {
-    slots: SLOT_IDS.map((slotId, index) => {
-      const preset = DECK_PRESETS[index] ?? DECK_PRESETS[0];
-      return {
-        id: slotId,
-        name: preset.name,
-        cardIds: [...preset.cardIds]
-      };
-    }),
+    slots: SLOT_IDS.map((slotId, index) => ({
+      id: slotId,
+      name: `My Deck ${index + 1}`,
+      cardIds: [...(DECK_PRESETS[index]?.cardIds ?? STARTER_DECK)]
+    })),
     activeSlotId: SLOT_IDS[0]
   };
 }

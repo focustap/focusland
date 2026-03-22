@@ -1,5 +1,5 @@
 import React from "react";
-import { getCard, getUnitCard } from "../../lib/card-game/engine";
+import { getCard, getUnitCard, getUnitTotalAttack, getUnitTotalHealth } from "../../lib/card-game/engine";
 import type { UnitOnBoard } from "../../lib/card-game/types";
 
 type CardViewProps = {
@@ -73,8 +73,8 @@ const CardView: React.FC<CardViewProps> = ({
       <span className="card-battle-card__text">{definition.text}</span>
       {unit && unitCard ? (
         <div className="card-battle-card__stats">
-          <span>ATK {unitCard.attack}</span>
-          <span>HP {unit.currentHealth}/{unitCard.health}</span>
+          <span>ATK {getUnitTotalAttack(unit)}</span>
+          <span>HP {unit.currentHealth}/{getUnitTotalHealth(unit)}</span>
         </div>
       ) : definition.type === "unit" ? (
         <div className="card-battle-card__stats">

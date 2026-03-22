@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
 import GameBoard from "../components/card-game/GameBoard";
 import { canUnitAttack, cardGameReducer, createInitialGameState } from "../lib/card-game/engine";
-import { getActiveDeckList, readLocalDeckState } from "../lib/card-game/deckBuilding";
+import { getActiveDeckList } from "../lib/card-game/deckBuilding";
+import { loadDeckStateForCurrentUser } from "../lib/card-game/deckStorage";
 import { recordCardDuelWin } from "../lib/progression";
 import { supabase } from "../lib/supabase";
 import type { GameAction, GameState } from "../lib/card-game/types";
@@ -53,7 +54,7 @@ const CardBattle: React.FC = () => {
   const startedPairKeyRef = useRef<string | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
   const playersRef = useRef<PlayerPresence[]>([]);
-  const localDeckRef = useRef<string[]>(getActiveDeckList(readLocalDeckState()));
+  const localDeckRef = useRef<string[]>([]);
   const recordedWinKeyRef = useRef<string | null>(null);
 
   const applyIncomingState = (nextState: GameState) => {
@@ -179,6 +180,9 @@ const CardBattle: React.FC = () => {
       if (!session || isUnmounted) {
         return;
       }
+
+      const loadedDeckState = await loadDeckStateForCurrentUser();
+      localDeckRef.current = getActiveDeckList(loadedDeckState);
 
       setCurrentUserId(session.user.id);
       currentUserIdRef.current = session.user.id;
