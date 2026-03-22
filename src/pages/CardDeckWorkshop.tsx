@@ -75,7 +75,7 @@ const CardDeckWorkshop: React.FC = () => {
         <div className="card deck-workshop-shell">
           <div className="deck-workshop-head">
             <div>
-              <h2>Deck Room</h2>
+              <h2>TapDeck Deck Room</h2>
               <p>Decks are capped at 30 cards, with no more than 2 copies of the same card.</p>
             </div>
             <div className="deck-workshop-meta">

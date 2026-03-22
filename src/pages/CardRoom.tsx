@@ -85,14 +85,14 @@ const CardRoom: React.FC = () => {
           this.add.rectangle(width / 2, height / 2, width, height, 0x140b1f);
           this.add.rectangle(width / 2, height / 2, width - 28, height - 28, 0x25133d)
             .setStrokeStyle(3, 0xf59e0b, 0.24);
-          this.add.text(width / 2, 34, "Card Hall", {
+          this.add.text(width / 2, 34, "TapDeck Hall", {
             color: "#fde68a",
             fontSize: "30px",
             fontStyle: "bold"
           }).setOrigin(0.5);
 
           this.add.rectangle(width / 2, 160, 300, 96, 0x5b21b6, 0.32).setStrokeStyle(3, 0xc084fc, 0.9);
-          this.add.text(width / 2, 146, "Play Room", {
+          this.add.text(width / 2, 146, "TapDeck Play", {
             color: "#faf5ff",
             fontSize: "26px",
             fontStyle: "bold"
@@ -113,7 +113,7 @@ const CardRoom: React.FC = () => {
           });
 
           this.add.rectangle(width / 2, 318, 300, 96, 0x0f766e, 0.3).setStrokeStyle(3, 0x5eead4, 0.88);
-          this.add.text(width / 2, 304, "Deck Room", {
+          this.add.text(width / 2, 304, "TapDeck Decks", {
             color: "#ecfeff",
             fontSize: "26px",
             fontStyle: "bold"
@@ -249,8 +249,8 @@ const CardRoom: React.FC = () => {
     <div className="page">
       <NavBar />
       <div className="content card" style={{ maxWidth: 840 }}>
-        <h2>Card Hall</h2>
-        <p>Walk into the play room for live matches or head into the deck room to work on a build.</p>
+        <h2>TapDeck Hall</h2>
+        <p>Walk into the TapDeck play room for live matches or head into the deck room to work on a build.</p>
         <div ref={containerRef} style={{ width: "100%", maxWidth: 780, margin: "1rem auto" }} />
       </div>
     </div>

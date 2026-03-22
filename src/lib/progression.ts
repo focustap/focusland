@@ -140,3 +140,17 @@ export async function recordArcadeResult(input: ArcadeResultInput) {
     throw upsertError;
   }
 }
+
+export async function recordCardDuelWin() {
+  const user = await getCurrentUser();
+
+  const { error } = await supabase.from("scores").insert({
+    user_id: user.id,
+    game_name: "card_duel_win",
+    score: 1
+  });
+
+  if (error) {
+    throw error;
+  }
+}

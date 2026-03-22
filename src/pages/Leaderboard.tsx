@@ -12,6 +12,7 @@ type LeaderboardEntry = {
   invadersBestWave: number;
   brawlWins: number;
   brawlPveHighestBoss: number;
+  cardDuelWins: number;
 };
 
 const Leaderboard: React.FC = () => {
@@ -30,7 +31,20 @@ const Leaderboard: React.FC = () => {
           throw statsError;
         }
 
-        const userIds = Array.from(new Set((statsRows ?? []).map((row) => row.user_id)));
+        const { data: cardWinRows, error: cardWinError } = await supabase
+          .from("scores")
+          .select("user_id")
+          .eq("game_name", "card_duel_win");
+
+        if (cardWinError) {
+          throw cardWinError;
+        }
+
+        const allUserIds = [
+          ...(statsRows ?? []).map((row) => row.user_id),
+          ...(cardWinRows ?? []).map((row) => row.user_id)
+        ];
+        const userIds = Array.from(new Set(allUserIds));
         if (!userIds.length) {
           setEntries([]);
           return;
@@ -56,11 +70,17 @@ const Leaderboard: React.FC = () => {
           ])
         );
 
+        const cardWinsByUser = new Map<string, number>();
+        (cardWinRows ?? []).forEach((row) => {
+          cardWinsByUser.set(row.user_id, (cardWinsByUser.get(row.user_id) ?? 0) + 1);
+        });
+
         setEntries(
-          (statsRows ?? []).map((row) => {
+          userIds.map((userId) => {
+            const row = (statsRows ?? []).find((item) => item.user_id === userId);
             const profile = profileById.get(row.user_id);
             return {
-              userId: row.user_id,
+              userId,
               username: profile?.username ?? "Player",
               color: profile?.color ?? null,
               gold: profile?.gold ?? 0,
@@ -68,7 +88,8 @@ const Leaderboard: React.FC = () => {
               catchBestScore: Number(row.catch_best_score ?? 0),
               invadersBestWave: Number(row.invaders_best_wave ?? 0),
               brawlWins: Number(row.brawl_wins ?? 0),
-              brawlPveHighestBoss: Number(row.brawl_pve_highest_boss ?? 0)
+              brawlPveHighestBoss: Number(row?.brawl_pve_highest_boss ?? 0),
+              cardDuelWins: Number(cardWinsByUser.get(userId) ?? 0)
             };
           })
         );
@@ -87,6 +108,7 @@ const Leaderboard: React.FC = () => {
     keyName: keyof Pick<
       LeaderboardEntry,
       "gold" | "dodgeBestScore" | "catchBestScore" | "invadersBestWave" | "brawlWins" | "brawlPveHighestBoss"
+      | "cardDuelWins"
     >,
     suffix = ""
   ) => {
@@ -129,6 +151,7 @@ const Leaderboard: React.FC = () => {
         {!loading && !message ? (
           <div className="leaderboard-grid">
             {renderBoard("Most Gold", "gold", "g")}
+            {renderBoard("TapDeck Wins", "cardDuelWins")}
             {renderBoard("Brawl Wins", "brawlWins")}
             {renderBoard("Highest PvE Stage", "brawlPveHighestBoss")}
             {renderBoard("Best Catch Score", "catchBestScore")}

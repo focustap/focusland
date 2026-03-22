@@ -3,6 +3,7 @@ import NavBar from "../components/NavBar";
 import GameBoard from "../components/card-game/GameBoard";
 import { canUnitAttack, cardGameReducer, createInitialGameState } from "../lib/card-game/engine";
 import { getActiveDeckList, readLocalDeckState } from "../lib/card-game/deckBuilding";
+import { recordCardDuelWin } from "../lib/progression";
 import { supabase } from "../lib/supabase";
 import type { GameAction, GameState } from "../lib/card-game/types";
 
@@ -53,6 +54,7 @@ const CardBattle: React.FC = () => {
   const currentUserIdRef = useRef<string | null>(null);
   const playersRef = useRef<PlayerPresence[]>([]);
   const localDeckRef = useRef<string[]>(getActiveDeckList(readLocalDeckState()));
+  const recordedWinKeyRef = useRef<string | null>(null);
 
   const applyIncomingState = (nextState: GameState) => {
     stateRef.current = nextState;
@@ -97,6 +99,20 @@ const CardBattle: React.FC = () => {
       setSelectedAttackerId(null);
     }
   }, [canAct, currentSeatIndex, gameState.players, selectedAttackerId]);
+
+  useEffect(() => {
+    if (gameState.winner === null || currentSeatIndex === null || gameState.winner !== currentSeatIndex) {
+      return;
+    }
+
+    const winKey = `${players.map((player) => player.userId).join(":")}:${gameState.turnNumber}:${gameState.winner}`;
+    if (recordedWinKeyRef.current === winKey) {
+      return;
+    }
+
+    recordedWinKeyRef.current = winKey;
+    void recordCardDuelWin();
+  }, [currentSeatIndex, gameState.turnNumber, gameState.winner, players]);
 
   useEffect(() => {
     let isUnmounted = false;
@@ -145,6 +161,7 @@ const CardBattle: React.FC = () => {
           [pair[0].username, pair[1].username],
           [pair[0].deckList ?? localDeckRef.current, pair[1].deckList ?? localDeckRef.current]
         );
+        recordedWinKeyRef.current = null;
         applyIncomingState(nextState);
         void channel.send({
           type: "broadcast",
@@ -317,6 +334,7 @@ const CardBattle: React.FC = () => {
               seatedPlayers[0].deckList ?? localDeckRef.current,
               seatedPlayers[1].deckList ?? localDeckRef.current
             ]);
+            recordedWinKeyRef.current = null;
             applyIncomingState(nextState);
             void channelRef.current.send({
               type: "broadcast",

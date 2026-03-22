@@ -1,7 +1,7 @@
 import React from "react";
 import ActionLog from "./ActionLog";
 import CardView from "./CardView";
-import { canUnitAttack, getCard, getPendingTrapCard } from "../../lib/card-game/engine";
+import { canUnitAttack, canUnitAttackHeroDirectly, getCard, getPendingTrapCard } from "../../lib/card-game/engine";
 import type { GameState, PlayerIndex, PlayerState, TrapOnBoard, UnitOnBoard } from "../../lib/card-game/types";
 
 type GameBoardProps = {
@@ -218,7 +218,9 @@ const GameBoard: React.FC<GameBoardProps> = ({
     viewerIndex !== null ? state.players[viewerIndex === 0 ? 1 : 0] : state.players[1];
   const selectedAttacker = viewer?.board.find((unit) => unit.instanceId === selectedAttackerId) ?? null;
   const canAttackHeroDirectly =
-    canAct && selectedAttacker !== null && canUnitAttack(selectedAttacker) && opponent.board.length === 0;
+    canAct &&
+    selectedAttacker !== null &&
+    canUnitAttackHeroDirectly(selectedAttacker, opponent.board);
   const pendingTrapCard = getPendingTrapCard(state);
   const trapPromptText = state.pendingTrapPrompt
     ? canRespondToTrap && pendingTrapCard
@@ -230,7 +232,7 @@ const GameBoard: React.FC<GameBoardProps> = ({
     <div className="card-battle-table-wrap">
       <div className="card-battle-rail">
         <div className="card-battle-rail__group">
-          <strong>Online Duel</strong>
+          <strong>TapDeck Online Duel</strong>
           <span>{roomStatus}</span>
           <span>{isConnected ? "Realtime connected" : "Connecting..."}</span>
         </div>

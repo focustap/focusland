@@ -443,6 +443,9 @@ const unitCanHitUnit = (attackerCardId: string, defenderCardId: string) => {
 export const canUnitAttack = (unit: UnitOnBoard) =>
   !unit.exhausted && (!unit.summoningSick || unitHasKeyword(unit.cardId, "swift"));
 
+export const canUnitAttackHeroDirectly = (attacker: UnitOnBoard, defendingUnits: UnitOnBoard[]) =>
+  canUnitAttack(attacker) && !defendingUnits.some((unit) => unitCanHitUnit(unit.cardId, attacker.cardId));
+
 export const createInitialGameState = (
   playerNames: [string, string] = PLAYER_NAMES,
   deckLists: [string[], string[]] = [STARTER_DECK, STARTER_DECK]
@@ -548,11 +551,8 @@ const attackHero = (state: GameState, attackerId: string) => {
   const attackerOwner = state.players[attackerOwnerId];
   const defenderOwner = state.players[defenderOwnerId];
   const attacker = attackerOwner.board.find((unit) => unit.instanceId === attackerId);
-  const attackerCard = attacker ? getCardById(attacker.cardId) : null;
-  const canFlyOver =
-    attackerCard && isUnitCard(attackerCard) && (attackerCard.keywords?.includes("flying") ?? false);
 
-  if (!attacker || !canUnitAttack(attacker) || (defenderOwner.board.length > 0 && !canFlyOver)) {
+  if (!attacker || !canUnitAttackHeroDirectly(attacker, defenderOwner.board)) {
     return state;
   }
 
