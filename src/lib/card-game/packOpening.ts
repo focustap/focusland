@@ -97,13 +97,8 @@ export function getRarityColor(rarity: CardRarity) {
   }
 }
 
-function getCardsForPack(packId: string) {
-  const pack = SHOP_PACK_PRODUCTS.find((product) => product.id === packId);
-  if (!pack) {
-    return CARD_LIBRARY;
-  }
-
-  return CARD_LIBRARY.filter((card) => pack.cardPoolIds.includes(card.id));
+function getCardsForPack() {
+  return CARD_LIBRARY.filter((card) => card.family !== "starter");
 }
 
 function getCardsByMinimumRarity(cards: CardDefinition[], rarity: CardRarity) {
@@ -123,31 +118,18 @@ function pickCard(cards: CardDefinition[], seedBase: number, rarity: CardRarity)
 }
 
 export function openPack(packId: string, seed: number = Date.now()): PackRevealCard[] {
-  const cards = getCardsForPack(packId);
-  const slotRarities: CardRarity[] = [
-    "common",
-    "uncommon",
+  const pack = SHOP_PACK_PRODUCTS.find((product) => product.id === packId);
+  const cards = getCardsForPack();
+  const slotRarities: CardRarity[] = (pack?.raritySlots ?? []).map((slotWeights, index) =>
     weightedChoice(
-      [
-        { value: "uncommon" as const, weight: 70 },
-        { value: "rare" as const, weight: 25 },
-        { value: "epic" as const, weight: 5 }
-      ],
-      seededRandom(seed + 1)
-    ),
-    weightedChoice(
-      [
-        { value: "rare" as const, weight: 72 },
-        { value: "epic" as const, weight: 23 },
-        { value: "legendary" as const, weight: 5 }
-      ],
-      seededRandom(seed + 2)
-    ),
-    weightedChoice(
-      RARITY_ORDER.map((rarity) => ({ value: rarity, weight: RARITY_WEIGHTS[rarity] * (rarity === "legendary" ? 2 : rarity === "epic" ? 1.5 : 1) })),
-      seededRandom(seed + 3)
+      RARITY_ORDER.map((rarity) => ({ value: rarity, weight: slotWeights[rarity] ?? RARITY_WEIGHTS[rarity] })),
+      seededRandom(seed + index + 1)
     )
-  ];
+  );
+
+  if (slotRarities.length === 0) {
+    slotRarities.push("common", "uncommon", "rare", "epic", "legendary");
+  }
 
   return slotRarities.map((rarity, index) => {
     const card = pickCard(cards, seed + 11 * (index + 1), rarity);

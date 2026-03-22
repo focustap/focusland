@@ -599,6 +599,17 @@ const resolveTrapPrompt = (state: GameState, useTrap: boolean) => {
       return state;
     }
 
+    if (consumedTrap.effect.kind === "triggered-effect") {
+      applyEffect(state, prompt.trapOwner, consumedTrap.effect.effect);
+      pushLog(
+        state,
+        `${state.players[prompt.trapOwner].name}'s ${consumedTrap.name} triggered on the spell cast.`
+      );
+      finishPendingSpellResolution(state);
+      cleanupUnits(state);
+      return state;
+    }
+
     finishPendingSpellResolution(state);
     return state;
   }
@@ -621,6 +632,63 @@ const resolveTrapPrompt = (state: GameState, useTrap: boolean) => {
     if (!consumedTrap.effect.cancelAttack) {
       return prompt.defenderId ? finishAttackUnit(state, prompt.attackerId, prompt.defenderId) : finishAttackHero(state, prompt.attackerId);
     }
+  }
+
+  if (consumedTrap.effect.kind === "damage-attacker") {
+    const attacker = state.players[prompt.attackerOwner].board.find((unit) => unit.instanceId === prompt.attackerId);
+    if (attacker) {
+      attacker.currentHealth -= consumedTrap.effect.amount;
+      pushLog(
+        state,
+        `${state.players[prompt.trapOwner].name}'s ${consumedTrap.name} hit ${state.players[prompt.attackerOwner].name}'s ${getCardById(attacker.cardId).name} for ${consumedTrap.effect.amount}.`
+      );
+    }
+
+    cleanupUnits(state);
+    if (!consumedTrap.effect.cancelAttack) {
+      const attackerStillAlive = state.players[prompt.attackerOwner].board.some((unit) => unit.instanceId === prompt.attackerId);
+      if (attackerStillAlive) {
+        return prompt.defenderId ? finishAttackUnit(state, prompt.attackerId, prompt.defenderId) : finishAttackHero(state, prompt.attackerId);
+      }
+    }
+    return state;
+  }
+
+  if (consumedTrap.effect.kind === "bounce-attacker") {
+    const attacker = state.players[prompt.attackerOwner].board.find((unit) => unit.instanceId === prompt.attackerId);
+    if (attacker) {
+      returnUnitToHand(state, prompt.attackerOwner, attacker);
+      pushLog(
+        state,
+        `${state.players[prompt.trapOwner].name}'s ${consumedTrap.name} sent ${state.players[prompt.attackerOwner].name}'s ${getCardById(attacker.cardId).name} back to hand.`
+      );
+    }
+
+    if (!consumedTrap.effect.cancelAttack) {
+      const attackerStillAlive = state.players[prompt.attackerOwner].board.some((unit) => unit.instanceId === prompt.attackerId);
+      if (attackerStillAlive) {
+        return prompt.defenderId ? finishAttackUnit(state, prompt.attackerId, prompt.defenderId) : finishAttackHero(state, prompt.attackerId);
+      }
+    }
+
+    return state;
+  }
+
+  if (consumedTrap.effect.kind === "triggered-effect") {
+    applyEffect(state, prompt.trapOwner, consumedTrap.effect.effect);
+    pushLog(
+      state,
+      `${state.players[prompt.trapOwner].name}'s ${consumedTrap.name} sprung during the attack.`
+    );
+    cleanupUnits(state);
+
+    if (!consumedTrap.effect.cancelAttack) {
+      const attackerStillAlive = state.players[prompt.attackerOwner].board.some((unit) => unit.instanceId === prompt.attackerId);
+      if (attackerStillAlive) {
+        return prompt.defenderId ? finishAttackUnit(state, prompt.attackerId, prompt.defenderId) : finishAttackHero(state, prompt.attackerId);
+      }
+    }
+    return state;
   }
 
   cleanupUnits(state);

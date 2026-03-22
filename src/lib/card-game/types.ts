@@ -146,12 +146,26 @@ export type TrapEffect =
       cancelAttack: boolean;
     }
   | {
+      kind: "damage-attacker";
+      amount: number;
+      cancelAttack: boolean;
+    }
+  | {
+      kind: "bounce-attacker";
+      cancelAttack: boolean;
+    }
+  | {
       kind: "damage-spell-owner";
       amount: number;
     }
   | {
       kind: "spell-tax";
       taxAmount: number;
+    }
+  | {
+      kind: "triggered-effect";
+      effect: TriggeredEffect;
+      cancelAttack?: boolean;
     };
 
 export type UnitCardDefinition = {

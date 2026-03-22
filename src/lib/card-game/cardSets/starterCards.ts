@@ -234,8 +234,11 @@ export const STARTER_CARDS: CardDefinition[] = [
     set: "starter",
     family: "starter",
     cost: 2,
-    text: "Draw 2 cards.",
-    effects: [{ kind: "draw", amount: 2, target: "self" }],
+    text: "Draw 1 card and give your strongest unit +1/+1.",
+    effects: [
+      { kind: "draw", amount: 1, target: "self" },
+      { kind: "buff-unit", selector: "highest-attack-ally", attack: 1, health: 1 }
+    ],
     artLabel: "Plans",
     visualTheme: "tactics"
   }),
@@ -267,8 +270,11 @@ export const STARTER_CARDS: CardDefinition[] = [
     set: "starter",
     family: "starter",
     cost: 3,
-    text: "Draw 2 cards.",
-    effects: [{ kind: "draw", amount: 2, target: "self" }],
+    text: "Draw 1 card and heal your hero for 2.",
+    effects: [
+      { kind: "draw", amount: 1, target: "self" },
+      { kind: "heal-hero", amount: 2, target: "self" }
+    ],
     artLabel: "Mist",
     visualTheme: "river"
   }),
@@ -357,9 +363,9 @@ export const STARTER_CARDS: CardDefinition[] = [
     set: "starter",
     family: "starter",
     cost: 1,
-    text: "When your opponent casts a spell, deal 2 damage to that player.",
+    text: "When your opponent casts a spell, draw 1 card.",
     trigger: "enemy-spell",
-    effect: { kind: "damage-spell-owner", amount: 2 },
+    effect: { kind: "triggered-effect", effect: { kind: "draw", amount: 1, target: "self" } },
     artLabel: "Rune",
     visualTheme: "lunar"
   }),
@@ -369,9 +375,9 @@ export const STARTER_CARDS: CardDefinition[] = [
     set: "starter",
     family: "starter",
     cost: 3,
-    text: "When an enemy unit attacks, destroy that attacker and cancel the attack.",
+    text: "When an enemy unit attacks, cancel that attack and gain 2 resource this turn.",
     trigger: "enemy-attack",
-    effect: { kind: "destroy-attacker", cancelAttack: true },
+    effect: { kind: "triggered-effect", effect: { kind: "gain-resource", amount: 2, target: "self" }, cancelAttack: true },
     artLabel: "Bramble",
     visualTheme: "vine"
   }),
