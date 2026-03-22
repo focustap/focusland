@@ -1687,23 +1687,27 @@ body[data-theme="dark"] .brawl-pick-card span {
   align-items: flex-end;
 }
 
+.deck-workshop-filters {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.deck-workshop-filters__summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 90px;
+}
+
 .deck-workshop-card {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  padding: 1rem;
-  border-radius: 1rem;
-  background: var(--panel-bg);
-  border: 1px solid var(--card-border);
 }
 
-.deck-workshop-card p {
-  margin: 0;
-  font-size: 0.92rem;
-  color: color-mix(in srgb, var(--page-text) 74%, transparent 26%);
-}
-
-.deck-workshop-card__top,
+.deck-workshop-card__footer,
 .deck-workshop-card__meta,
 .deck-workshop-card__controls {
   display: flex;
@@ -1712,10 +1716,15 @@ body[data-theme="dark"] .brawl-pick-card span {
   align-items: center;
 }
 
-.deck-workshop-card__top span,
 .deck-workshop-card__meta span {
   font-size: 0.84rem;
   color: color-mix(in srgb, var(--page-text) 68%, transparent 32%);
+}
+
+.deck-workshop-card__footer {
+  flex-direction: column;
+  align-items: stretch;
+  margin-top: 0.25rem;
 }
 
 .deck-workshop-card__controls {
@@ -1791,6 +1800,11 @@ body[data-theme="dark"] .card-battle-card--hidden {
   }
 
   .deck-workshop-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .deck-workshop-filters {
     flex-direction: column;
     align-items: flex-start;
   }

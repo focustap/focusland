@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import NavBar from "../components/NavBar";
+import CardView from "../components/card-game/CardView";
 import { CARD_LIBRARY } from "../lib/card-game/cards";
 import {
   DECK_PRESETS,
@@ -11,11 +12,32 @@ import {
   type StoredDeckState
 } from "../lib/card-game/deckBuilding";
 import { loadDeckStateForCurrentUser, saveDeckStateForCurrentUser } from "../lib/card-game/deckStorage";
+import type { CardFamily, CardType } from "../lib/card-game/types";
+
+const TYPE_FILTERS: Array<{ value: "all" | CardType; label: string }> = [
+  { value: "all", label: "All cards" },
+  { value: "unit", label: "Units" },
+  { value: "spell", label: "Spells" },
+  { value: "trap", label: "Traps" }
+];
+
+const FAMILY_FILTERS: Array<{ value: "all" | CardFamily; label: string }> = [
+  { value: "all", label: "All archetypes" },
+  { value: "starter", label: "Starter" },
+  { value: "sky", label: "Sky" },
+  { value: "iron", label: "Iron" },
+  { value: "wild", label: "Wild" },
+  { value: "ember", label: "Ember" },
+  { value: "tide", label: "Tide" },
+  { value: "lunar", label: "Lunar" }
+];
 
 const CardDeckWorkshop: React.FC = () => {
   const [deckState, setDeckState] = useState<StoredDeckState | null>(null);
   const [editingSlotId, setEditingSlotId] = useState<string>("slot-1");
   const [message, setMessage] = useState<string>("");
+  const [typeFilter, setTypeFilter] = useState<"all" | CardType>("all");
+  const [familyFilter, setFamilyFilter] = useState<"all" | CardFamily>("all");
 
   useEffect(() => {
     void (async () => {
@@ -28,6 +50,13 @@ const CardDeckWorkshop: React.FC = () => {
   const editingSlot = deckState?.slots.find((slot) => slot.id === editingSlotId) ?? null;
   const counts = useMemo<DeckCounts>(() => (editingSlot ? deckListToCounts(editingSlot.cardIds) : {}), [editingSlot]);
   const summary = useMemo(() => getDeckSummary(counts), [counts]);
+  const filteredCards = useMemo(
+    () =>
+      CARD_LIBRARY.filter((card) => (typeFilter === "all" ? true : card.type === typeFilter)).filter((card) =>
+        familyFilter === "all" ? true : card.family === familyFilter
+      ).sort((left, right) => left.cost - right.cost || left.name.localeCompare(right.name)),
+    [familyFilter, typeFilter]
+  );
 
   const updateEditingSlot = (updater: (slot: SavedDeckSlot) => SavedDeckSlot) => {
     setDeckState((current) =>
@@ -177,60 +206,90 @@ const CardDeckWorkshop: React.FC = () => {
             </div>
           ) : null}
 
+          <div className="deck-workshop-filters">
+            <label className="field">
+              <span>Card type</span>
+              <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as "all" | CardType)}>
+                {TYPE_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Archetype</span>
+              <select
+                value={familyFilter}
+                onChange={(event) => setFamilyFilter(event.target.value as "all" | CardFamily)}
+              >
+                {FAMILY_FILTERS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="deck-workshop-filters__summary">
+              <strong>{filteredCards.length}</strong>
+              <span>cards shown</span>
+            </div>
+          </div>
+
           <div className="deck-workshop-grid">
-            {CARD_LIBRARY.map((card) => {
+            {filteredCards.map((card) => {
               const count = counts[card.id] ?? 0;
               const canAdd = count < 2 && summary.totalCards < 30;
 
               return (
                 <div key={card.id} className="deck-workshop-card">
-                  <div className="deck-workshop-card__top">
-                    <strong>{card.name}</strong>
-                    <span>{card.type}</span>
-                  </div>
-                  <p>{card.text}</p>
-                  <div className="deck-workshop-card__meta">
-                    <span>Cost {card.cost}</span>
-                    {"attack" in card ? <span>{card.attack}/{card.health}</span> : null}
-                    {"keywords" in card && card.keywords?.length ? <span>{card.keywords.join(", ")}</span> : null}
-                    <span>{card.set}</span>
-                  </div>
-                  <div className="deck-workshop-card__controls">
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() =>
-                        updateEditingSlot((slot) => {
-                          const nextCounts = deckListToCounts(slot.cardIds);
-                          nextCounts[card.id] = Math.max(0, (nextCounts[card.id] ?? 0) - 1);
-                          return {
-                            ...slot,
-                            cardIds: countsToDeckList(nextCounts)
-                          };
-                        })
-                      }
-                    >
-                      -
-                    </button>
-                    <strong>{count}</strong>
-                    <button
-                      className="primary-button"
-                      type="button"
-                      onClick={() =>
-                        updateEditingSlot((slot) => {
-                          const nextCounts = deckListToCounts(slot.cardIds);
-                          nextCounts[card.id] = Math.min(2, (nextCounts[card.id] ?? 0) + 1);
-                          return {
-                            ...slot,
-                            cardIds: countsToDeckList(nextCounts)
-                          };
-                        })
-                      }
-                      disabled={!canAdd}
-                    >
-                      +
-                    </button>
-                  </div>
+                  <CardView
+                    cardId={card.id}
+                    footer={
+                      <div className="deck-workshop-card__footer">
+                        <div className="deck-workshop-card__meta">
+                          <span>{card.family}</span>
+                          <span>{card.set}</span>
+                        </div>
+                        <div className="deck-workshop-card__controls">
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() =>
+                              updateEditingSlot((slot) => {
+                                const nextCounts = deckListToCounts(slot.cardIds);
+                                nextCounts[card.id] = Math.max(0, (nextCounts[card.id] ?? 0) - 1);
+                                return {
+                                  ...slot,
+                                  cardIds: countsToDeckList(nextCounts)
+                                };
+                              })
+                            }
+                          >
+                            -
+                          </button>
+                          <strong>{count}</strong>
+                          <button
+                            className="primary-button"
+                            type="button"
+                            onClick={() =>
+                              updateEditingSlot((slot) => {
+                                const nextCounts = deckListToCounts(slot.cardIds);
+                                nextCounts[card.id] = Math.min(2, (nextCounts[card.id] ?? 0) + 1);
+                                return {
+                                  ...slot,
+                                  cardIds: countsToDeckList(nextCounts)
+                                };
+                              })
+                            }
+                            disabled={!canAdd}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    }
+                  />
                 </div>
               );
             })}
