@@ -14,6 +14,7 @@ import {
   type AvatarCustomization
 } from "../lib/avatarSprites";
 import { DEFAULT_PROFILE_COLOR, normalizeProfileColor } from "../lib/profileColor";
+import { loadShopState, ownsSkin } from "../lib/shop";
 import { supabase } from "../lib/supabase";
 
 const PROFILE_COLORS = [
@@ -30,6 +31,7 @@ const Profile: React.FC = () => {
   const [rectangleColor, setRectangleColor] = useState(DEFAULT_PROFILE_COLOR);
   const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>(DEFAULT_AVATAR_CUSTOMIZATION);
   const [gold, setGold] = useState(0);
+  const [ownedSkinIds, setOwnedSkinIds] = useState<number[]>([0]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -67,12 +69,21 @@ const Profile: React.FC = () => {
               ?? getStoredAvatarCustomization()
             )
           );
+          setOwnedSkinIds(
+            loadShopState(
+              normalizeAvatarCustomization(
+                (data as { avatar_customization?: Partial<AvatarCustomization> | null }).avatar_customization
+                ?? getStoredAvatarCustomization()
+              ).skinId
+            ).ownedSkinIds
+          );
           setGold(Number((data as { gold?: number | null }).gold ?? 0));
           if (typeof data.dark_mode === "boolean") {
             setDarkMode(data.dark_mode);
           }
         } else {
           setAvatarCustomization(getStoredAvatarCustomization());
+          setOwnedSkinIds(loadShopState(getStoredAvatarCustomization().skinId).ownedSkinIds);
         }
       } finally {
         setLoading(false);
@@ -166,7 +177,9 @@ const Profile: React.FC = () => {
               </div>
               <div className="info">Choose a full town skin. More unlockable skins can be added later without changing the avatar system again.</div>
               <div className="avatar-style-grid">
-                {SKIN_OPTIONS.map((skin) => (
+                {SKIN_OPTIONS.map((skin) => {
+                  const unlocked = ownsSkin({ ownedSkinIds, cardPacks: {} }, skin.id);
+                  return (
                   <button
                     type="button"
                     key={skin.id}
@@ -177,11 +190,13 @@ const Profile: React.FC = () => {
                     }
                     onClick={() => setAvatarCustomization({ skinId: skin.id })}
                     aria-label={`Use ${skin.label}`}
+                    disabled={!unlocked}
                   >
                     <AvatarSprite customization={{ skinId: skin.id }} size={72} />
-                    <span>{skin.label}</span>
+                    <span>{skin.label}{unlocked ? "" : " (Shop)"}</span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
             <div className="color-swatch-grid">

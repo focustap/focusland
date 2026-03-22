@@ -12,7 +12,8 @@ import {
   type AvatarCustomization,
   type AvatarRender
 } from "../lib/avatarSprites";
-import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } from "../lib/profileColor";
+import { DEFAULT_PROFILE_COLOR, normalizeProfileColor } from "../lib/profileColor";
+import { createRoomPresenceController, ROOM_NAMES, type RoomPresenceController } from "../lib/roomPresenceController";
 import { supabase } from "../lib/supabase";
 
 type Hotspot = {
@@ -43,23 +44,25 @@ const ArcadeRoom: React.FC = () => {
     const setup = async () => {
       const width = 780;
       const height = 520;
-      let playerColor = profileColorToNumber(DEFAULT_PROFILE_COLOR);
       let avatarCustomization = getStoredAvatarCustomization();
+      let profileColor = DEFAULT_PROFILE_COLOR;
+      let username: string | null = null;
+      let userId: string | null = null;
 
       const {
         data: { session }
       } = await supabase.auth.getSession();
 
       if (session) {
+        userId = session.user.id;
         const { data: profile } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", session.user.id)
           .maybeSingle();
 
-        playerColor = profileColorToNumber(
-          normalizeProfileColor((profile?.color as string | null) ?? DEFAULT_PROFILE_COLOR)
-        );
+        profileColor = normalizeProfileColor((profile?.color as string | null) ?? DEFAULT_PROFILE_COLOR);
+        username = (profile?.username as string | null) ?? session.user.email ?? null;
         avatarCustomization = normalizeAvatarCustomization(
           (profile as { avatar_customization?: Partial<AvatarCustomization> | null } | null)?.avatar_customization
           ?? avatarCustomization
@@ -76,6 +79,7 @@ const ArcadeRoom: React.FC = () => {
         targetY: number | null = null;
         pendingRoute: string | null = null;
         hotspots: Hotspot[] = [];
+        roomPresence?: RoomPresenceController;
 
         preload() {
           loadAvatarSpriteSheet(this, assetBase);
@@ -101,7 +105,8 @@ const ArcadeRoom: React.FC = () => {
           { label: "Dodge", route: "/game", x: 420, y: 134, color: 0x22c55e },
           { label: "Catch", route: "/catch", x: 512, y: 136, color: 0xf97316 },
           { label: "Pong", route: "/pong", x: 604, y: 136, color: 0x06b6d4 },
-          { label: "8 Ball", route: "/pool", x: 274, y: 346, color: 0x0f766e }
+          { label: "8 Ball", route: "/pool", x: 274, y: 346, color: 0x0f766e },
+          { label: "Invaders", route: "/hangar", x: 510, y: 346, color: 0xeab308 }
         ];
 
         machines.forEach((machine) => {
@@ -148,6 +153,16 @@ const ArcadeRoom: React.FC = () => {
         });
 
           this.player = createAvatarRender(this, 112, height - 84, avatarCustomization, 12, TOWN_AVATAR_SCALE);
+          if (userId) {
+            this.roomPresence = createRoomPresenceController({
+              scene: this,
+              roomName: ROOM_NAMES.arcade,
+              userId,
+              username,
+              profileColor,
+              getLocalPosition: () => ({ x: this.player.container.x, y: this.player.container.y })
+            });
+          }
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
@@ -172,6 +187,8 @@ const ArcadeRoom: React.FC = () => {
         }
 
         update(_time: number, delta: number) {
+          this.roomPresence?.animate();
+
           if (this.targetX == null || this.targetY == null) {
             return;
           }

@@ -75,18 +75,12 @@ const Lobby: React.FC = () => {
       const height = 520;
       const playerCollisionRadius = 13;
       const lobbyBlockers = [
-        new Phaser.Geom.Rectangle(22, 12, 174, 120),
-        new Phaser.Geom.Rectangle(586, 12, 168, 118),
-        new Phaser.Geom.Rectangle(16, 198, 188, 112),
-        new Phaser.Geom.Rectangle(572, 198, 176, 118),
-        new Phaser.Geom.Rectangle(296, 12, 66, 132),
-        new Phaser.Geom.Rectangle(362, 12, 84, 70),
-        new Phaser.Geom.Rectangle(446, 12, 64, 132),
-        new Phaser.Geom.Rectangle(320, 82, 48, 56),
-        new Phaser.Geom.Rectangle(432, 82, 48, 56),
-        new Phaser.Geom.Rectangle(246, 326, 80, 140),
-        new Phaser.Geom.Rectangle(326, 326, 158, 44),
-        new Phaser.Geom.Rectangle(484, 326, 80, 140)
+        new Phaser.Geom.Rectangle(20, 12, 184, 132),
+        new Phaser.Geom.Rectangle(276, 10, 252, 136),
+        new Phaser.Geom.Rectangle(590, 12, 172, 132),
+        new Phaser.Geom.Rectangle(18, 212, 194, 116),
+        new Phaser.Geom.Rectangle(586, 212, 176, 116),
+        new Phaser.Geom.Rectangle(278, 334, 242, 116)
       ];
 
       // Simple structure to describe a building zone.
@@ -179,7 +173,7 @@ const Lobby: React.FC = () => {
 
         preload() {
           loadAvatarSpriteSheet(this, assetBase);
-          this.load.image("lobby-town", `${assetBase}assets/lobby/custom-lobby.png`);
+          this.load.image("lobby-town", `${assetBase}assets/lobby/lobby2.png`);
         }
 
         create() {
@@ -342,16 +336,16 @@ const Lobby: React.FC = () => {
             height: 106
           },
           {
-            name: "Hangar",
-            color: 0x06b6d4,
+            name: "Shop",
+            color: 0xf59e0b,
             body: null,
             entranceX: 404,
             entranceY: 420,
-            route: "/hangar",
+            route: "/shop",
             x: 404,
-            y: 430,
-            width: 188,
-            height: 126
+            y: 418,
+            width: 244,
+            height: 138
           },
           {
             name: "Arcade",
@@ -679,7 +673,7 @@ return () => {
       <NavBar />
       <div className="content card" style={{ maxWidth: 860 }}>
         <h2>Town Lobby</h2>
-        <p>Walk through the town square and click one of the glowing markers to head into the Casino, Arcade, Arena, Hangar, Records House, or Profile House.</p>
+        <p>Walk through the town square and click one of the glowing markers to head into the Casino, Arcade, Arena, Shop, Records House, or Profile House.</p>
         <div
           ref={containerRef}
           style={{

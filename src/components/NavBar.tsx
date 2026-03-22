@@ -44,6 +44,7 @@ const NavBar: React.FC = () => {
         <Link to="/lobby">Lobby</Link>
         <Link to="/casino">Casino</Link>
         <Link to="/arcade">Arcade</Link>
+        <Link to="/shop">Shop</Link>
         <Link to="/leaderboard">Leaderboard</Link>
         <Link to="/profile">Profile</Link>
         {updateAvailable ? (

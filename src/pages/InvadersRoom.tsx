@@ -12,7 +12,8 @@ import {
   type AvatarCustomization,
   type AvatarRender
 } from "../lib/avatarSprites";
-import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } from "../lib/profileColor";
+import { DEFAULT_PROFILE_COLOR, normalizeProfileColor } from "../lib/profileColor";
+import { createRoomPresenceController, ROOM_NAMES, type RoomPresenceController } from "../lib/roomPresenceController";
 import { supabase } from "../lib/supabase";
 
 type Hotspot = {
@@ -42,23 +43,25 @@ const InvadersRoom: React.FC = () => {
     const setup = async () => {
       const width = 780;
       const height = 500;
-      let playerColor = profileColorToNumber(DEFAULT_PROFILE_COLOR);
       let avatarCustomization = getStoredAvatarCustomization();
+      let profileColor = DEFAULT_PROFILE_COLOR;
+      let username: string | null = null;
+      let userId: string | null = null;
 
       const {
         data: { session }
       } = await supabase.auth.getSession();
 
       if (session) {
+        userId = session.user.id;
         const { data: profile } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", session.user.id)
           .maybeSingle();
 
-        playerColor = profileColorToNumber(
-          normalizeProfileColor((profile?.color as string | null) ?? DEFAULT_PROFILE_COLOR)
-        );
+        profileColor = normalizeProfileColor((profile?.color as string | null) ?? DEFAULT_PROFILE_COLOR);
+        username = (profile?.username as string | null) ?? session.user.email ?? null;
         avatarCustomization = normalizeAvatarCustomization(
           (profile as { avatar_customization?: Partial<AvatarCustomization> | null } | null)?.avatar_customization
           ?? avatarCustomization
@@ -75,6 +78,7 @@ const InvadersRoom: React.FC = () => {
         targetY: number | null = null;
         pendingRoute: string | null = null;
         hotspots: Hotspot[] = [];
+        roomPresence?: RoomPresenceController;
 
         preload() {
           loadAvatarSpriteSheet(this, assetBase);
@@ -132,6 +136,16 @@ const InvadersRoom: React.FC = () => {
           });
 
           this.player = createAvatarRender(this, 140, height - 84, avatarCustomization, 12, TOWN_AVATAR_SCALE);
+          if (userId) {
+            this.roomPresence = createRoomPresenceController({
+              scene: this,
+              roomName: ROOM_NAMES.invaders,
+              userId,
+              username,
+              profileColor,
+              getLocalPosition: () => ({ x: this.player.container.x, y: this.player.container.y })
+            });
+          }
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
@@ -156,6 +170,8 @@ const InvadersRoom: React.FC = () => {
         }
 
         update(_time: number, delta: number) {
+          this.roomPresence?.animate();
+
           if (this.targetX == null || this.targetY == null) {
             return;
           }
