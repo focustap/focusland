@@ -2,6 +2,20 @@ export type PlayerIndex = 0 | 1;
 
 export type CardType = "unit" | "spell" | "trap";
 
+export type CardVisualTheme =
+  | "spark"
+  | "iron"
+  | "dusk"
+  | "river"
+  | "stone"
+  | "ember"
+  | "tactics"
+  | "storm"
+  | "vine"
+  | "lunar"
+  | "snare"
+  | "wire";
+
 export type SpellEffect =
   | {
       kind: "damage-hero";
@@ -39,6 +53,8 @@ export type UnitCardDefinition = {
   attack: number;
   health: number;
   text: string;
+  artLabel: string;
+  visualTheme: CardVisualTheme;
 };
 
 export type SpellCardDefinition = {
@@ -48,6 +64,8 @@ export type SpellCardDefinition = {
   cost: number;
   text: string;
   effects: SpellEffect[];
+  artLabel: string;
+  visualTheme: CardVisualTheme;
 };
 
 export type TrapCardDefinition = {
@@ -58,6 +76,8 @@ export type TrapCardDefinition = {
   text: string;
   trigger: TrapTrigger;
   effect: TrapEffect;
+  artLabel: string;
+  visualTheme: CardVisualTheme;
 };
 
 export type CardDefinition = UnitCardDefinition | SpellCardDefinition | TrapCardDefinition;

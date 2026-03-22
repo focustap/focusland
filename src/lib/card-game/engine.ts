@@ -79,8 +79,11 @@ const drawCards = (state: GameState, playerId: PlayerIndex, amount: number) => {
     const nextCard = player.deck.shift();
 
     if (!nextCard) {
-      state.winner = otherPlayer(playerId);
-      pushLog(state, `${player.name} tried to draw from an empty deck and lost.`);
+      if (drawIndex === 0) {
+        pushLog(state, `${player.name} tried to draw, but the deck was empty.`);
+      } else {
+        pushLog(state, `${player.name} drew ${cardsDrawn} card${cardsDrawn === 1 ? "" : "s"} before the deck ran out.`);
+      }
       return;
     }
 

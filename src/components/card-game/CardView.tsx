@@ -59,6 +59,9 @@ const CardView: React.FC<CardViewProps> = ({
         <span className="card-battle-card__cost">{definition.cost}</span>
         <span className="card-battle-card__type">{definition.type}</span>
       </div>
+      <div className={`card-battle-card__art card-battle-card__art--${definition.visualTheme}`}>
+        <span>{definition.artLabel}</span>
+      </div>
       <strong>{definition.name}</strong>
       <span className="card-battle-card__text">{definition.text}</span>
       {unit && unitCard ? (
