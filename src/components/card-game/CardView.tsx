@@ -63,6 +63,13 @@ const CardView: React.FC<CardViewProps> = ({
         <span>{definition.artLabel}</span>
       </div>
       <strong>{definition.name}</strong>
+      {"keywords" in definition && definition.keywords?.length ? (
+        <div className="card-battle-card__keywords">
+          {definition.keywords.map((keyword) => (
+            <span key={keyword}>{keyword}</span>
+          ))}
+        </div>
+      ) : null}
       <span className="card-battle-card__text">{definition.text}</span>
       {unit && unitCard ? (
         <div className="card-battle-card__stats">

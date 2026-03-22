@@ -1,4 +1,5 @@
 import { getCardById, isTrapCard, isUnitCard } from "./cards";
+import { sanitizeDeckList } from "./deckBuilding";
 import { STARTER_DECK } from "./decks";
 import { LOG_LIMIT, MAX_RESOURCE, MAX_UNITS_PER_SIDE, STARTING_HAND_SIZE, STARTING_HEALTH } from "./rules";
 import type {
@@ -50,21 +51,25 @@ const shuffle = <T,>(items: T[]): T[] => {
   return copy;
 };
 
-const buildDeck = (player: PlayerIndex): CardInstance[] =>
+const buildDeck = (player: PlayerIndex, deckList: string[]): CardInstance[] =>
   shuffle(
-    STARTER_DECK.map((cardId, index) => ({
+    sanitizeDeckList(deckList).map((cardId, index) => ({
       instanceId: `p${player}-${index}-${cardId}`,
       cardId
     }))
   );
 
-const createPlayer = (player: PlayerIndex, playerNames: [string, string]): PlayerState => ({
+const createPlayer = (
+  player: PlayerIndex,
+  playerNames: [string, string],
+  deckList: string[]
+): PlayerState => ({
   id: player,
   name: playerNames[player],
   health: STARTING_HEALTH,
   maxResource: 0,
   currentResource: 0,
-  deck: buildDeck(player),
+  deck: buildDeck(player, deckList),
   hand: [],
   discard: [],
   board: [],
@@ -286,9 +291,15 @@ const finishAttackUnit = (state: GameState, attackerId: string, defenderId: stri
     return state;
   }
 
+  if (!unitCanHitUnit(attacker.cardId, defender.cardId)) {
+    return state;
+  }
+
   attacker.exhausted = true;
-  attacker.currentHealth -= defenderCard.attack;
   defender.currentHealth -= attackerCard.attack;
+  if (unitCanHitUnit(defender.cardId, attacker.cardId)) {
+    attacker.currentHealth -= defenderCard.attack;
+  }
   pushLog(state, `${attackerCard.name} attacked ${defenderCard.name}.`);
   cleanupUnits(state);
   checkWinner(state);
@@ -416,11 +427,31 @@ const startTurn = (state: GameState, playerId: PlayerIndex) => {
   }
 };
 
-export const canUnitAttack = (unit: UnitOnBoard) => !unit.exhausted && !unit.summoningSick;
+const unitHasKeyword = (cardId: string, keyword: "flying" | "swift" | "ranged") => {
+  const card = getCardById(cardId);
+  return isUnitCard(card) && card.keywords?.includes(keyword);
+};
 
-export const createInitialGameState = (playerNames: [string, string] = PLAYER_NAMES): GameState => {
+const unitCanHitUnit = (attackerCardId: string, defenderCardId: string) => {
+  if (!unitHasKeyword(defenderCardId, "flying")) {
+    return true;
+  }
+
+  return unitHasKeyword(attackerCardId, "flying") || unitHasKeyword(attackerCardId, "ranged");
+};
+
+export const canUnitAttack = (unit: UnitOnBoard) =>
+  !unit.exhausted && (!unit.summoningSick || unitHasKeyword(unit.cardId, "swift"));
+
+export const createInitialGameState = (
+  playerNames: [string, string] = PLAYER_NAMES,
+  deckLists: [string[], string[]] = [STARTER_DECK, STARTER_DECK]
+): GameState => {
   const initialState: GameState = {
-    players: [createPlayer(0, playerNames), createPlayer(1, playerNames)],
+    players: [
+      createPlayer(0, playerNames, deckLists[0]),
+      createPlayer(1, playerNames, deckLists[1])
+    ],
     activePlayer: 0,
     turnNumber: 0,
     winner: null,
@@ -463,7 +494,7 @@ const playCard = (state: GameState, cardInstanceId: string) => {
       cardId: cardInstance.cardId,
       currentHealth: card.health,
       exhausted: false,
-      summoningSick: true
+      summoningSick: !(card.keywords?.includes("swift") ?? false)
     });
     pushLog(state, `${activePlayer.name} played ${card.name}.`);
     return state;
@@ -500,6 +531,10 @@ const attackUnit = (state: GameState, attackerId: string, defenderId: string) =>
     return state;
   }
 
+  if (!unitCanHitUnit(attacker.cardId, defender.cardId)) {
+    return state;
+  }
+
   if (maybeQueueAttackTrap(state, attackerOwnerId, attackerId, defenderId, "unit")) {
     return state;
   }
@@ -513,8 +548,11 @@ const attackHero = (state: GameState, attackerId: string) => {
   const attackerOwner = state.players[attackerOwnerId];
   const defenderOwner = state.players[defenderOwnerId];
   const attacker = attackerOwner.board.find((unit) => unit.instanceId === attackerId);
+  const attackerCard = attacker ? getCardById(attacker.cardId) : null;
+  const canFlyOver =
+    attackerCard && isUnitCard(attackerCard) && (attackerCard.keywords?.includes("flying") ?? false);
 
-  if (!attacker || !canUnitAttack(attacker) || defenderOwner.board.length > 0) {
+  if (!attacker || !canUnitAttack(attacker) || (defenderOwner.board.length > 0 && !canFlyOver)) {
     return state;
   }
 

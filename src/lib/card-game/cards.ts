@@ -74,9 +74,58 @@ export const CARD_LIBRARY: CardDefinition[] = [
     cost: 4,
     attack: 3,
     health: 5,
-    text: "A resilient caster that stabilizes the board.",
+    text: "Ranged. A resilient caster that stabilizes the board.",
     artLabel: "Moon",
-    visualTheme: "lunar"
+    visualTheme: "lunar",
+    keywords: ["ranged"]
+  },
+  {
+    id: "dawn-courier",
+    name: "Dawn Courier",
+    type: "unit",
+    cost: 2,
+    attack: 2,
+    health: 1,
+    text: "Swift. Can attack the turn it is played.",
+    artLabel: "Dawn",
+    visualTheme: "spark",
+    keywords: ["swift"]
+  },
+  {
+    id: "gale-falcon",
+    name: "Gale Falcon",
+    type: "unit",
+    cost: 3,
+    attack: 2,
+    health: 2,
+    text: "Flying. Can attack the enemy hero over grounded units and avoids grounded retaliation.",
+    artLabel: "Falcon",
+    visualTheme: "storm",
+    keywords: ["flying"]
+  },
+  {
+    id: "sky-drake",
+    name: "Sky Drake",
+    type: "unit",
+    cost: 4,
+    attack: 3,
+    health: 3,
+    text: "Flying. A clean evasive threat that grounded units cannot hit.",
+    artLabel: "Drake",
+    visualTheme: "storm",
+    keywords: ["flying"]
+  },
+  {
+    id: "bronze-charger",
+    name: "Bronze Charger",
+    type: "unit",
+    cost: 3,
+    attack: 3,
+    health: 2,
+    text: "Swift. Pressures weak openings right away.",
+    artLabel: "Charge",
+    visualTheme: "iron",
+    keywords: ["swift"]
   },
   {
     id: "siege-golem",
@@ -87,6 +136,17 @@ export const CARD_LIBRARY: CardDefinition[] = [
     health: 6,
     text: "A slow finisher that dominates empty boards.",
     artLabel: "Golem",
+    visualTheme: "stone"
+  },
+  {
+    id: "stone-warden",
+    name: "Stone Warden",
+    type: "unit",
+    cost: 5,
+    attack: 3,
+    health: 7,
+    text: "A heavy blocker that stalls the board.",
+    artLabel: "Warden",
     visualTheme: "stone"
   },
   {

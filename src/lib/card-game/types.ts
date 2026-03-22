@@ -16,6 +16,8 @@ export type CardVisualTheme =
   | "snare"
   | "wire";
 
+export type UnitKeyword = "flying" | "swift" | "ranged";
+
 export type SpellEffect =
   | {
       kind: "damage-hero";
@@ -55,6 +57,7 @@ export type UnitCardDefinition = {
   text: string;
   artLabel: string;
   visualTheme: CardVisualTheme;
+  keywords?: UnitKeyword[];
 };
 
 export type SpellCardDefinition = {

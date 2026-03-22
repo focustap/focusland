@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
 import GameBoard from "../components/card-game/GameBoard";
 import { canUnitAttack, cardGameReducer, createInitialGameState } from "../lib/card-game/engine";
+import { getActiveDeckList, readLocalDeckState } from "../lib/card-game/deckBuilding";
 import { supabase } from "../lib/supabase";
 import type { GameAction, GameState } from "../lib/card-game/types";
 
@@ -9,20 +10,22 @@ type PlayerPresence = {
   userId: string;
   username: string;
   onlineAt: string;
+  deckList?: string[];
 };
 
 const ROOM_NAME = "focusland-card-duel";
 const WAITING_STATE = createInitialGameState();
 
 const getPlayersFromPresence = (
-  rawPresence: Record<string, Array<{ userId: string; username: string; onlineAt: string }>>
+  rawPresence: Record<string, Array<{ userId: string; username: string; onlineAt: string; deckList?: string[] }>>
 ) => {
   const players = Object.values(rawPresence)
     .flat()
     .map((entry) => ({
       userId: entry.userId,
       username: entry.username,
-      onlineAt: entry.onlineAt
+      onlineAt: entry.onlineAt,
+      deckList: entry.deckList
     }));
 
   const deduped = new Map<string, PlayerPresence>();
@@ -49,6 +52,7 @@ const CardBattle: React.FC = () => {
   const startedPairKeyRef = useRef<string | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
   const playersRef = useRef<PlayerPresence[]>([]);
+  const localDeckRef = useRef<string[]>(getActiveDeckList(readLocalDeckState()));
 
   const applyIncomingState = (nextState: GameState) => {
     stateRef.current = nextState;
@@ -137,7 +141,10 @@ const CardBattle: React.FC = () => {
 
       if (pairKey !== startedPairKeyRef.current && pair[0].userId === currentUserIdRef.current) {
         startedPairKeyRef.current = pairKey;
-        const nextState = createInitialGameState([pair[0].username, pair[1].username]);
+        const nextState = createInitialGameState(
+          [pair[0].username, pair[1].username],
+          [pair[0].deckList ?? localDeckRef.current, pair[1].deckList ?? localDeckRef.current]
+        );
         applyIncomingState(nextState);
         void channel.send({
           type: "broadcast",
@@ -207,7 +214,8 @@ const CardBattle: React.FC = () => {
         await channel.track({
           userId: session.user.id,
           username,
-          onlineAt: new Date().toISOString()
+          onlineAt: new Date().toISOString(),
+          deckList: localDeckRef.current
         });
 
         setConnected(true);
@@ -305,6 +313,9 @@ const CardBattle: React.FC = () => {
             const nextState = createInitialGameState([
               seatedPlayers[0].username,
               seatedPlayers[1].username
+            ], [
+              seatedPlayers[0].deckList ?? localDeckRef.current,
+              seatedPlayers[1].deckList ?? localDeckRef.current
             ]);
             applyIncomingState(nextState);
             void channelRef.current.send({
