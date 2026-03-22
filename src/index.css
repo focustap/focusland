@@ -1566,6 +1566,77 @@ body[data-theme="dark"] .brawl-pick-card span {
   border: 1px dashed rgba(255, 255, 255, 0.18);
 }
 
+.deck-workshop-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.deck-workshop-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.deck-workshop-head h2,
+.deck-workshop-head p {
+  margin: 0;
+}
+
+.deck-workshop-head p {
+  margin-top: 0.35rem;
+  color: color-mix(in srgb, var(--page-text) 72%, transparent 28%);
+}
+
+.deck-workshop-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
+.deck-workshop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+}
+
+.deck-workshop-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--card-border);
+}
+
+.deck-workshop-card p {
+  margin: 0;
+  font-size: 0.92rem;
+  color: color-mix(in srgb, var(--page-text) 74%, transparent 26%);
+}
+
+.deck-workshop-card__top,
+.deck-workshop-card__meta,
+.deck-workshop-card__controls {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.deck-workshop-card__top span,
+.deck-workshop-card__meta span {
+  font-size: 0.84rem;
+  color: color-mix(in srgb, var(--page-text) 68%, transparent 32%);
+}
+
+.deck-workshop-card__controls {
+  margin-top: auto;
+}
+
 body[data-theme="dark"] .card-battle-shell {
   background:
     radial-gradient(circle at top, rgba(96, 165, 250, 0.12), transparent 34%),
@@ -1619,6 +1690,14 @@ body[data-theme="dark"] .card-battle-card--hidden {
   .card-battle-hand-fan__card {
     width: min(170px, 46vw);
     transform: none !important;
+  }
+
+  .deck-workshop-head {
+    flex-direction: column;
+  }
+
+  .deck-workshop-meta {
+    align-items: flex-start;
   }
 
   .card-battle-topbar,

@@ -16,7 +16,6 @@ import { DEFAULT_PROFILE_COLOR, normalizeProfileColor, profileColorToNumber } fr
 import { supabase } from "../lib/supabase";
 
 type Hotspot = {
-  label: string;
   route: string;
   x: number;
   y: number;
@@ -26,7 +25,7 @@ type Hotspot = {
   entranceY: number;
 };
 
-const ArcadeRoom: React.FC = () => {
+const CardRoom: React.FC = () => {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -42,7 +41,7 @@ const ArcadeRoom: React.FC = () => {
 
     const setup = async () => {
       const width = 780;
-      const height = 520;
+      const height = 500;
       let playerColor = profileColorToNumber(DEFAULT_PROFILE_COLOR);
       let avatarCustomization = getStoredAvatarCustomization();
 
@@ -70,7 +69,7 @@ const ArcadeRoom: React.FC = () => {
         return;
       }
 
-      class ArcadeScene extends Phaser.Scene {
+      class CardHallScene extends Phaser.Scene {
         player!: AvatarRender;
         targetX: number | null = null;
         targetY: number | null = null;
@@ -79,79 +78,83 @@ const ArcadeRoom: React.FC = () => {
 
         preload() {
           loadAvatarSpriteSheet(this, assetBase);
-          this.load.image("arcade-room-bg", `${assetBase}assets/lobby/arcade-room.png`);
         }
 
         create() {
-          this.cameras.main.setBackgroundColor("#020617");
-          const bg = this.add.image(width / 2, height / 2, "arcade-room-bg");
-          bg.setDisplaySize(width, height);
-          this.add.rectangle(width / 2, height / 2, width, height, 0x020617, 0.18);
-          this.add.rectangle(width / 2, height / 2, width - 16, height - 16, 0x000000, 0)
-            .setStrokeStyle(2, 0xffffff, 0.08);
-
-        this.add.text(width / 2, 34, "Focusland Arcade", {
-          color: "#7dd3fc",
-          fontSize: "28px",
-          fontStyle: "bold"
-        }).setOrigin(0.5);
-
-        const machines = [
-          { label: "Cards", route: "/cards", x: 190, y: 136, color: 0xa855f7 },
-          { label: "Dodge", route: "/game", x: 420, y: 134, color: 0x22c55e },
-          { label: "Catch", route: "/catch", x: 512, y: 136, color: 0xf97316 },
-          { label: "Pong", route: "/pong", x: 604, y: 136, color: 0x06b6d4 },
-          { label: "8 Ball", route: "/pool", x: 274, y: 346, color: 0x0f766e }
-        ];
-
-        machines.forEach((machine) => {
-          this.add.circle(machine.x, machine.y + 26, 26, machine.color, 0.28).setDepth(2);
-          this.add.circle(machine.x, machine.y + 18, 12, machine.color, 0.88)
-            .setStrokeStyle(2, 0xffffff, 0.9)
-            .setDepth(3);
-          this.add.text(machine.x, machine.y + 82, machine.label, {
-            color: "#f8fafc",
-            fontSize: "15px",
+          this.cameras.main.setBackgroundColor("#120b22");
+          this.add.rectangle(width / 2, height / 2, width, height, 0x140b1f);
+          this.add.rectangle(width / 2, height / 2, width - 28, height - 28, 0x25133d)
+            .setStrokeStyle(3, 0xf59e0b, 0.24);
+          this.add.text(width / 2, 34, "Card Hall", {
+            color: "#fde68a",
+            fontSize: "30px",
             fontStyle: "bold"
-          }).setOrigin(0.5).setDepth(3);
+          }).setOrigin(0.5);
+
+          this.add.rectangle(width / 2, 160, 300, 96, 0x5b21b6, 0.32).setStrokeStyle(3, 0xc084fc, 0.9);
+          this.add.text(width / 2, 146, "Play Room", {
+            color: "#faf5ff",
+            fontSize: "26px",
+            fontStyle: "bold"
+          }).setOrigin(0.5);
+          this.add.text(width / 2, 178, "Online duels", {
+            color: "#ddd6fe",
+            fontSize: "16px"
+          }).setOrigin(0.5);
 
           this.hotspots.push({
-            label: machine.label,
-            route: machine.route,
-            x: machine.x,
-            y: machine.y,
-            width: 82,
-            height: 96,
-            entranceX: machine.x,
-            entranceY: machine.y + 54
+            route: "/cards/play",
+            x: width / 2,
+            y: 160,
+            width: 320,
+            height: 120,
+            entranceX: width / 2,
+            entranceY: 230
           });
-        });
 
-        const doorX = 44;
-        const doorY = height - 84;
-        this.add.rectangle(doorX, doorY, 64, 96, 0x22c55e, 0.28).setDepth(2);
-        this.add.text(doorX + 24, doorY + 10, "Hub", {
-          color: "#dcfce7",
-          fontSize: "14px",
-          fontStyle: "bold"
-        }).setOrigin(0.5).setDepth(3);
+          this.add.rectangle(width / 2, 318, 300, 96, 0x0f766e, 0.3).setStrokeStyle(3, 0x5eead4, 0.88);
+          this.add.text(width / 2, 304, "Deck Room", {
+            color: "#ecfeff",
+            fontSize: "26px",
+            fontStyle: "bold"
+          }).setOrigin(0.5);
+          this.add.text(width / 2, 336, "Build and save deck drafts", {
+            color: "#ccfbf1",
+            fontSize: "16px"
+          }).setOrigin(0.5);
 
-        this.hotspots.push({
-          label: "Hub Door",
-          route: "/lobby",
-          x: doorX,
-          y: doorY,
-          width: 72,
-          height: 104,
-          entranceX: doorX + 22,
-          entranceY: height - 94
-        });
+          this.hotspots.push({
+            route: "/cards/decks",
+            x: width / 2,
+            y: 318,
+            width: 320,
+            height: 120,
+            entranceX: width / 2,
+            entranceY: 388
+          });
 
-          this.player = createAvatarRender(this, 112, height - 84, avatarCustomization, 12, TOWN_AVATAR_SCALE);
+          this.add.rectangle(84, height - 76, 88, 112, 0x1f4d3c, 0.32).setStrokeStyle(2, 0x86efac, 0.72);
+          this.add.text(84, height - 18, "Arcade", {
+            color: "#dcfce7",
+            fontSize: "15px",
+            fontStyle: "bold"
+          }).setOrigin(0.5);
+
+          this.hotspots.push({
+            route: "/arcade",
+            x: 84,
+            y: height - 76,
+            width: 92,
+            height: 116,
+            entranceX: 84,
+            entranceY: height - 118
+          });
+
+          this.player = createAvatarRender(this, width / 2, height - 82, avatarCustomization, 12, TOWN_AVATAR_SCALE);
 
           this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
             this.targetX = pointer.x;
-            this.targetY = Phaser.Math.Clamp(pointer.y, 56, height - 24);
+            this.targetY = Phaser.Math.Clamp(pointer.y, 56, height - 22);
             this.pendingRoute = null;
 
             for (const hotspot of this.hotspots) {
@@ -224,7 +227,7 @@ const ArcadeRoom: React.FC = () => {
             debug: false
           }
         },
-        scene: ArcadeScene
+        scene: CardHallScene
       });
 
       gameRef.current = game;
@@ -246,12 +249,12 @@ const ArcadeRoom: React.FC = () => {
     <div className="page">
       <NavBar />
       <div className="content card" style={{ maxWidth: 840 }}>
-        <h2>Arcade Room</h2>
-        <p>Click a machine to walk over and play. The main event games now have their own buildings in town.</p>
+        <h2>Card Hall</h2>
+        <p>Walk into the play room for live matches or head into the deck room to work on a build.</p>
         <div ref={containerRef} style={{ width: "100%", maxWidth: 780, margin: "1rem auto" }} />
       </div>
     </div>
   );
 };
 
-export default ArcadeRoom;
+export default CardRoom;
