@@ -101,10 +101,10 @@ const ArcadeRoom: React.FC = () => {
         }).setOrigin(0.5);
 
         const machines = [
-          { label: "Cards", route: "/cards", x: 190, y: 136, color: 0xa855f7 },
-          { label: "Dodge", route: "/game", x: 420, y: 134, color: 0x22c55e },
-          { label: "Catch", route: "/catch", x: 512, y: 136, color: 0xf97316 },
-          { label: "Pong", route: "/pong", x: 604, y: 136, color: 0x06b6d4 },
+          { label: "Cards", route: "/cards", x: 270, y: 204, color: 0xa855f7 },
+          { label: "Dodge", route: "/game", x: 444, y: 126, color: 0x22c55e },
+          { label: "Catch", route: "/catch", x: 504, y: 126, color: 0xf97316 },
+          { label: "Pong", route: "/pong", x: 566, y: 126, color: 0x06b6d4 },
           { label: "8 Ball", route: "/pool", x: 274, y: 346, color: 0x0f766e },
           { label: "Invaders", route: "/hangar", x: 510, y: 346, color: 0xeab308 }
         ];

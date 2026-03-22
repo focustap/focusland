@@ -63,16 +63,18 @@ const CardView: React.FC<CardViewProps> = ({
         <span className="card-battle-card__cost">{definition.cost}</span>
         <span className="card-battle-card__type">{definition.type}</span>
       </div>
-      {infoTooltip ? (
-        <span className="card-battle-card__info">
-          <span className="card-battle-card__info-dot">i</span>
-          <span className="card-battle-card__tooltip">{infoTooltip}</span>
-        </span>
-      ) : null}
       <div className={`card-battle-card__art card-battle-card__art--${definition.visualTheme}`}>
         <span>{definition.artLabel}</span>
       </div>
-      <strong>{definition.name}</strong>
+      <div className="card-battle-card__title-row">
+        <strong>{definition.name}</strong>
+        {infoTooltip ? (
+          <span className="card-battle-card__info">
+            <span className="card-battle-card__info-dot">i</span>
+            <span className="card-battle-card__tooltip">{infoTooltip}</span>
+          </span>
+        ) : null}
+      </div>
       {"keywords" in definition && definition.keywords?.length ? (
         <div className="card-battle-card__keywords">
           {definition.keywords.map((keyword) => (

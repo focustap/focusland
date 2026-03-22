@@ -1,5 +1,5 @@
 import { DEFAULT_AVATAR_CUSTOMIZATION, SKIN_OPTIONS } from "./avatarSprites";
-import { CARD_LIBRARY } from "./card-game/cards";
+import { CARD_LIBRARY, PACK_EXCLUSIVE_CARD_IDS } from "./card-game/cards";
 import {
   normalizeCollection,
   normalizeOwnedSkinIds,
@@ -24,7 +24,7 @@ type InventorySaveResult = {
 
 function getStarterCollection() {
   return Object.fromEntries(
-    CARD_LIBRARY.filter((card) => card.family === "starter").map((card) => [card.id, 2])
+    CARD_LIBRARY.filter((card) => !PACK_EXCLUSIVE_CARD_IDS.has(card.id)).map((card) => [card.id, 2])
   ) as Record<string, number>;
 }
 

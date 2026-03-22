@@ -103,7 +103,7 @@ function getCardsForPack(packId: string) {
     return CARD_LIBRARY;
   }
 
-  return CARD_LIBRARY.filter((card) => pack.familyPool.includes(card.family));
+  return CARD_LIBRARY.filter((card) => pack.cardPoolIds.includes(card.id));
 }
 
 function getCardsByMinimumRarity(cards: CardDefinition[], rarity: CardRarity) {

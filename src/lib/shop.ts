@@ -16,7 +16,7 @@ export type ShopPackProduct = {
   accent: string;
   accentSoft: string;
   glow: string;
-  familyPool: Array<"starter" | "ember" | "tide" | "wild" | "sky" | "iron" | "lunar">;
+  cardPoolIds: string[];
 };
 
 export type ShopInventory = {
@@ -43,7 +43,7 @@ export const SHOP_PACK_PRODUCTS: ShopPackProduct[] = [
     accent: "#60a5fa",
     accentSoft: "rgba(96, 165, 250, 0.34)",
     glow: "#bfdbfe",
-    familyPool: ["starter"]
+    cardPoolIds: ["skyfire-kite", "cloudbreak-volley"]
   },
   {
     id: "ember-pack",
@@ -53,7 +53,7 @@ export const SHOP_PACK_PRODUCTS: ShopPackProduct[] = [
     accent: "#f97316",
     accentSoft: "rgba(249, 115, 22, 0.36)",
     glow: "#fdba74",
-    familyPool: ["ember", "starter"]
+    cardPoolIds: ["ember-fox", "magma-burst", "coal-ambush"]
   },
   {
     id: "tide-pack",
@@ -63,7 +63,7 @@ export const SHOP_PACK_PRODUCTS: ShopPackProduct[] = [
     accent: "#38bdf8",
     accentSoft: "rgba(56, 189, 248, 0.34)",
     glow: "#bae6fd",
-    familyPool: ["tide", "lunar", "starter"]
+    cardPoolIds: ["tidal-oracle", "moon-riptide", "mist-mirror"]
   },
   {
     id: "wild-pack",
@@ -73,7 +73,7 @@ export const SHOP_PACK_PRODUCTS: ShopPackProduct[] = [
     accent: "#84cc16",
     accentSoft: "rgba(132, 204, 22, 0.34)",
     glow: "#d9f99d",
-    familyPool: ["wild", "iron", "starter"]
+    cardPoolIds: ["thornhide-stag", "grove-surge", "iron-watcher", "rootlock-grid"]
   }
 ];
 

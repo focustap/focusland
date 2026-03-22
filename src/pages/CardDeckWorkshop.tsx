@@ -15,6 +15,7 @@ import {
 import { loadDeckStateForCurrentUser, saveDeckStateForCurrentUser } from "../lib/card-game/deckStorage";
 import { loadInventoryForCurrentUser } from "../lib/playerInventory";
 import { TAPDECK_AUDIO, createTapDeckTrack, ensureAudioPlayback } from "../lib/tapDeckAudio";
+import { getCardRarity } from "../lib/card-game/packOpening";
 import type { CardFamily, CardType } from "../lib/card-game/types";
 
 const TYPE_FILTERS: Array<{ value: "all" | CardType; label: string }> = [
@@ -35,12 +36,22 @@ const FAMILY_FILTERS: Array<{ value: "all" | CardFamily; label: string }> = [
   { value: "lunar", label: "Lunar" }
 ];
 
+const SORT_OPTIONS = [
+  { value: "cost", label: "Cost" },
+  { value: "owned", label: "Owned" },
+  { value: "rarity", label: "Rarity" },
+  { value: "name", label: "Name" }
+] as const;
+
+type SortOption = (typeof SORT_OPTIONS)[number]["value"];
+
 const CardDeckWorkshop: React.FC = () => {
   const [deckState, setDeckState] = useState<StoredDeckState | null>(null);
   const [editingSlotId, setEditingSlotId] = useState<string>("slot-1");
   const [message, setMessage] = useState<string>("");
   const [typeFilter, setTypeFilter] = useState<"all" | CardType>("all");
   const [familyFilter, setFamilyFilter] = useState<"all" | CardFamily>("all");
+  const [sortBy, setSortBy] = useState<SortOption>("cost");
   const [collection, setCollection] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -81,8 +92,28 @@ const CardDeckWorkshop: React.FC = () => {
     () =>
       CARD_LIBRARY.filter((card) => (typeFilter === "all" ? true : card.type === typeFilter)).filter((card) =>
         familyFilter === "all" ? true : card.family === familyFilter
-      ).sort((left, right) => left.cost - right.cost || left.name.localeCompare(right.name)),
-    [familyFilter, typeFilter]
+      ).sort((left, right) => {
+        const leftOwned = collection[left.id] ?? 0;
+        const rightOwned = collection[right.id] ?? 0;
+        const leftRarity = getCardRarity(left);
+        const rightRarity = getCardRarity(right);
+        const rarityRank = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
+
+        if (sortBy === "owned") {
+          return rightOwned - leftOwned || left.cost - right.cost || left.name.localeCompare(right.name);
+        }
+
+        if (sortBy === "rarity") {
+          return rarityRank[rightRarity] - rarityRank[leftRarity] || left.cost - right.cost || left.name.localeCompare(right.name);
+        }
+
+        if (sortBy === "name") {
+          return left.name.localeCompare(right.name);
+        }
+
+        return left.cost - right.cost || left.name.localeCompare(right.name);
+      }),
+    [collection, familyFilter, sortBy, typeFilter]
   );
 
   const updateEditingSlot = (updater: (slot: SavedDeckSlot) => SavedDeckSlot) => {
@@ -266,6 +297,16 @@ const CardDeckWorkshop: React.FC = () => {
               <strong>{filteredCards.length}</strong>
               <span>cards shown</span>
             </div>
+            <label className="field">
+              <span>Sort by</span>
+              <select value={sortBy} onChange={(event) => setSortBy(event.target.value as SortOption)}>
+                {SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="deck-workshop-grid">
@@ -280,6 +321,8 @@ const CardDeckWorkshop: React.FC = () => {
                     cardId={card.id}
                     infoTooltip={
                       <>
+                        <strong>{getCardRarity(card)}</strong>
+                        <br />
                         <strong>{ownedCount} owned</strong>
                         <br />
                         Family: {card.family}
