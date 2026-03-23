@@ -227,7 +227,7 @@ function findBoardCard(state: GwentMatchState, targetId: string) {
 
 function getCardArtPath(cardIndex: number) {
   const card = getCard(cardIndex);
-  return `/gwent-classic/img/lg/${card.deck}_${card.filename}.jpg`;
+  return `${import.meta.env.BASE_URL}gwent-classic/img/lg/${card.deck}_${card.filename}.jpg`;
 }
 
 function getLeaderPowerOverride(state: GwentMatchState, playerIndex: number, row: GwentRow, basePower: number) {
@@ -917,3 +917,7 @@ export function getDeckSummary(deckIndex: number) {
 }
 
 export const GWENT_PREMADE_SUMMARIES = GWENT_PREMADE_DECKS.map((_, index) => getDeckSummary(index));
+
+export function getFactionShieldPath(faction: GwentFaction) {
+  return `${import.meta.env.BASE_URL}gwent-classic/img/icons/deck_shield_${faction}.png`;
+}

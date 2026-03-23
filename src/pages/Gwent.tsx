@@ -7,6 +7,7 @@ import {
   applyPlayerAction,
   createMatch,
   getCardMeta,
+  getFactionShieldPath,
   getPlayableRows,
   getRenderedCardPower,
   getRowTotal,
@@ -82,6 +83,8 @@ function BoardCard({
 
 const Gwent: React.FC = () => {
   const gwentUrl = `${import.meta.env.BASE_URL}gwent-classic/index.html`;
+  const boardAssetUrl = `${import.meta.env.BASE_URL}gwent-classic/img/board.jpg`;
+  const cursorAssetUrl = `${import.meta.env.BASE_URL}gwent-classic/img/icons/cursor.png`;
   const [mode, setMode] = useState<Mode>("online");
   const [roomCodeInput, setRoomCodeInput] = useState("");
   const [joinedRoomCode, setJoinedRoomCode] = useState<string | null>(null);
@@ -381,7 +384,15 @@ const Gwent: React.FC = () => {
   return (
     <div className="page">
       <NavBar />
-      <div className="content card gwent-native-page">
+      <div
+        className="content card gwent-native-page"
+        style={
+          {
+            ["--gwent-board-url" as string]: `url(${boardAssetUrl})`,
+            ["--gwent-cursor-url" as string]: `url(${cursorAssetUrl})`
+          } as React.CSSProperties
+        }
+      >
         <div className="gwent-header">
           <div>
             <h2>GWENT</h2>
@@ -499,6 +510,7 @@ const Gwent: React.FC = () => {
                 <>
                   <section className="gwent-scoreboard">
                     <div className="gwent-scoreboard__player">
+                      <img alt={opponentPlayer.faction} className="gwent-faction-shield" src={getFactionShieldPath(opponentPlayer.faction)} />
                       <strong>{opponentPlayer.username}</strong>
                       <span>{opponentPlayer.deckName}</span>
                       <span>{getPlayerTotal(matchState, localPlayerIndex === 0 ? 1 : 0)} power</span>
@@ -511,6 +523,7 @@ const Gwent: React.FC = () => {
                       <span>{matchState.phase.replaceAll("-", " ")}</span>
                     </div>
                     <div className="gwent-scoreboard__player">
+                      <img alt={localPlayer.faction} className="gwent-faction-shield" src={getFactionShieldPath(localPlayer.faction)} />
                       <strong>{localPlayer.username}</strong>
                       <span>{localPlayer.deckName}</span>
                       <span>{getPlayerTotal(matchState, localPlayerIndex)} power</span>
