@@ -143,6 +143,60 @@
     return Number.isInteger(rowIndex) && rowIndex >= 0 && rowIndex < board.row.length ? board.row[rowIndex] : null;
   }
 
+  function getCardRef(card) {
+    if (!card) {
+      return null;
+    }
+    return {
+      name: card.name,
+      filename: card.filename,
+      deck: card.deck || "",
+      faction: card.faction || "",
+      strength: typeof card.strength === "number" ? card.strength : null,
+      abilities: Array.isArray(card.abilities) ? card.abilities.slice() : []
+    };
+  }
+
+  function sameCardRef(card, ref) {
+    if (!card || !ref) {
+      return false;
+    }
+    var cardAbilities = Array.isArray(card.abilities) ? card.abilities : [];
+    var refAbilities = Array.isArray(ref.abilities) ? ref.abilities : [];
+    if (card.name !== ref.name || card.filename !== ref.filename || (card.deck || "") !== ref.deck) {
+      return false;
+    }
+    if ((card.faction || "") !== ref.faction || (typeof card.strength === "number" ? card.strength : null) !== ref.strength) {
+      return false;
+    }
+    if (cardAbilities.length !== refAbilities.length) {
+      return false;
+    }
+    for (var index = 0; index < cardAbilities.length; index += 1) {
+      if (cardAbilities[index] !== refAbilities[index]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function findCardInHand(player, ref, fallbackIndex) {
+    if (!player || !player.hand) {
+      return null;
+    }
+    if (ref) {
+      for (var index = 0; index < player.hand.cards.length; index += 1) {
+        if (sameCardRef(player.hand.cards[index], ref)) {
+          return player.hand.cards[index];
+        }
+      }
+    }
+    if (Number.isInteger(fallbackIndex) && player.hand.cards[fallbackIndex]) {
+      return player.hand.cards[fallbackIndex];
+    }
+    return null;
+  }
+
   function serializeLocalDeck() {
     return JSON.parse(dm.deckToJSON());
   }
@@ -397,24 +451,27 @@
         game.currPlayer = actor;
       }
       if (message.type === "redraw") {
-        if (!actor || !actor.hand.cards[message.index]) {
-          debugLog("Missing redraw card at index " + message.index);
+        var redrawCard = findCardInHand(actor, message.card, message.index);
+        if (!actor || !redrawCard) {
+          debugLog("Missing redraw card " + JSON.stringify(message.card || message.index));
           return;
         }
-        actor.deck.swap(actor.hand, actor.hand.removeCard(message.index));
+        actor.deck.swap(actor.hand, actor.hand.removeCard(redrawCard));
       } else if (message.type === "redraw-finish") {
         online.redrawDone[message.seat] = true;
       } else if (message.type === "pass") {
         actor.passRound();
       } else if (message.type === "play-card") {
-        if (!actor || !actor.hand.cards[message.index]) {
-          debugLog("Missing play-card hand index " + message.index);
+        var playCard = findCardInHand(actor, message.card, message.index);
+        if (!actor || !playCard) {
+          debugLog("Missing play-card hand card " + JSON.stringify(message.card || message.index));
           return;
         }
-        await actor.playCard(actor.hand.cards[message.index]);
+        await actor.playCard(playCard);
       } else if (message.type === "play-row") {
-        if (!actor || !actor.hand.cards[message.index]) {
-          debugLog("Missing play-row hand index " + message.index);
+        var rowCard = findCardInHand(actor, message.card, message.index);
+        if (!actor || !rowCard) {
+          debugLog("Missing play-row hand card " + JSON.stringify(message.card || message.index));
           return;
         }
         var targetRow = getRowForToken(message.row);
@@ -422,21 +479,22 @@
           debugLog("Missing target row for token " + message.row);
           return;
         }
-        await actor.playCardToRow(actor.hand.cards[message.index], targetRow);
+        await actor.playCardToRow(rowCard, targetRow);
       } else if (message.type === "play-scorch") {
-        if (!actor || !actor.hand.cards[message.index]) {
-          debugLog("Missing scorch hand index " + message.index);
+        var scorchCard = findCardInHand(actor, message.card, message.index);
+        if (!actor || !scorchCard) {
+          debugLog("Missing scorch hand card " + JSON.stringify(message.card || message.index));
           return;
         }
-        await actor.playScorch(actor.hand.cards[message.index]);
+        await actor.playScorch(scorchCard);
       } else if (message.type === "leader") {
         await actor.activateLeader();
       } else if (message.type === "decoy") {
-        if (!actor || !actor.hand.cards[message.index]) {
-          debugLog("Missing decoy hand index " + message.index);
+        var decoyCard = findCardInHand(actor, message.card, message.index);
+        if (!actor || !decoyCard) {
+          debugLog("Missing decoy hand card " + JSON.stringify(message.card || message.index));
           return;
         }
-        var decoyCard = actor.hand.cards[message.index];
         var targetRow = getRowForToken(message.row);
         if (!targetRow) {
           debugLog("Missing decoy row for token " + message.row);
@@ -510,7 +568,14 @@
           player_me.hand,
           2,
           async function (container, index) {
-            await sendMessage({ type: "redraw", seat: online.localSeat, userId: online.self.userId, index: index });
+            var redrawCard = container.cards[index];
+            await sendMessage({
+              type: "redraw",
+              seat: online.localSeat,
+              userId: online.self.userId,
+              index: index,
+              card: getCardRef(redrawCard)
+            });
             await player_me.deck.swap(container, container.removeCard(index));
           },
           function () {
@@ -534,7 +599,13 @@
 
   Player.prototype.playCard = async function (card) {
     if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
-      await sendMessage({ type: "play-card", seat: online.localSeat, userId: online.self.userId, index: this.hand.cards.indexOf(card) });
+      await sendMessage({
+        type: "play-card",
+        seat: online.localSeat,
+        userId: online.self.userId,
+        index: this.hand.cards.indexOf(card),
+        card: getCardRef(card)
+      });
     }
     return originalPlayCard.call(this, card);
   };
@@ -542,19 +613,26 @@
   Player.prototype.playCardToRow = async function (card, row) {
     if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
         await sendMessage({
-          type: "play-row",
-          seat: online.localSeat,
-          userId: online.self.userId,
-          index: this.hand.cards.indexOf(card),
-          row: getRowToken(row)
-        });
+        type: "play-row",
+        seat: online.localSeat,
+        userId: online.self.userId,
+        index: this.hand.cards.indexOf(card),
+        row: getRowToken(row),
+        card: getCardRef(card)
+      });
     }
     return originalPlayCardToRow.call(this, card, row);
   };
 
   Player.prototype.playScorch = async function (card) {
     if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
-      await sendMessage({ type: "play-scorch", seat: online.localSeat, userId: online.self.userId, index: this.hand.cards.indexOf(card) });
+      await sendMessage({
+        type: "play-scorch",
+        seat: online.localSeat,
+        userId: online.self.userId,
+        index: this.hand.cards.indexOf(card),
+        card: getCardRef(card)
+      });
     }
     return originalPlayScorch.call(this, card);
   };
@@ -661,7 +739,8 @@
         userId: online.self.userId,
         index: player_me.hand.cards.indexOf(previewCard),
         row: targetRowToken,
-        targetIndex: targetIndex
+        targetIndex: targetIndex,
+        card: getCardRef(previewCard)
       });
     }
     return originalSelectCard.call(this, card);
@@ -680,7 +759,8 @@
           type: "play-scorch",
           seat: online.localSeat,
           userId: online.self.userId,
-          index: player_me.hand.cards.indexOf(this.previewCard)
+          index: player_me.hand.cards.indexOf(this.previewCard),
+          card: getCardRef(this.previewCard)
         });
       } else if (this.previewCard.name !== "Decoy") {
         await sendMessage({
@@ -688,7 +768,8 @@
           seat: online.localSeat,
           userId: online.self.userId,
           index: player_me.hand.cards.indexOf(this.previewCard),
-          row: getRowToken(row)
+          row: getRowToken(row),
+          card: getCardRef(this.previewCard)
         });
       }
     }
