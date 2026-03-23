@@ -18,6 +18,229 @@ body[data-theme="light"] {
   --panel-bg: #f8fafc;
 }
 
+.gwent-native-page {
+  max-width: 1480px;
+}
+
+.gwent-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.gwent-mode-tabs,
+.gwent-room-actions,
+.gwent-room-meta,
+.gwent-action-row,
+.gwent-row-picker {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.gwent-layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.gwent-sidebar {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.gwent-panel,
+.gwent-empty-state,
+.gwent-scoreboard,
+.gwent-controls {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.78)),
+    radial-gradient(circle at top, rgba(245, 158, 11, 0.16), transparent 55%);
+  padding: 1rem;
+}
+
+.gwent-panel h3,
+.gwent-empty-state h3 {
+  margin: 0 0 0.5rem;
+}
+
+.gwent-panel p,
+.gwent-empty-state p {
+  margin: 0;
+}
+
+.gwent-panel select,
+.gwent-room-actions input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.9);
+  color: #e2e8f0;
+  padding: 0.75rem 0.9rem;
+}
+
+.gwent-room-meta {
+  margin-top: 0.75rem;
+  justify-content: space-between;
+}
+
+.gwent-player-list,
+.gwent-log {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.gwent-player-pill {
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.75rem;
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.7);
+}
+
+.gwent-player-pill__dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+}
+
+.gwent-board-wrap {
+  display: grid;
+  gap: 1rem;
+}
+
+.gwent-scoreboard {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 1rem;
+  align-items: center;
+}
+
+.gwent-scoreboard__player {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.gwent-scoreboard__center {
+  text-align: center;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.gwent-battlefield {
+  display: grid;
+  gap: 1rem;
+}
+
+.gwent-side {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.gwent-row {
+  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background:
+    linear-gradient(180deg, rgba(7, 10, 20, 0.92), rgba(15, 23, 42, 0.72)),
+    url("/gwent-classic/img/board.jpg");
+  background-size: cover;
+  padding: 0.8rem;
+}
+
+.gwent-row__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+  text-transform: capitalize;
+}
+
+.gwent-row__cards,
+.gwent-hand {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.gwent-card {
+  position: relative;
+  width: 92px;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: 14px;
+  padding: 0;
+  background: rgba(15, 23, 42, 0.95);
+  overflow: hidden;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.gwent-card:hover,
+.gwent-card.is-selected {
+  transform: translateY(-2px);
+  border-color: rgba(245, 158, 11, 0.8);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.35);
+}
+
+.gwent-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 0.69;
+  object-fit: cover;
+}
+
+.gwent-card__name {
+  display: block;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  padding: 0.4rem 0.45rem 0.55rem;
+  min-height: 2.8rem;
+}
+
+.gwent-card__power {
+  position: absolute;
+  top: 0.35rem;
+  left: 0.35rem;
+  min-width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.88);
+  border: 1px solid rgba(245, 158, 11, 0.7);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.gwent-controls {
+  display: grid;
+  gap: 1rem;
+}
+
+.gwent-empty-state {
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+@media (max-width: 1080px) {
+  .gwent-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .gwent-scoreboard {
+    grid-template-columns: 1fr;
+  }
+}
+
 body[data-theme="dark"] {
   --page-bg: linear-gradient(180deg, #020617, #000000);
   --page-text: #e5eefb;
