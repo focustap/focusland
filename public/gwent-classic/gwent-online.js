@@ -59,7 +59,8 @@
     redrawDone: {},
     redrawSeatOrder: [],
     lobby: null,
-    debug: null
+    debug: null,
+    turnBadge: null
   };
 
   function debugLog(message) {
@@ -73,6 +74,45 @@
     while (online.debug.children.length > 16) {
       online.debug.removeChild(online.debug.firstChild);
     }
+  }
+
+  function updateTurnBadge() {
+    if (!online.turnBadge) {
+      return;
+    }
+    if (!online.matchStarted) {
+      online.turnBadge.textContent = "Waiting for match start";
+      return;
+    }
+    online.turnBadge.textContent = isLocalTurn() ? "Your turn" : "Opponent's turn";
+  }
+
+  function clearLeaderSlot(id) {
+    var slot = document.querySelector("#" + id + " .leader-container");
+    if (!slot) {
+      return;
+    }
+    while (slot.firstChild) {
+      slot.removeChild(slot.firstChild);
+    }
+  }
+
+  function resetRuntimeSurface() {
+    game.reset();
+    ui.hidePreview();
+    ui.enablePlayer(false);
+    document.getElementById("pass-button").classList.add("noclick");
+    document.getElementById("score-total-me").children[0].textContent = "0";
+    document.getElementById("score-total-op").children[0].textContent = "0";
+    document.getElementById("passed-me").classList.remove("passed");
+    document.getElementById("passed-op").classList.remove("passed");
+    document.getElementById("stats-me").classList.remove("current-turn");
+    document.getElementById("stats-op").classList.remove("current-turn");
+    clearLeaderSlot("leader-me");
+    clearLeaderSlot("leader-op");
+    Array.prototype.forEach.call(document.querySelectorAll(".row-score"), function (score) {
+      score.textContent = "0";
+    });
   }
 
   function mulberry32(seed) {
@@ -308,6 +348,13 @@
     debug.style.paddingTop = "0.5vw";
     wrap.appendChild(debug);
     online.debug = debug;
+    var turnBadge = document.createElement("div");
+    turnBadge.style.marginTop = "0.5vw";
+    turnBadge.style.fontSize = "0.9vw";
+    turnBadge.style.fontWeight = "bold";
+    turnBadge.textContent = "Waiting for match start";
+    wrap.appendChild(turnBadge);
+    online.turnBadge = turnBadge;
     online.lobby = {
       wrap: wrap,
       input: wrap.querySelector("#gwent-online-room"),
@@ -407,6 +454,7 @@
   function launchMatch(setup) {
     debugLog("Launching match as " + (setup.host.userId === online.self.userId ? "host" : "guest"));
     debugLog("First player seat: " + setup.firstPlayerSeat);
+    resetRuntimeSurface();
     online.matchStarted = true;
     online.localSeat = setup.host.userId === online.self.userId ? "host" : "guest";
     online.redrawDone = { host: false, guest: false };
@@ -426,10 +474,11 @@
     game.firstPlayer = setup.firstPlayerSeat === online.localSeat ? player_me : player_op;
 
     if (online.lobby && online.lobby.wrap) {
-      online.lobby.wrap.style.display = "none";
+      online.lobby.wrap.style.opacity = "0.65";
     }
 
     dm.elem.classList.add("hide");
+    updateTurnBadge();
     game.startGame();
   }
 
@@ -617,17 +666,22 @@
 
   Game.prototype.startRound = async function () {
     debugLog("startRound: round " + (this.roundCount + 1) + ", first=" + getSeatTag(this.firstPlayer));
+    updateTurnBadge();
     return originalGameStartRound.call(this);
   };
 
   Game.prototype.startTurn = async function () {
     debugLog("startTurn: curr=" + getSeatTag(this.currPlayer) + ", passed local=" + player_me.passed + ", remote=" + player_op.passed);
-    return originalGameStartTurn.call(this);
+    var result = await originalGameStartTurn.call(this);
+    updateTurnBadge();
+    return result;
   };
 
   Game.prototype.endTurn = async function () {
     debugLog("endTurn: curr=" + getSeatTag(this.currPlayer));
-    return originalGameEndTurn.call(this);
+    var result = await originalGameEndTurn.call(this);
+    updateTurnBadge();
+    return result;
   };
 
   Player.prototype.playCard = async function (card) {
@@ -782,7 +836,7 @@
       previewCard &&
       previewCard.name === "Decoy" &&
       card !== previewCard &&
-      card.holder !== player_me.hand &&
+      card.holder !== player_me &&
       game.currPlayer === player_me
     ) {
       var targetRowToken = getRowToken(row);
@@ -812,7 +866,7 @@
       online.matchStarted &&
       !online.suppressBroadcast &&
       this.previewCard &&
-      this.previewCard.holder === player_me.hand &&
+      this.previewCard.holder === player_me &&
       game.currPlayer === player_me
     ) {
       if (this.previewCard.name === "Scorch") {
