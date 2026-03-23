@@ -55,8 +55,22 @@
     pendingRemotePopup: null,
     redrawDone: {},
     redrawSeatOrder: [],
-    lobby: null
+    lobby: null,
+    debug: null
   };
+
+  function debugLog(message) {
+    console.log("[GWENT ONLINE]", message);
+    if (!online.debug) {
+      return;
+    }
+    var entry = document.createElement("div");
+    entry.textContent = message;
+    online.debug.appendChild(entry);
+    while (online.debug.children.length > 16) {
+      online.debug.removeChild(online.debug.firstChild);
+    }
+  }
 
   function mulberry32(seed) {
     var state = seed >>> 0;
@@ -113,18 +127,20 @@
     return player === player_me ? online.localSeat : online.localSeat === "host" ? "guest" : "host";
   }
 
-  function getRowName(row, player) {
+  function getRowToken(row) {
     if (row === weather) {
       return "weather";
     }
-    var target = player || player_me;
-    if (row === board.getRow(null, "close", target)) return "close";
-    if (row === board.getRow(null, "ranged", target)) return "ranged";
-    return "siege";
+    var rowIndex = board.row.indexOf(row);
+    return rowIndex === -1 ? null : String(rowIndex);
   }
 
-  function getRowForPlayer(player, rowName) {
-    return rowName === "weather" ? weather : board.getRow(null, rowName, player);
+  function getRowForToken(token) {
+    if (token === "weather") {
+      return weather;
+    }
+    var rowIndex = Number(token);
+    return Number.isInteger(rowIndex) && rowIndex >= 0 && rowIndex < board.row.length ? board.row[rowIndex] : null;
   }
 
   function serializeLocalDeck() {
@@ -161,6 +177,7 @@
 
   async function trackPresence() {
     if (!online.channel) return;
+    debugLog("Tracking presence for " + online.self.username);
     await online.channel.track({
       userId: online.self.userId,
       username: online.self.username,
@@ -171,6 +188,7 @@
 
   async function sendMessage(payload) {
     if (!online.channel) return;
+    debugLog("SEND " + payload.type + (payload.seat ? " [" + payload.seat + "]" : ""));
     await online.channel.send({
       type: "broadcast",
       event: "gwent-online",
@@ -210,6 +228,15 @@
       '<button id="gwent-online-start" style="margin-top:0.5vw;">Start Match</button>';
     document.getElementById("deck-customization").appendChild(wrap);
     document.getElementById("start-game").style.display = "none";
+    var debug = document.createElement("div");
+    debug.style.marginTop = "0.8vw";
+    debug.style.maxHeight = "10vw";
+    debug.style.overflow = "auto";
+    debug.style.fontSize = "0.7vw";
+    debug.style.borderTop = "0.1vw solid rgba(218,165,32,0.2)";
+    debug.style.paddingTop = "0.5vw";
+    wrap.appendChild(debug);
+    online.debug = debug;
     online.lobby = {
       wrap: wrap,
       input: wrap.querySelector("#gwent-online-room"),
@@ -266,14 +293,17 @@
     });
 
     online.channel.on("presence", { event: "sync" }, function () {
+      debugLog("Presence sync");
       refreshPlayers(online.channel.presenceState());
     });
 
     online.channel.on("broadcast", { event: "gwent-online" }, function (event) {
+      debugLog("RECV " + ((event.payload && event.payload.type) || "unknown"));
       void handleMessage(event.payload || {});
     });
 
     online.channel.subscribe(async function (status) {
+      debugLog("Channel status: " + status);
       if (status !== "SUBSCRIBED") return;
       await trackPresence();
       updateLobbyStatus("Connected to room " + roomCode + ".");
@@ -304,16 +334,19 @@
   }
 
   function launchMatch(setup) {
+    debugLog("Launching match as " + (setup.host.userId === online.self.userId ? "host" : "guest"));
     online.matchStarted = true;
     online.localSeat = setup.host.userId === online.self.userId ? "host" : "guest";
     online.redrawDone = { host: false, guest: false };
     online.redrawSeatOrder = ["host", "guest"];
     setSeed(setup.seed);
 
+    var hostDeck = buildDeckFromSaved(setup.host.deck, cardIndexListFromDeck(setup.host.deck, setup.seed + 11));
+    var guestDeck = buildDeckFromSaved(setup.guest.deck, cardIndexListFromDeck(setup.guest.deck, setup.seed + 29));
     var meData = online.localSeat === "host" ? setup.host : setup.guest;
     var opData = online.localSeat === "host" ? setup.guest : setup.host;
-    var meDeck = buildDeckFromSaved(meData.deck, cardIndexListFromDeck(meData.deck, setup.seed + 11));
-    var opDeck = buildDeckFromSaved(opData.deck, cardIndexListFromDeck(opData.deck, setup.seed + 29));
+    var meDeck = online.localSeat === "host" ? hostDeck : guestDeck;
+    var opDeck = online.localSeat === "host" ? guestDeck : hostDeck;
 
     player_me = new Player(0, meData.username, meDeck);
     player_op = new Player(1, opData.username, opDeck);
@@ -354,6 +387,7 @@
     online.suppressBroadcast = true;
     try {
       var actor = getPlayerForSeat(message.seat);
+      debugLog("Apply " + message.type + " from " + message.seat);
       if (
         actor &&
         message.type !== "carousel-select" &&
@@ -363,23 +397,56 @@
         game.currPlayer = actor;
       }
       if (message.type === "redraw") {
+        if (!actor || !actor.hand.cards[message.index]) {
+          debugLog("Missing redraw card at index " + message.index);
+          return;
+        }
         actor.deck.swap(actor.hand, actor.hand.removeCard(message.index));
       } else if (message.type === "redraw-finish") {
         online.redrawDone[message.seat] = true;
       } else if (message.type === "pass") {
         actor.passRound();
       } else if (message.type === "play-card") {
+        if (!actor || !actor.hand.cards[message.index]) {
+          debugLog("Missing play-card hand index " + message.index);
+          return;
+        }
         await actor.playCard(actor.hand.cards[message.index]);
       } else if (message.type === "play-row") {
-        await actor.playCardToRow(actor.hand.cards[message.index], getRowForPlayer(actor, message.row));
+        if (!actor || !actor.hand.cards[message.index]) {
+          debugLog("Missing play-row hand index " + message.index);
+          return;
+        }
+        var targetRow = getRowForToken(message.row);
+        if (!targetRow) {
+          debugLog("Missing target row for token " + message.row);
+          return;
+        }
+        await actor.playCardToRow(actor.hand.cards[message.index], targetRow);
       } else if (message.type === "play-scorch") {
+        if (!actor || !actor.hand.cards[message.index]) {
+          debugLog("Missing scorch hand index " + message.index);
+          return;
+        }
         await actor.playScorch(actor.hand.cards[message.index]);
       } else if (message.type === "leader") {
         await actor.activateLeader();
       } else if (message.type === "decoy") {
+        if (!actor || !actor.hand.cards[message.index]) {
+          debugLog("Missing decoy hand index " + message.index);
+          return;
+        }
         var decoyCard = actor.hand.cards[message.index];
-        var targetRow = getRowForPlayer(actor, message.row);
+        var targetRow = getRowForToken(message.row);
+        if (!targetRow) {
+          debugLog("Missing decoy row for token " + message.row);
+          return;
+        }
         var targetCard = targetRow.cards[message.targetIndex];
+        if (!targetCard) {
+          debugLog("Missing decoy target at row " + message.row + " index " + message.targetIndex);
+          return;
+        }
         board.toHand(targetCard, targetRow);
         await board.moveTo(decoyCard, targetRow, decoyCard.holder.hand);
         decoyCard.holder.endTurn();
@@ -397,6 +464,10 @@
         online.pendingRemotePopup.resolve();
         online.pendingRemotePopup = null;
       }
+      debugLog("Applied " + message.type + " successfully");
+    } catch (error) {
+      debugLog("ERROR " + message.type + ": " + (error && error.message ? error.message : String(error)));
+      console.error(error);
     } finally {
       online.suppressBroadcast = false;
     }
@@ -470,13 +541,13 @@
 
   Player.prototype.playCardToRow = async function (card, row) {
     if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
-      await sendMessage({
-        type: "play-row",
-        seat: online.localSeat,
-        userId: online.self.userId,
-        index: this.hand.cards.indexOf(card),
-        row: getRowName(row, this)
-      });
+        await sendMessage({
+          type: "play-row",
+          seat: online.localSeat,
+          userId: online.self.userId,
+          index: this.hand.cards.indexOf(card),
+          row: getRowToken(row)
+        });
     }
     return originalPlayCardToRow.call(this, card, row);
   };
@@ -579,14 +650,17 @@
       card.holder !== player_me.hand &&
       game.currPlayer === player_me
     ) {
-      var targetRowName = getRowName(row, player_me);
+      var targetRowToken = getRowToken(row);
+      if (!targetRowToken) {
+        return originalSelectCard.call(this, card);
+      }
       var targetIndex = row.cards.indexOf(card);
       await sendMessage({
         type: "decoy",
         seat: online.localSeat,
         userId: online.self.userId,
         index: player_me.hand.cards.indexOf(previewCard),
-        row: targetRowName,
+        row: targetRowToken,
         targetIndex: targetIndex
       });
     }
@@ -614,7 +688,7 @@
           seat: online.localSeat,
           userId: online.self.userId,
           index: player_me.hand.cards.indexOf(this.previewCard),
-          row: getRowName(row, player_me)
+          row: getRowToken(row)
         });
       }
     }
