@@ -100,7 +100,11 @@
 
   function resetRuntimeSurface() {
     game.reset();
-    ui.hidePreview();
+    document.getElementById("click-background").classList.add("noclick");
+    ui.preview.classList.add("hide");
+    ui.setSelectable(null, false);
+    ui.previewCard = null;
+    ui.lastRow = null;
     ui.enablePlayer(false);
     document.getElementById("pass-button").classList.add("noclick");
     document.getElementById("score-total-me").children[0].textContent = "0";
