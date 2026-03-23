@@ -35,6 +35,7 @@
   var originalPassRound = Player.prototype.passRound;
   var originalGameStartGame = Game.prototype.startGame;
   var originalInitialRedraw = Game.prototype.initialRedraw;
+  var originalMusterPlaced = ability_dict.muster && ability_dict.muster.placed;
   var originalGameStartRound = Game.prototype.startRound;
   var originalGameStartTurn = Game.prototype.startTurn;
   var originalGameEndTurn = Game.prototype.endTurn;
@@ -638,6 +639,42 @@
     }
     return originalDeckInitializeFromID.call(this, cardIdList, player);
   };
+
+  if (originalMusterPlaced) {
+    ability_dict.muster.placed = async function (card) {
+      if (!online.matchStarted) {
+        return originalMusterPlaced(card);
+      }
+      var owner = card.holder;
+      var separatorIndex = card.name.indexOf("-");
+      var cardName = separatorIndex === -1 ? card.name : card.name.substring(0, separatorIndex);
+      var predicate = function (candidate) {
+        return candidate.name.startsWith(cardName);
+      };
+      var units = owner.hand
+        .getCards(predicate)
+        .map(function (unit) {
+          unit.holder = owner;
+          return [owner.hand, unit];
+        })
+        .concat(
+          owner.deck.getCards(predicate).map(function (unit) {
+            unit.holder = owner;
+            return [owner.deck, unit];
+          })
+        );
+      if (units.length === 0) {
+        return;
+      }
+      await card.animate("muster");
+      await Promise.all(
+        units.map(async function (entry) {
+          var unit = entry[1];
+          await board.addCardToRow(unit, unit.row, owner, entry[0]);
+        })
+      );
+    };
+  }
 
   Game.prototype.initialRedraw = async function () {
     if (!online.matchStarted) {
