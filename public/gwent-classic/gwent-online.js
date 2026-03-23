@@ -34,6 +34,9 @@
   var originalActivateLeader = Player.prototype.activateLeader;
   var originalPassRound = Player.prototype.passRound;
   var originalInitialRedraw = Game.prototype.initialRedraw;
+  var originalGameStartRound = Game.prototype.startRound;
+  var originalGameStartTurn = Game.prototype.startTurn;
+  var originalGameEndTurn = Game.prototype.endTurn;
   var originalQueueCarousel = ui.queueCarousel.bind(ui);
   var originalPopup = ui.popup.bind(ui);
   var originalSelectCard = ui.selectCard.bind(ui);
@@ -125,6 +128,20 @@
 
   function getSeatForPlayer(player) {
     return player === player_me ? online.localSeat : online.localSeat === "host" ? "guest" : "host";
+  }
+
+  function getSeatTag(player) {
+    if (player === player_me) {
+      return "local";
+    }
+    if (player === player_op) {
+      return "remote";
+    }
+    return "none";
+  }
+
+  function isLocalTurn() {
+    return !online.matchStarted || game.currPlayer === player_me;
   }
 
   function getRowToken(row) {
@@ -389,6 +406,7 @@
 
   function launchMatch(setup) {
     debugLog("Launching match as " + (setup.host.userId === online.self.userId ? "host" : "guest"));
+    debugLog("First player seat: " + setup.firstPlayerSeat);
     online.matchStarted = true;
     online.localSeat = setup.host.userId === online.self.userId ? "host" : "guest";
     online.redrawDone = { host: false, guest: false };
@@ -597,7 +615,26 @@
     game.startRound();
   };
 
+  Game.prototype.startRound = async function () {
+    debugLog("startRound: round " + (this.roundCount + 1) + ", first=" + getSeatTag(this.firstPlayer));
+    return originalGameStartRound.call(this);
+  };
+
+  Game.prototype.startTurn = async function () {
+    debugLog("startTurn: curr=" + getSeatTag(this.currPlayer) + ", passed local=" + player_me.passed + ", remote=" + player_op.passed);
+    return originalGameStartTurn.call(this);
+  };
+
+  Game.prototype.endTurn = async function () {
+    debugLog("endTurn: curr=" + getSeatTag(this.currPlayer));
+    return originalGameEndTurn.call(this);
+  };
+
   Player.prototype.playCard = async function (card) {
+    if (online.matchStarted && !online.suppressBroadcast && this === player_me && !isLocalTurn()) {
+      debugLog("Blocked local play-card while not local turn");
+      return;
+    }
     if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
       await sendMessage({
         type: "play-card",
@@ -611,6 +648,10 @@
   };
 
   Player.prototype.playCardToRow = async function (card, row) {
+    if (online.matchStarted && !online.suppressBroadcast && this === player_me && !isLocalTurn()) {
+      debugLog("Blocked local play-row while not local turn");
+      return;
+    }
     if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
         await sendMessage({
         type: "play-row",
@@ -625,6 +666,10 @@
   };
 
   Player.prototype.playScorch = async function (card) {
+    if (online.matchStarted && !online.suppressBroadcast && this === player_me && !isLocalTurn()) {
+      debugLog("Blocked local scorch while not local turn");
+      return;
+    }
     if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
       await sendMessage({
         type: "play-scorch",
@@ -638,6 +683,10 @@
   };
 
   Player.prototype.activateLeader = async function () {
+    if (online.matchStarted && !online.suppressBroadcast && this === player_me && !isLocalTurn()) {
+      debugLog("Blocked local leader while not local turn");
+      return;
+    }
     if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
       await sendMessage({ type: "leader", seat: online.localSeat, userId: online.self.userId });
     }
@@ -645,6 +694,10 @@
   };
 
   Player.prototype.passRound = function () {
+    if (online.matchStarted && !online.suppressBroadcast && this === player_me && !isLocalTurn()) {
+      debugLog("Blocked local pass while not local turn");
+      return;
+    }
     if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
       void sendMessage({ type: "pass", seat: online.localSeat, userId: online.self.userId });
     }
@@ -717,6 +770,10 @@
   };
 
   ui.selectCard = async function (card) {
+    if (online.matchStarted && !online.suppressBroadcast && !isLocalTurn()) {
+      debugLog("Ignored selectCard while not local turn");
+      return;
+    }
     var row = this.lastRow;
     var previewCard = this.previewCard;
     if (
@@ -747,6 +804,10 @@
   };
 
   ui.selectRow = async function (row) {
+    if (online.matchStarted && !online.suppressBroadcast && !isLocalTurn()) {
+      debugLog("Ignored selectRow while not local turn");
+      return;
+    }
     if (
       online.matchStarted &&
       !online.suppressBroadcast &&
