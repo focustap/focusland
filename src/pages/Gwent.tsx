@@ -422,34 +422,82 @@ const Gwent: React.FC = () => {
             allowFullScreen
           />
         ) : (
-          <div className="gwent-layout">
-            <aside className="gwent-sidebar">
-              <section className="gwent-panel">
-                <h3>Room</h3>
-                <p>{instruction}</p>
-                <div className="gwent-room-actions">
-                  <input
-                    value={roomCodeInput}
-                    onChange={(event) => setRoomCodeInput(event.target.value.toUpperCase())}
-                    placeholder="ROOM"
-                    maxLength={8}
-                  />
-                  <button className="secondary-button" onClick={() => void joinRoom(roomCodeInput.trim() || createRoomCode())} type="button">
-                    Join
-                  </button>
-                  <button
-                    className="secondary-button"
-                    onClick={() => {
-                      const code = createRoomCode();
-                      setRoomCodeInput(code);
-                      void joinRoom(code);
-                    }}
-                    type="button"
-                  >
-                    Create
-                  </button>
+          <div className="gwent-board-wrap">
+            {!matchState ? (
+              <section className="gwent-lobby-stage">
+                <div className="gwent-lobby-card">
+                  <h3>Online Table</h3>
+                  <p>{instruction}</p>
+                  <div className="gwent-room-actions">
+                    <input
+                      value={roomCodeInput}
+                      onChange={(event) => setRoomCodeInput(event.target.value.toUpperCase())}
+                      placeholder="ROOM"
+                      maxLength={8}
+                    />
+                    <button className="secondary-button" onClick={() => void joinRoom(roomCodeInput.trim() || createRoomCode())} type="button">
+                      Join
+                    </button>
+                    <button
+                      className="secondary-button"
+                      onClick={() => {
+                        const code = createRoomCode();
+                        setRoomCodeInput(code);
+                        void joinRoom(code);
+                      }}
+                      type="button"
+                    >
+                      Create
+                    </button>
+                  </div>
+                  {joinedRoomCode ? (
+                    <div className="gwent-room-meta">
+                      <span>Room: {joinedRoomCode}</span>
+                      <span>{connected ? "Connected" : "Connecting..."}</span>
+                      <button className="secondary-button" onClick={() => void leaveRoom()} type="button">
+                        Leave
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="gwent-lobby-grid">
+                    <section className="gwent-panel">
+                      <h3>Deck</h3>
+                      <select value={selectedDeckIndex} onChange={(event) => setSelectedDeckIndex(Number(event.target.value))}>
+                        {GWENT_PREMADE_SUMMARIES.map((deck) => (
+                          <option key={deck.index} value={deck.index}>
+                            {deck.name} | {deck.faction} | {deck.cardCount} cards
+                          </option>
+                        ))}
+                      </select>
+                      <p>{GWENT_PREMADE_SUMMARIES[selectedDeckIndex]?.leaderName}</p>
+                    </section>
+
+                    <section className="gwent-panel">
+                      <h3>Players</h3>
+                      <div className="gwent-player-list">
+                        {players.map((player, index) => (
+                          <div className="gwent-player-pill" key={player.userId}>
+                            <span className="gwent-player-pill__dot" style={{ background: player.color }} />
+                            <strong>{player.username}</strong>
+                            <span>{GWENT_PREMADE_SUMMARIES[player.deckIndex]?.name ?? "Deck"}</span>
+                            {index === 0 ? <span>Host</span> : null}
+                          </div>
+                        ))}
+                        {!players.length ? <p className="info">No one at the table yet.</p> : null}
+                      </div>
+                      <button className="primary-button" disabled={!isHost || players.length !== 2} onClick={() => void startMatch()} type="button">
+                        Start Match
+                      </button>
+                      {roomFull ? <p className="info">This room already has two players.</p> : null}
+                    </section>
+                  </div>
                 </div>
-                {joinedRoomCode ? (
+              </section>
+            ) : null}
+
+            {matchState ? (
+              <>
+                <div className="gwent-match-topbar">
                   <div className="gwent-room-meta">
                     <span>Room: {joinedRoomCode}</span>
                     <span>{connected ? "Connected" : "Connecting..."}</span>
@@ -457,55 +505,16 @@ const Gwent: React.FC = () => {
                       Leave
                     </button>
                   </div>
-                ) : null}
-              </section>
-
-              <section className="gwent-panel">
-                <h3>Deck</h3>
-                <select
-                  value={selectedDeckIndex}
-                  onChange={(event) => setSelectedDeckIndex(Number(event.target.value))}
-                  disabled={!!matchState}
-                >
-                  {GWENT_PREMADE_SUMMARIES.map((deck) => (
-                    <option key={deck.index} value={deck.index}>
-                      {deck.name} | {deck.faction} | {deck.cardCount} cards
-                    </option>
-                  ))}
-                </select>
-                <p>{GWENT_PREMADE_SUMMARIES[selectedDeckIndex]?.leaderName}</p>
-              </section>
-
-              <section className="gwent-panel">
-                <h3>Players</h3>
-                <div className="gwent-player-list">
-                  {players.map((player, index) => (
-                    <div className="gwent-player-pill" key={player.userId}>
-                      <span className="gwent-player-pill__dot" style={{ background: player.color }} />
-                      <strong>{player.username}</strong>
-                      <span>{GWENT_PREMADE_SUMMARIES[player.deckIndex]?.name ?? "Deck"}</span>
-                      {index === 0 ? <span>Host</span> : null}
-                    </div>
-                  ))}
-                  {!players.length ? <p className="info">No one at the table yet.</p> : null}
+                  <div className="gwent-inline-log">
+                    {(matchState?.log ?? []).slice(-3).map((entry, index) => (
+                      <span key={`${entry}-${index}`}>{entry}</span>
+                    ))}
+                  </div>
                 </div>
-                <button className="primary-button" disabled={!isHost || players.length !== 2} onClick={() => void startMatch()} type="button">
-                  Start Match
-                </button>
-                {roomFull ? <p className="info">This room already has two players.</p> : null}
-              </section>
+              </>
+            ) : null}
 
-              <section className="gwent-panel">
-                <h3>Log</h3>
-                <div className="gwent-log">
-                  {(matchState?.log ?? [status]).map((entry, index) => (
-                    <div key={`${entry}-${index}`}>{entry}</div>
-                  ))}
-                </div>
-              </section>
-            </aside>
-
-            <div className="gwent-board-wrap">
+            <div>
               {matchState && localPlayer && opponentPlayer ? (
                 <>
                   <section className="gwent-scoreboard">

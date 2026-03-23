@@ -48,18 +48,6 @@ body[data-theme="light"] {
   align-items: center;
 }
 
-.gwent-layout {
-  display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 1rem;
-}
-
-.gwent-sidebar {
-  display: grid;
-  gap: 1rem;
-  align-content: start;
-}
-
 .gwent-panel,
 .gwent-empty-state,
 .gwent-scoreboard,
@@ -120,6 +108,54 @@ body[data-theme="light"] {
 .gwent-board-wrap {
   display: grid;
   gap: 1rem;
+}
+
+.gwent-lobby-stage {
+  min-height: 70vh;
+  display: grid;
+  place-items: center;
+  padding: 1rem 0 1.5rem;
+}
+
+.gwent-lobby-card {
+  width: min(100%, 980px);
+  display: grid;
+  gap: 1rem;
+  border: 1px solid rgba(218, 165, 32, 0.22);
+  border-radius: 22px;
+  padding: 1.2rem;
+  background:
+    linear-gradient(180deg, rgba(10, 7, 4, 0.92), rgba(6, 6, 6, 0.92)),
+    var(--gwent-board-url);
+  background-size: cover;
+}
+
+.gwent-lobby-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.gwent-match-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.gwent-inline-log {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.gwent-inline-log span {
+  padding: 0.35rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(32, 18, 10, 0.72);
+  border: 1px solid rgba(218, 165, 32, 0.18);
 }
 
 .gwent-scoreboard {
@@ -244,11 +280,11 @@ body[data-theme="light"] {
 }
 
 @media (max-width: 1080px) {
-  .gwent-layout {
+  .gwent-scoreboard {
     grid-template-columns: 1fr;
   }
 
-  .gwent-scoreboard {
+  .gwent-lobby-grid {
     grid-template-columns: 1fr;
   }
 }
