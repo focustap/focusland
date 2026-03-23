@@ -354,6 +354,14 @@
     online.suppressBroadcast = true;
     try {
       var actor = getPlayerForSeat(message.seat);
+      if (
+        actor &&
+        message.type !== "carousel-select" &&
+        message.type !== "carousel-finish" &&
+        message.type !== "popup-choice"
+      ) {
+        game.currPlayer = actor;
+      }
       if (message.type === "redraw") {
         actor.deck.swap(actor.hand, actor.hand.removeCard(message.index));
       } else if (message.type === "redraw-finish") {
