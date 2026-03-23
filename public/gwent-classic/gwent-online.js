@@ -246,7 +246,22 @@
     if (!card) {
       return null;
     }
+    var cardIndex = -1;
+    for (var lookupIndex = 0; lookupIndex < card_dict.length; lookupIndex += 1) {
+      var data = card_dict[lookupIndex];
+      if (
+        data &&
+        data.name === card.name &&
+        data.filename === card.filename &&
+        data.deck === (card.deck || card.faction || "") &&
+        Number(data.strength) === (typeof card.basePower === "number" ? card.basePower : Number(card.strength || 0))
+      ) {
+        cardIndex = lookupIndex;
+        break;
+      }
+    }
     return {
+      index: cardIndex,
       name: card.name,
       filename: card.filename,
       deck: card.deck || "",
@@ -254,6 +269,28 @@
       strength: typeof card.strength === "number" ? card.strength : null,
       abilities: Array.isArray(card.abilities) ? card.abilities.slice() : []
     };
+  }
+
+  function resolveCardData(ref) {
+    if (!ref) {
+      return null;
+    }
+    if (Number.isInteger(ref.index) && ref.index >= 0 && ref.index < card_dict.length) {
+      return card_dict[ref.index];
+    }
+    for (var lookupIndex = 0; lookupIndex < card_dict.length; lookupIndex += 1) {
+      var data = card_dict[lookupIndex];
+      if (
+        data &&
+        data.name === ref.name &&
+        data.filename === ref.filename &&
+        data.deck === ref.deck &&
+        Number(data.strength) === ref.strength
+      ) {
+        return data;
+      }
+    }
+    return null;
   }
 
   function sameCardRef(card, ref) {
@@ -294,6 +331,167 @@
       return player.hand.cards[fallbackIndex];
     }
     return null;
+  }
+
+  function syncPlayerUi(player, state) {
+    player.total = 0;
+    document.getElementById("score-total-" + player.tag).children[0].textContent = "0";
+    player.setPassed(false);
+    player.setWinning(false);
+    player.health = state.health;
+    document.getElementById("gem1-" + player.tag).classList.toggle("gem-on", state.health >= 1);
+    document.getElementById("gem2-" + player.tag).classList.toggle("gem-on", state.health >= 2);
+    player.setPassed(Boolean(state.passed));
+  }
+
+  function clearWeatherState() {
+    weather.cards = [];
+    while (weather.elem.firstChild) {
+      weather.elem.removeChild(weather.elem.firstChild);
+    }
+    Object.keys(weather.types).forEach(function (type) {
+      weather.types[type].count = 0;
+    });
+  }
+
+  function clearRowState(row) {
+    row.cards = [];
+    row.special = null;
+    row.total = 0;
+    row.effects = { weather: false, bond: {}, morale: 0, horn: 0, mardroeme: 0 };
+    while (row.elem.firstChild) {
+      row.elem.removeChild(row.elem.firstChild);
+    }
+    while (row.elem_special.firstChild) {
+      row.elem_special.removeChild(row.elem_special.firstChild);
+    }
+    row.elem_parent.getElementsByClassName("row-score")[0].textContent = "0";
+    var weatherOverlay = row.elem_parent.getElementsByClassName("row-weather")[0];
+    weatherOverlay.classList.remove("rain", "fog", "frost");
+  }
+
+  function buildSnapshotCard(entry, fallbackSeat) {
+    var data = resolveCardData(entry.ref);
+    if (!data) {
+      return null;
+    }
+    var owner = getPlayerForSeat(entry.ownerSeat || fallbackSeat) || player_me;
+    var card = new Card(data, owner);
+    card.holder = owner;
+    return card;
+  }
+
+  function serializeBoardCard(card, fallbackSeat) {
+    return {
+      ref: getCardRef(card),
+      ownerSeat:
+        card && (card.holder === player_me || card.holder === player_op)
+          ? getSeatForPlayer(card.holder)
+          : fallbackSeat || null
+    };
+  }
+
+  function capturePublicState() {
+    return {
+      type: "state",
+      seat: online.localSeat,
+      userId: online.self.userId,
+      currentTurnSeat: game.currPlayer ? getSeatForPlayer(game.currPlayer) : null,
+      firstPlayerSeat: game.firstPlayer ? getSeatForPlayer(game.firstPlayer) : null,
+      players: {
+        host: {
+          total: getPlayerForSeat("host").total,
+          health: getPlayerForSeat("host").health,
+          passed: getPlayerForSeat("host").passed
+        },
+        guest: {
+          total: getPlayerForSeat("guest").total,
+          health: getPlayerForSeat("guest").health,
+          passed: getPlayerForSeat("guest").passed
+        }
+      },
+      weather: weather.cards.map(function (card) {
+        return serializeBoardCard(card, card && card.holder && (card.holder === player_me || card.holder === player_op) ? getSeatForPlayer(card.holder) : null);
+      }),
+      rows: board.row.map(function (row, index) {
+        var defaultSeat = index < 3 ? (online.localSeat === "host" ? "guest" : "host") : online.localSeat;
+        return {
+          index: index,
+          cards: row.cards.map(function (card) {
+            return serializeBoardCard(card, defaultSeat);
+          }),
+          special: row.special ? serializeBoardCard(row.special, defaultSeat) : null
+        };
+      })
+    };
+  }
+
+  async function broadcastStateIfHost() {
+    if (!online.matchStarted || !online.isHost || !online.channel) {
+      return;
+    }
+    await sendMessage(capturePublicState());
+  }
+
+  function applyPublicState(state) {
+    if (!state || !state.rows || !state.players) {
+      return;
+    }
+    clearWeatherState();
+    board.row.forEach(clearRowState);
+    syncPlayerUi(getPlayerForSeat("host"), state.players.host);
+    syncPlayerUi(getPlayerForSeat("guest"), state.players.guest);
+
+    state.weather.forEach(function (entry) {
+      var card = buildSnapshotCard(entry, online.localSeat);
+      if (!card) {
+        return;
+      }
+      weather.cards.push(card);
+      weather.elem.appendChild(card.elem);
+      card.elem.classList.add("noclick");
+      weather.changeWeather(card, function (type) {
+        return ++weather.types[type].count >= 1;
+      }, function (row, type) {
+        row.addOverlay(type.name);
+      });
+    });
+    weather.resize();
+
+    state.rows.forEach(function (rowState) {
+      var row = board.row[rowState.index];
+      if (!row) {
+        return;
+      }
+      rowState.cards.forEach(function (entry) {
+        var card = buildSnapshotCard(entry, rowState.index < 3 ? (online.localSeat === "host" ? "guest" : "host") : online.localSeat);
+        if (!card) {
+          return;
+        }
+        var insertIndex = row.addCardSorted(card);
+        row.addCardElement(card, insertIndex);
+        row.updateState(card, true);
+        card.elem.classList.add("noclick");
+      });
+      if (rowState.special) {
+        var specialCard = buildSnapshotCard(rowState.special, rowState.index < 3 ? (online.localSeat === "host" ? "guest" : "host") : online.localSeat);
+        if (specialCard) {
+          row.special = specialCard;
+          row.elem_special.appendChild(specialCard.elem);
+          row.updateState(specialCard, true);
+          specialCard.elem.classList.add("noclick");
+        }
+      }
+      row.resize();
+      row.updateScore();
+    });
+
+    game.firstPlayer = getPlayerForSeat(state.firstPlayerSeat);
+    game.currPlayer = getPlayerForSeat(state.currentTurnSeat);
+    document.getElementById("stats-me").classList.toggle("current-turn", game.currPlayer === player_me);
+    document.getElementById("stats-op").classList.toggle("current-turn", game.currPlayer === player_op);
+    board.updateLeader();
+    updateTurnBadge();
   }
 
   function serializeLocalDeck() {
@@ -550,6 +748,12 @@
       launchMatch(message);
       return;
     }
+    if (message.type === "state") {
+      if (!online.isHost) {
+        applyPublicState(message);
+      }
+      return;
+    }
     if (message.userId === online.self.userId) {
       return;
     }
@@ -642,6 +846,7 @@
         online.pendingRemotePopup = null;
       }
       debugLog("Applied " + message.type + " successfully");
+      await broadcastStateIfHost();
     } catch (error) {
       debugLog("ERROR " + message.type + ": " + (error && error.message ? error.message : String(error)));
       console.error(error);
@@ -750,6 +955,7 @@
     }
     ui.enablePlayer(false);
     game.startRound();
+    await broadcastStateIfHost();
   };
 
   Game.prototype.startGame = async function () {
@@ -757,6 +963,7 @@
     try {
       var result = await originalGameStartGame.call(this);
       debugLog("startGame: returned");
+      await broadcastStateIfHost();
       return result;
     } catch (error) {
       debugLog("ERROR startGame: " + (error && error.message ? error.message : String(error)));
@@ -768,13 +975,16 @@
   Game.prototype.startRound = async function () {
     debugLog("startRound: round " + (this.roundCount + 1) + ", first=" + getSeatTag(this.firstPlayer));
     updateTurnBadge();
-    return originalGameStartRound.call(this);
+    var result = await originalGameStartRound.call(this);
+    await broadcastStateIfHost();
+    return result;
   };
 
   Game.prototype.startTurn = async function () {
     debugLog("startTurn: curr=" + getSeatTag(this.currPlayer) + ", passed local=" + player_me.passed + ", remote=" + player_op.passed);
     var result = await originalGameStartTurn.call(this);
     updateTurnBadge();
+    await broadcastStateIfHost();
     return result;
   };
 
@@ -782,6 +992,7 @@
     debugLog("endTurn: curr=" + getSeatTag(this.currPlayer));
     var result = await originalGameEndTurn.call(this);
     updateTurnBadge();
+    await broadcastStateIfHost();
     return result;
   };
 
