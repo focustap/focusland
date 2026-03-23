@@ -33,6 +33,7 @@
   var originalPlayScorch = Player.prototype.playScorch;
   var originalActivateLeader = Player.prototype.activateLeader;
   var originalPassRound = Player.prototype.passRound;
+  var originalGameStartGame = Game.prototype.startGame;
   var originalInitialRedraw = Game.prototype.initialRedraw;
   var originalGameStartRound = Game.prototype.startRound;
   var originalGameStartTurn = Game.prototype.startTurn;
@@ -452,34 +453,44 @@
   }
 
   function launchMatch(setup) {
-    debugLog("Launching match as " + (setup.host.userId === online.self.userId ? "host" : "guest"));
-    debugLog("First player seat: " + setup.firstPlayerSeat);
-    resetRuntimeSurface();
-    online.matchStarted = true;
-    online.localSeat = setup.host.userId === online.self.userId ? "host" : "guest";
-    online.redrawDone = { host: false, guest: false };
-    online.redrawSeatOrder = ["host", "guest"];
-    setSeed(setup.seed);
+    try {
+      debugLog("Launching match as " + (setup.host.userId === online.self.userId ? "host" : "guest"));
+      debugLog("First player seat: " + setup.firstPlayerSeat);
+      debugLog("Reset runtime");
+      resetRuntimeSurface();
+      online.matchStarted = true;
+      online.localSeat = setup.host.userId === online.self.userId ? "host" : "guest";
+      online.redrawDone = { host: false, guest: false };
+      online.redrawSeatOrder = ["host", "guest"];
+      setSeed(setup.seed);
 
-    var hostDeck = buildDeckFromSaved(setup.host.deck, cardIndexListFromDeck(setup.host.deck, setup.seed + 11));
-    var guestDeck = buildDeckFromSaved(setup.guest.deck, cardIndexListFromDeck(setup.guest.deck, setup.seed + 29));
-    var meData = online.localSeat === "host" ? setup.host : setup.guest;
-    var opData = online.localSeat === "host" ? setup.guest : setup.host;
-    var meDeck = online.localSeat === "host" ? hostDeck : guestDeck;
-    var opDeck = online.localSeat === "host" ? guestDeck : hostDeck;
+      debugLog("Build decks");
+      var hostDeck = buildDeckFromSaved(setup.host.deck, cardIndexListFromDeck(setup.host.deck, setup.seed + 11));
+      var guestDeck = buildDeckFromSaved(setup.guest.deck, cardIndexListFromDeck(setup.guest.deck, setup.seed + 29));
+      var meData = online.localSeat === "host" ? setup.host : setup.guest;
+      var opData = online.localSeat === "host" ? setup.guest : setup.host;
+      var meDeck = online.localSeat === "host" ? hostDeck : guestDeck;
+      var opDeck = online.localSeat === "host" ? guestDeck : hostDeck;
 
-    player_me = new Player(0, meData.username, meDeck);
-    player_op = new Player(1, opData.username, opDeck);
-    player_op.controller = new Controller();
-    game.firstPlayer = setup.firstPlayerSeat === online.localSeat ? player_me : player_op;
+      debugLog("Create players");
+      player_me = new Player(0, meData.username, meDeck);
+      player_op = new Player(1, opData.username, opDeck);
+      player_op.controller = new Controller();
+      game.firstPlayer = setup.firstPlayerSeat === online.localSeat ? player_me : player_op;
 
-    if (online.lobby && online.lobby.wrap) {
-      online.lobby.wrap.style.opacity = "0.65";
+      if (online.lobby && online.lobby.wrap) {
+        online.lobby.wrap.style.opacity = "0.65";
+      }
+
+      debugLog("Hide deck maker");
+      dm.elem.classList.add("hide");
+      updateTurnBadge();
+      debugLog("Call startGame");
+      game.startGame();
+    } catch (error) {
+      debugLog("ERROR launchMatch: " + (error && error.message ? error.message : String(error)));
+      console.error(error);
     }
-
-    dm.elem.classList.add("hide");
-    updateTurnBadge();
-    game.startGame();
   }
 
   async function handleMessage(message) {
@@ -662,6 +673,19 @@
     }
     ui.enablePlayer(false);
     game.startRound();
+  };
+
+  Game.prototype.startGame = async function () {
+    debugLog("startGame: begin");
+    try {
+      var result = await originalGameStartGame.call(this);
+      debugLog("startGame: returned");
+      return result;
+    } catch (error) {
+      debugLog("ERROR startGame: " + (error && error.message ? error.message : String(error)));
+      console.error(error);
+      throw error;
+    }
   };
 
   Game.prototype.startRound = async function () {
