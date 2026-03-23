@@ -1,0 +1,593 @@
+(function () {
+  "use strict";
+
+  var params = new URLSearchParams(window.location.search);
+  if (params.get("mode") !== "online") {
+    return;
+  }
+
+  if (!window.supabase || !window.supabase.createClient) {
+    console.warn("Supabase client was not loaded for GWENT online mode.");
+    return;
+  }
+
+  var supabaseUrl = params.get("supabaseUrl");
+  var supabaseKey = params.get("supabaseKey");
+  var userId = params.get("uid");
+  var username = params.get("username") || "Player";
+  var color = params.get("color") || "#f59e0b";
+
+  if (!supabaseUrl || !supabaseKey || !userId) {
+    console.warn("Missing required online params for GWENT.");
+    return;
+  }
+
+  var client = window.supabase.createClient(supabaseUrl, supabaseKey);
+  var originalMathRandom = Math.random;
+  var originalRandomInt = randomInt;
+  var seededRandom = null;
+  var originalDeckInitialize = Deck.prototype.initialize;
+  var originalDeckInitializeFromID = Deck.prototype.initializeFromID;
+  var originalPlayCard = Player.prototype.playCard;
+  var originalPlayCardToRow = Player.prototype.playCardToRow;
+  var originalPlayScorch = Player.prototype.playScorch;
+  var originalActivateLeader = Player.prototype.activateLeader;
+  var originalPassRound = Player.prototype.passRound;
+  var originalInitialRedraw = Game.prototype.initialRedraw;
+  var originalQueueCarousel = ui.queueCarousel.bind(ui);
+  var originalPopup = ui.popup.bind(ui);
+  var originalSelectCard = ui.selectCard.bind(ui);
+
+  var online = {
+    active: true,
+    client: client,
+    self: { userId: userId, username: username, color: color },
+    roomCode: "",
+    channel: null,
+    players: [],
+    readyDecks: {},
+    isHost: false,
+    localSeat: null,
+    suppressBroadcast: false,
+    matchStarted: false,
+    pendingRemoteCarousel: null,
+    pendingRemotePopup: null,
+    redrawDone: {},
+    redrawSeatOrder: [],
+    lobby: null
+  };
+
+  function mulberry32(seed) {
+    var state = seed >>> 0;
+    return function () {
+      state |= 0;
+      state = (state + 0x6d2b79f5) | 0;
+      var t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function setSeed(seed) {
+    seededRandom = mulberry32(seed);
+    Math.random = function () {
+      return seededRandom();
+    };
+    randomInt = function (n) {
+      return Math.floor(seededRandom() * n);
+    };
+  }
+
+  function restoreRandom() {
+    Math.random = originalMathRandom;
+    randomInt = originalRandomInt;
+  }
+
+  function cardIndexListFromDeck(deckJson, seed) {
+    var parsed = typeof deckJson === "string" ? JSON.parse(deckJson) : deckJson;
+    var cards = parsed.cards.reduce(function (all, entry) {
+      for (var count = 0; count < entry[1]; count += 1) {
+        all.push(entry[0]);
+      }
+      return all;
+    }, []);
+    var shuffleRandom = mulberry32(seed);
+    for (var index = cards.length - 1; index > 0; index -= 1) {
+      var swapIndex = Math.floor(shuffleRandom() * (index + 1));
+      var temp = cards[index];
+      cards[index] = cards[swapIndex];
+      cards[swapIndex] = temp;
+    }
+    return cards;
+  }
+
+  function getPlayerForSeat(seat) {
+    if (!online.localSeat) {
+      return null;
+    }
+    return seat === online.localSeat ? player_me : player_op;
+  }
+
+  function getSeatForPlayer(player) {
+    return player === player_me ? online.localSeat : online.localSeat === "host" ? "guest" : "host";
+  }
+
+  function getRowName(row, player) {
+    if (row === weather) {
+      return "weather";
+    }
+    var target = player || player_me;
+    if (row === board.getRow(null, "close", target)) return "close";
+    if (row === board.getRow(null, "ranged", target)) return "ranged";
+    return "siege";
+  }
+
+  function getRowForPlayer(player, rowName) {
+    return rowName === "weather" ? weather : board.getRow(null, rowName, player);
+  }
+
+  function serializeLocalDeck() {
+    return JSON.parse(dm.deckToJSON());
+  }
+
+  function updateLobbyStatus(message) {
+    if (online.lobby && online.lobby.status) {
+      online.lobby.status.textContent = message;
+    }
+  }
+
+  function refreshPlayers(rawPresence) {
+    var deduped = new Map();
+    Object.values(rawPresence || {})
+      .flat()
+      .forEach(function (entry) {
+        if (!deduped.has(entry.userId)) {
+          deduped.set(entry.userId, entry);
+        }
+      });
+    online.players = Array.from(deduped.values()).sort(function (left, right) {
+      return left.onlineAt.localeCompare(right.onlineAt);
+    });
+    online.isHost = online.players[0] && online.players[0].userId === online.self.userId;
+    if (online.lobby && online.lobby.players) {
+      online.lobby.players.innerHTML = online.players
+        .map(function (player, index) {
+          return "<div><strong>" + player.username + "</strong> " + (index === 0 ? "(Host)" : "") + "</div>";
+        })
+        .join("");
+    }
+  }
+
+  async function trackPresence() {
+    if (!online.channel) return;
+    await online.channel.track({
+      userId: online.self.userId,
+      username: online.self.username,
+      color: online.self.color,
+      onlineAt: online.joinedAt
+    });
+  }
+
+  async function sendMessage(payload) {
+    if (!online.channel) return;
+    await online.channel.send({
+      type: "broadcast",
+      event: "gwent-online",
+      payload: payload
+    });
+  }
+
+  function buildDeckFromSaved(savedDeck, orderedCards) {
+    return {
+      faction: savedDeck.faction,
+      leader: card_dict[savedDeck.leader],
+      cards: savedDeck.cards.map(function (entry) {
+        return { index: entry[0], count: entry[1] };
+      }),
+      orderedCards: orderedCards
+    };
+  }
+
+  function createRoomUi() {
+    var wrap = document.createElement("section");
+    wrap.style.position = "absolute";
+    wrap.style.top = "1vw";
+    wrap.style.right = "1vw";
+    wrap.style.width = "18vw";
+    wrap.style.minHeight = "10vw";
+    wrap.style.padding = "0.8vw";
+    wrap.style.border = "0.1vw solid rgba(218,165,32,0.45)";
+    wrap.style.background = "rgba(0,0,0,0.88)";
+    wrap.style.color = "goldenrod";
+    wrap.style.zIndex = "100";
+    wrap.innerHTML =
+      '<div style="font-size:1vw;font-weight:bold;margin-bottom:0.5vw;">Online GWENT</div>' +
+      '<input id="gwent-online-room" placeholder="ROOM" style="width:100%;margin-bottom:0.5vw;background:#070707;color:goldenrod;border:0.1vw solid #7a5b16;padding:0.35vw;" />' +
+      '<div style="display:flex;gap:0.4vw;margin-bottom:0.5vw;"><button id="gwent-online-create">Create</button><button id="gwent-online-join">Join</button><button id="gwent-online-ready">Ready</button></div>' +
+      '<div id="gwent-online-status" style="font-size:0.8vw;min-height:2vw;margin-bottom:0.5vw;">Create or join a room.</div>' +
+      '<div id="gwent-online-players" style="font-size:0.8vw;"></div>' +
+      '<button id="gwent-online-start" style="margin-top:0.5vw;">Start Match</button>';
+    document.getElementById("deck-customization").appendChild(wrap);
+    document.getElementById("start-game").style.display = "none";
+    online.lobby = {
+      wrap: wrap,
+      input: wrap.querySelector("#gwent-online-room"),
+      status: wrap.querySelector("#gwent-online-status"),
+      players: wrap.querySelector("#gwent-online-players"),
+      create: wrap.querySelector("#gwent-online-create"),
+      join: wrap.querySelector("#gwent-online-join"),
+      ready: wrap.querySelector("#gwent-online-ready"),
+      start: wrap.querySelector("#gwent-online-start")
+    };
+
+    online.lobby.create.addEventListener("click", function () {
+      var roomCode = Math.random().toString(36).slice(2, 8).toUpperCase();
+      online.lobby.input.value = roomCode;
+      void joinRoom(roomCode);
+    });
+    online.lobby.join.addEventListener("click", function () {
+      var roomCode = (online.lobby.input.value || "").trim().toUpperCase();
+      if (!roomCode) return;
+      void joinRoom(roomCode);
+    });
+    online.lobby.ready.addEventListener("click", function () {
+      if (!online.roomCode) return;
+      online.readyDecks[online.self.userId] = {
+        username: online.self.username,
+        deck: serializeLocalDeck()
+      };
+      updateLobbyStatus("Deck locked in.");
+      void sendMessage({
+        type: "ready",
+        userId: online.self.userId,
+        username: online.self.username,
+        deck: online.readyDecks[online.self.userId].deck
+      });
+    });
+    online.lobby.start.addEventListener("click", function () {
+      void startOnlineMatch();
+    });
+  }
+
+  DeckMaker.prototype.startNewGame = function () {
+    updateLobbyStatus("Use the online room controls to start a match.");
+  };
+
+  async function joinRoom(roomCode) {
+    if (online.channel) {
+      await online.client.removeChannel(online.channel);
+    }
+    online.roomCode = roomCode;
+    online.joinedAt = new Date().toISOString();
+    online.readyDecks = {};
+    online.channel = online.client.channel("focusland-gwent-" + roomCode.toLowerCase(), {
+      config: { presence: { key: online.self.userId } }
+    });
+
+    online.channel.on("presence", { event: "sync" }, function () {
+      refreshPlayers(online.channel.presenceState());
+    });
+
+    online.channel.on("broadcast", { event: "gwent-online" }, function (event) {
+      void handleMessage(event.payload || {});
+    });
+
+    online.channel.subscribe(async function (status) {
+      if (status !== "SUBSCRIBED") return;
+      await trackPresence();
+      updateLobbyStatus("Connected to room " + roomCode + ".");
+    });
+  }
+
+  async function startOnlineMatch() {
+    if (!online.isHost || online.players.length !== 2) {
+      return;
+    }
+    var hostEntry = online.players[0];
+    var guestEntry = online.players[1];
+    var hostReady = online.readyDecks[hostEntry.userId];
+    var guestReady = online.readyDecks[guestEntry.userId];
+    if (!hostReady || !guestReady) {
+      updateLobbyStatus("Both players need to press Ready.");
+      return;
+    }
+    var setup = {
+      type: "setup",
+      seed: Math.floor(Date.now() % 2147483647),
+      firstPlayerSeat: Math.random() < 0.5 ? "host" : "guest",
+      host: { userId: hostEntry.userId, username: hostEntry.username, deck: hostReady.deck },
+      guest: { userId: guestEntry.userId, username: guestEntry.username, deck: guestReady.deck }
+    };
+    await sendMessage(setup);
+    launchMatch(setup);
+  }
+
+  function launchMatch(setup) {
+    online.matchStarted = true;
+    online.localSeat = setup.host.userId === online.self.userId ? "host" : "guest";
+    online.redrawDone = { host: false, guest: false };
+    online.redrawSeatOrder = ["host", "guest"];
+    setSeed(setup.seed);
+
+    var meData = online.localSeat === "host" ? setup.host : setup.guest;
+    var opData = online.localSeat === "host" ? setup.guest : setup.host;
+    var meDeck = buildDeckFromSaved(meData.deck, cardIndexListFromDeck(meData.deck, setup.seed + 11));
+    var opDeck = buildDeckFromSaved(opData.deck, cardIndexListFromDeck(opData.deck, setup.seed + 29));
+
+    player_me = new Player(0, meData.username, meDeck);
+    player_op = new Player(1, opData.username, opDeck);
+    player_op.controller = new Controller();
+    game.firstPlayer = setup.firstPlayerSeat === online.localSeat ? player_me : player_op;
+
+    if (online.lobby && online.lobby.wrap) {
+      online.lobby.wrap.style.display = "none";
+    }
+
+    dm.elem.classList.add("hide");
+    game.startGame();
+  }
+
+  async function handleMessage(message) {
+    if (!message || !message.type) {
+      return;
+    }
+    if (message.type === "ready") {
+      online.readyDecks[message.userId] = {
+        username: message.username,
+        deck: message.deck
+      };
+      updateLobbyStatus("Ready players: " + Object.keys(online.readyDecks).length + "/2");
+      return;
+    }
+    if (message.type === "setup" && message.host.userId !== online.self.userId) {
+      launchMatch(message);
+      return;
+    }
+    if (message.userId === online.self.userId) {
+      return;
+    }
+    if (!online.matchStarted) {
+      return;
+    }
+
+    online.suppressBroadcast = true;
+    try {
+      var actor = getPlayerForSeat(message.seat);
+      if (message.type === "redraw") {
+        actor.deck.swap(actor.hand, actor.hand.removeCard(message.index));
+      } else if (message.type === "redraw-finish") {
+        online.redrawDone[message.seat] = true;
+      } else if (message.type === "pass") {
+        actor.passRound();
+      } else if (message.type === "play-card") {
+        await actor.playCard(actor.hand.cards[message.index]);
+      } else if (message.type === "play-row") {
+        await actor.playCardToRow(actor.hand.cards[message.index], getRowForPlayer(actor, message.row));
+      } else if (message.type === "play-scorch") {
+        await actor.playScorch(actor.hand.cards[message.index]);
+      } else if (message.type === "leader") {
+        await actor.activateLeader();
+      } else if (message.type === "decoy") {
+        var decoyCard = actor.hand.cards[message.index];
+        var targetRow = getRowForPlayer(actor, message.row);
+        var targetCard = targetRow.cards[message.targetIndex];
+        board.toHand(targetCard, targetRow);
+        await board.moveTo(decoyCard, targetRow, decoyCard.holder.hand);
+        decoyCard.holder.endTurn();
+      } else if (message.type === "carousel-select" && online.pendingRemoteCarousel) {
+        await online.pendingRemoteCarousel.action(online.pendingRemoteCarousel.container, message.index);
+      } else if (message.type === "carousel-finish" && online.pendingRemoteCarousel) {
+        online.pendingRemoteCarousel.resolve();
+        online.pendingRemoteCarousel = null;
+      } else if (message.type === "popup-choice" && online.pendingRemotePopup) {
+        if (message.choice === "yes") {
+          online.pendingRemotePopup.yes();
+        } else {
+          online.pendingRemotePopup.no();
+        }
+        online.pendingRemotePopup.resolve();
+        online.pendingRemotePopup = null;
+      }
+    } finally {
+      online.suppressBroadcast = false;
+    }
+  }
+
+  Deck.prototype.initialize = function (cardDataList, player, preserveOrder) {
+    if (!preserveOrder) {
+      return originalDeckInitialize.call(this, cardDataList, player);
+    }
+    for (var i = 0; i < cardDataList.length; ++i) {
+      var card = new Card(cardDataList[i], player);
+      card.holder = player;
+      this.cards.push(card);
+      this.addCardElement();
+    }
+    this.resize();
+  };
+
+  Deck.prototype.initializeFromID = function (cardIdList, player) {
+    if (player && player.deck_data && player.deck_data.orderedCards) {
+      return this.initialize(
+        player.deck_data.orderedCards.map(function (index) {
+          return card_dict[index];
+        }),
+        player,
+        true
+      );
+    }
+    return originalDeckInitializeFromID.call(this, cardIdList, player);
+  };
+
+  Game.prototype.initialRedraw = async function () {
+    if (!online.matchStarted) {
+      return originalInitialRedraw.call(this);
+    }
+    for (var redrawIndex = 0; redrawIndex < online.redrawSeatOrder.length; redrawIndex += 1) {
+      var seat = online.redrawSeatOrder[redrawIndex];
+      if (seat === online.localSeat) {
+        await originalQueueCarousel(
+          player_me.hand,
+          2,
+          async function (container, index) {
+            await sendMessage({ type: "redraw", seat: online.localSeat, userId: online.self.userId, index: index });
+            await player_me.deck.swap(container, container.removeCard(index));
+          },
+          function () {
+            return true;
+          },
+          true,
+          true,
+          "Choose up to 2 cards to redraw."
+        );
+        online.redrawDone[seat] = true;
+        await sendMessage({ type: "redraw-finish", seat: online.localSeat, userId: online.self.userId });
+      } else {
+        await sleepUntil(function () {
+          return online.redrawDone[seat];
+        }, 100);
+      }
+    }
+    ui.enablePlayer(false);
+    game.startRound();
+  };
+
+  Player.prototype.playCard = async function (card) {
+    if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
+      await sendMessage({ type: "play-card", seat: online.localSeat, userId: online.self.userId, index: this.hand.cards.indexOf(card) });
+    }
+    return originalPlayCard.call(this, card);
+  };
+
+  Player.prototype.playCardToRow = async function (card, row) {
+    if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
+      await sendMessage({
+        type: "play-row",
+        seat: online.localSeat,
+        userId: online.self.userId,
+        index: this.hand.cards.indexOf(card),
+        row: getRowName(row, this)
+      });
+    }
+    return originalPlayCardToRow.call(this, card, row);
+  };
+
+  Player.prototype.playScorch = async function (card) {
+    if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
+      await sendMessage({ type: "play-scorch", seat: online.localSeat, userId: online.self.userId, index: this.hand.cards.indexOf(card) });
+    }
+    return originalPlayScorch.call(this, card);
+  };
+
+  Player.prototype.activateLeader = async function () {
+    if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
+      await sendMessage({ type: "leader", seat: online.localSeat, userId: online.self.userId });
+    }
+    return originalActivateLeader.call(this);
+  };
+
+  Player.prototype.passRound = function () {
+    if (online.matchStarted && !online.suppressBroadcast && this === player_me) {
+      void sendMessage({ type: "pass", seat: online.localSeat, userId: online.self.userId });
+    }
+    return originalPassRound.call(this);
+  };
+
+  ui.queueCarousel = async function (container, count, action, predicate, bSort, bQuit, title) {
+    if (!online.matchStarted) {
+      return originalQueueCarousel(container, count, action, predicate, bSort, bQuit, title);
+    }
+    if (game.currPlayer === player_me) {
+      return originalQueueCarousel(container, count, action, predicate, bSort, bQuit, title);
+    }
+    return new Promise(function (resolve) {
+      online.pendingRemoteCarousel = {
+        container: container,
+        action: action,
+        resolve: resolve
+      };
+    });
+  };
+
+  ui.popup = async function (yesName, yes, noName, no, title, description) {
+    if (!online.matchStarted) {
+      return originalPopup(yesName, yes, noName, no, title, description);
+    }
+    if (game.currPlayer === player_me) {
+      return originalPopup(yesName, yes, noName, no, title, description);
+    }
+    return new Promise(function (resolve) {
+      online.pendingRemotePopup = { yes: yes || function () {}, no: no || function () {}, resolve: resolve };
+    });
+  };
+
+  var originalCarouselSelect = Carousel.prototype.select;
+  Carousel.prototype.select = async function (event) {
+    if (online.matchStarted && !online.suppressBroadcast && game.currPlayer === player_me) {
+      await sendMessage({
+        type: "carousel-select",
+        seat: online.localSeat,
+        userId: online.self.userId,
+        index: this.indices[this.index]
+      });
+    }
+    return originalCarouselSelect.call(this, event);
+  };
+
+  var originalCarouselExit = Carousel.prototype.exit;
+  Carousel.prototype.exit = function () {
+    if (online.matchStarted && !online.suppressBroadcast && game.currPlayer === player_me) {
+      void sendMessage({ type: "carousel-finish", seat: online.localSeat, userId: online.self.userId });
+    }
+    return originalCarouselExit.call(this);
+  };
+
+  var originalPopupYes = Popup.prototype.selectYes;
+  Popup.prototype.selectYes = function () {
+    if (online.matchStarted && !online.suppressBroadcast) {
+      void sendMessage({ type: "popup-choice", seat: online.localSeat, userId: online.self.userId, choice: "yes" });
+    }
+    return originalPopupYes.call(this);
+  };
+
+  var originalPopupNo = Popup.prototype.selectNo;
+  Popup.prototype.selectNo = function () {
+    if (online.matchStarted && !online.suppressBroadcast) {
+      void sendMessage({ type: "popup-choice", seat: online.localSeat, userId: online.self.userId, choice: "no" });
+    }
+    return originalPopupNo.call(this);
+  };
+
+  ui.selectCard = async function (card) {
+    var row = this.lastRow;
+    var previewCard = this.previewCard;
+    if (
+      online.matchStarted &&
+      !online.suppressBroadcast &&
+      previewCard &&
+      previewCard.name === "Decoy" &&
+      card !== previewCard &&
+      card.holder !== player_me.hand &&
+      game.currPlayer === player_me
+    ) {
+      var targetRowName = getRowName(row, player_me);
+      var targetIndex = row.cards.indexOf(card);
+      await sendMessage({
+        type: "decoy",
+        seat: online.localSeat,
+        userId: online.self.userId,
+        index: player_me.hand.cards.indexOf(previewCard),
+        row: targetRowName,
+        targetIndex: targetIndex
+      });
+    }
+    return originalSelectCard.call(this, card);
+  };
+
+  createRoomUi();
+  updateLobbyStatus("Create or join a room.");
+
+  window.addEventListener("beforeunload", function () {
+    restoreRandom();
+  });
+})();
