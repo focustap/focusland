@@ -190,20 +190,46 @@
     return !online.matchStarted || game.currPlayer === player_me;
   }
 
-  function getRowToken(row) {
-    if (row === weather) {
-      return "weather";
+  function getRowNameFromIndex(rowIndex) {
+    if (rowIndex === 2 || rowIndex === 3) {
+      return "close";
     }
-    var rowIndex = board.row.indexOf(row);
-    return rowIndex === -1 ? null : String(rowIndex);
+    if (rowIndex === 1 || rowIndex === 4) {
+      return "ranged";
+    }
+    if (rowIndex === 0 || rowIndex === 5) {
+      return "siege";
+    }
+    return null;
   }
 
-  function getRowForToken(token) {
-    if (token === "weather") {
+  function getRowDescriptor(row) {
+    if (row === weather) {
+      return { type: "weather" };
+    }
+    var rowIndex = board.row.indexOf(row);
+    if (rowIndex === -1) {
+      return null;
+    }
+    return {
+      type: "board",
+      side: rowIndex < 3 ? "opponent" : "self",
+      name: getRowNameFromIndex(rowIndex)
+    };
+  }
+
+  function getRowForDescriptor(actor, descriptor) {
+    if (!descriptor) {
+      return null;
+    }
+    if (descriptor.type === "weather") {
       return weather;
     }
-    var rowIndex = Number(token);
-    return Number.isInteger(rowIndex) && rowIndex >= 0 && rowIndex < board.row.length ? board.row[rowIndex] : null;
+    if (descriptor.type !== "board" || !descriptor.name) {
+      return null;
+    }
+    var targetPlayer = descriptor.side === "self" ? actor : actor.opponent();
+    return board.getRow(null, descriptor.name, targetPlayer);
   }
 
   function getCardRef(card) {
@@ -557,9 +583,9 @@
           debugLog("Missing play-row hand card " + JSON.stringify(message.card || message.index));
           return;
         }
-        var targetRow = getRowForToken(message.row);
+        var targetRow = getRowForDescriptor(actor, message.row);
         if (!targetRow) {
-          debugLog("Missing target row for token " + message.row);
+          debugLog("Missing target row for descriptor " + JSON.stringify(message.row));
           return;
         }
         await actor.playCardToRow(rowCard, targetRow);
@@ -578,9 +604,9 @@
           debugLog("Missing decoy hand card " + JSON.stringify(message.card || message.index));
           return;
         }
-        var targetRow = getRowForToken(message.row);
+        var targetRow = getRowForDescriptor(actor, message.row);
         if (!targetRow) {
-          debugLog("Missing decoy row for token " + message.row);
+          debugLog("Missing decoy row for descriptor " + JSON.stringify(message.row));
           return;
         }
         var targetCard = targetRow.cards[message.targetIndex];
@@ -777,7 +803,7 @@
         seat: online.localSeat,
         userId: online.self.userId,
         index: this.hand.cards.indexOf(card),
-        row: getRowToken(row),
+        row: getRowDescriptor(row),
         card: getCardRef(card)
       });
     }
@@ -904,8 +930,8 @@
       card.holder !== player_me &&
       game.currPlayer === player_me
     ) {
-      var targetRowToken = getRowToken(row);
-      if (!targetRowToken) {
+      var targetRowDescriptor = getRowDescriptor(row);
+      if (!targetRowDescriptor) {
         return originalSelectCard.call(this, card);
       }
       var targetIndex = row.cards.indexOf(card);
@@ -914,7 +940,7 @@
         seat: online.localSeat,
         userId: online.self.userId,
         index: player_me.hand.cards.indexOf(previewCard),
-        row: targetRowToken,
+        row: targetRowDescriptor,
         targetIndex: targetIndex,
         card: getCardRef(previewCard)
       });
@@ -948,7 +974,7 @@
           seat: online.localSeat,
           userId: online.self.userId,
           index: player_me.hand.cards.indexOf(this.previewCard),
-          row: getRowToken(row),
+          row: getRowDescriptor(row),
           card: getCardRef(this.previewCard)
         });
       }
