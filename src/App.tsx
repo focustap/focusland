@@ -15,6 +15,7 @@ const Casino = lazy(() => import("./pages/Casino"));
 const CasinoRoom = lazy(() => import("./pages/CasinoRoom"));
 const CatchGame = lazy(() => import("./pages/CatchGame"));
 const Game = lazy(() => import("./pages/Game"));
+const Gwent = lazy(() => import("./pages/Gwent"));
 const InvadersRoom = lazy(() => import("./pages/InvadersRoom"));
 const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const Lobby = lazy(() => import("./pages/Lobby"));
@@ -167,6 +168,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <BrawlPvE />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/gwent"
+            element={
+              <ProtectedRoute>
+                <Gwent />
               </ProtectedRoute>
             }
           />
