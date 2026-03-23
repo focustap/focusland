@@ -37,6 +37,7 @@
   var originalQueueCarousel = ui.queueCarousel.bind(ui);
   var originalPopup = ui.popup.bind(ui);
   var originalSelectCard = ui.selectCard.bind(ui);
+  var originalSelectRow = ui.selectRow.bind(ui);
 
   var online = {
     active: true,
@@ -582,6 +583,34 @@
       });
     }
     return originalSelectCard.call(this, card);
+  };
+
+  ui.selectRow = async function (row) {
+    if (
+      online.matchStarted &&
+      !online.suppressBroadcast &&
+      this.previewCard &&
+      this.previewCard.holder === player_me.hand &&
+      game.currPlayer === player_me
+    ) {
+      if (this.previewCard.name === "Scorch") {
+        await sendMessage({
+          type: "play-scorch",
+          seat: online.localSeat,
+          userId: online.self.userId,
+          index: player_me.hand.cards.indexOf(this.previewCard)
+        });
+      } else if (this.previewCard.name !== "Decoy") {
+        await sendMessage({
+          type: "play-row",
+          seat: online.localSeat,
+          userId: online.self.userId,
+          index: player_me.hand.cards.indexOf(this.previewCard),
+          row: getRowName(row, player_me)
+        });
+      }
+    }
+    return originalSelectRow.call(this, row);
   };
 
   createRoomUi();
