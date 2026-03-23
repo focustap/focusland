@@ -229,7 +229,17 @@
       return null;
     }
     var targetPlayer = descriptor.side === "self" ? actor : actor.opponent();
-    return board.getRow(null, descriptor.name, targetPlayer);
+    var isMe = targetPlayer === player_me;
+    if (descriptor.name === "close") {
+      return board.row[isMe ? 3 : 2];
+    }
+    if (descriptor.name === "ranged") {
+      return board.row[isMe ? 4 : 1];
+    }
+    if (descriptor.name === "siege") {
+      return board.row[isMe ? 5 : 0];
+    }
+    return null;
   }
 
   function getCardRef(card) {
