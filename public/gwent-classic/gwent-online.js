@@ -62,7 +62,8 @@
     redrawSeatOrder: [],
     lobby: null,
     debug: null,
-    turnBadge: null
+    turnBadge: null,
+    currentTurnSeat: null
   };
 
   function debugLog(message) {
@@ -87,6 +88,7 @@
       return;
     }
     online.turnBadge.textContent = isLocalTurn() ? "Your turn" : "Opponent's turn";
+    ui.enablePlayer(isLocalTurn());
   }
 
   function clearLeaderSlot(id) {
@@ -187,7 +189,13 @@
   }
 
   function isLocalTurn() {
-    return !online.matchStarted || game.currPlayer === player_me;
+    if (!online.matchStarted) {
+      return true;
+    }
+    if (online.currentTurnSeat) {
+      return online.currentTurnSeat === online.localSeat;
+    }
+    return game.currPlayer === player_me;
   }
 
   function getRowNameFromIndex(rowIndex) {
@@ -488,6 +496,7 @@
 
     game.firstPlayer = getPlayerForSeat(state.firstPlayerSeat);
     game.currPlayer = getPlayerForSeat(state.currentTurnSeat);
+    online.currentTurnSeat = state.currentTurnSeat || null;
     document.getElementById("stats-me").classList.toggle("current-turn", game.currPlayer === player_me);
     document.getElementById("stats-op").classList.toggle("current-turn", game.currPlayer === player_op);
     board.updateLeader();
@@ -699,6 +708,7 @@
       resetRuntimeSurface();
       online.matchStarted = true;
       online.localSeat = setup.host.userId === online.self.userId ? "host" : "guest";
+      online.currentTurnSeat = null;
       online.redrawDone = { host: false, guest: false };
       online.redrawSeatOrder = ["host", "guest"];
       setSeed(setup.seed);
@@ -716,6 +726,7 @@
       player_op = new Player(1, opData.username, opDeck);
       player_op.controller = new Controller();
       game.firstPlayer = setup.firstPlayerSeat === online.localSeat ? player_me : player_op;
+      online.currentTurnSeat = setup.firstPlayerSeat;
 
       if (online.lobby && online.lobby.wrap) {
         online.lobby.wrap.style.opacity = "0.65";
@@ -974,8 +985,9 @@
 
   Game.prototype.startRound = async function () {
     debugLog("startRound: round " + (this.roundCount + 1) + ", first=" + getSeatTag(this.firstPlayer));
-    updateTurnBadge();
     var result = await originalGameStartRound.call(this);
+    online.currentTurnSeat = game.currPlayer ? getSeatForPlayer(game.currPlayer) : online.currentTurnSeat;
+    updateTurnBadge();
     await broadcastStateIfHost();
     return result;
   };
@@ -983,6 +995,7 @@
   Game.prototype.startTurn = async function () {
     debugLog("startTurn: curr=" + getSeatTag(this.currPlayer) + ", passed local=" + player_me.passed + ", remote=" + player_op.passed);
     var result = await originalGameStartTurn.call(this);
+    online.currentTurnSeat = game.currPlayer ? getSeatForPlayer(game.currPlayer) : online.currentTurnSeat;
     updateTurnBadge();
     await broadcastStateIfHost();
     return result;
@@ -991,6 +1004,7 @@
   Game.prototype.endTurn = async function () {
     debugLog("endTurn: curr=" + getSeatTag(this.currPlayer));
     var result = await originalGameEndTurn.call(this);
+    online.currentTurnSeat = game.currPlayer ? getSeatForPlayer(game.currPlayer) : online.currentTurnSeat;
     updateTurnBadge();
     await broadcastStateIfHost();
     return result;
