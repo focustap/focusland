@@ -23,6 +23,11 @@ type HallSnapshot = {
 
 const GAME_WIDTH = 920;
 const GAME_HEIGHT = 540;
+const HALL_LENGTH = 960;
+const PLAYER_STOP_DISTANCE = 140;
+const CAMERA_FOCAL = 340;
+const HALL_HALF_WIDTH = 310;
+const HALL_HALF_HEIGHT = 184;
 const TARGET_LOOPS = 6;
 const MAX_MISTAKES = 3;
 const ANOMALIES: AnomalyId[] = [
@@ -44,9 +49,6 @@ const randomAnomaly = (): AnomalyId => {
 
   return Phaser.Utils.Array.GetRandom(ANOMALIES);
 };
-
-const isDepthVisibleInFrontOfDoor = (depth: number, doorZ: number, margin = 0.05) =>
-  depth <= doorZ - margin;
 
 const Hallway13: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -256,13 +258,22 @@ const Hallway13: React.FC = () => {
         this.footerText.setText("For now, the thing on the other side stayed behind the door.");
       }
 
-      projectRect(z: number) {
-        const eased = Phaser.Math.Clamp(z, 0.02, 1);
-        const width = Phaser.Math.Linear(690, 120, eased);
-        const height = Phaser.Math.Linear(420, 86, eased);
+      getPlayerDepth() {
+        return this.progress * (HALL_LENGTH - PLAYER_STOP_DISTANCE);
+      }
+
+      getDoorDistance() {
+        return HALL_LENGTH - this.getPlayerDepth();
+      }
+
+      projectRectFromDistance(distance: number) {
+        const safeDistance = Math.max(18, distance);
+        const scale = CAMERA_FOCAL / (safeDistance + CAMERA_FOCAL);
         const sway = Math.sin(this.time.now * 0.0006) * 10 + this.lookDrift * 140;
         const centerX = GAME_WIDTH / 2 + sway;
         const centerY = GAME_HEIGHT / 2 + 24 + Math.cos(this.time.now * 0.0007) * 4;
+        const width = HALL_HALF_WIDTH * 2 * scale;
+        const height = HALL_HALF_HEIGHT * 2 * scale;
 
         return {
           left: centerX - width / 2,
@@ -276,43 +287,24 @@ const Hallway13: React.FC = () => {
         };
       }
 
-      projectPoint(z: number, xRatio: number, yRatio: number) {
-        const rect = this.projectRect(z);
+      projectPointAtDistance(distance: number, xRatio: number, yRatio: number) {
+        const rect = this.projectRectFromDistance(distance);
         return {
           x: rect.centerX + xRatio * (rect.width / 2),
           y: rect.centerY + yRatio * (rect.height / 2),
-          scale: Phaser.Math.Linear(2.1, 0.48, z),
+          scale: rect.width / (HALL_HALF_WIDTH * 2),
           rect
         };
       }
 
-      wrapDepth(rawDepth: number, min = 0.12, max = 0.98) {
-        const range = max - min;
-        let depth = rawDepth;
+      getVisibleDistances(worldPositions: number[], frontMargin = 24, backMargin = 36) {
+        const playerDepth = this.getPlayerDepth();
+        const doorDistance = this.getDoorDistance();
 
-        while (depth < min) {
-          depth += range;
-        }
-        while (depth > max) {
-          depth -= range;
-        }
-
-        return depth;
-      }
-
-      getTravelDepths(baseDepths: number[]) {
-        return baseDepths
-          .map((baseDepth) => this.wrapDepth(baseDepth - this.progress * 0.94))
+        return worldPositions
+          .map((worldPosition) => worldPosition - playerDepth)
+          .filter((distance) => distance > frontMargin && distance < doorDistance - backMargin)
           .sort((left, right) => left - right);
-      }
-
-      getVisibleTravelDepths(baseDepths: number[], margin = 0.05) {
-        const doorZ = this.getDoorZ();
-        return this.getTravelDepths(baseDepths).filter((depth) => isDepthVisibleInFrontOfDoor(depth, doorZ, margin));
-      }
-
-      getDoorZ() {
-        return Phaser.Math.Linear(0.96, 0.22, this.progress);
       }
 
       drawFilmGrain() {
@@ -338,11 +330,11 @@ const Hallway13: React.FC = () => {
       }
 
       drawHallway() {
-        const slices = this.getVisibleTravelDepths([0.12, 0.22, 0.32, 0.42, 0.54, 0.66, 0.78, 0.9], 0.02);
-        let previous = this.projectRect(0.03);
+        const slices = this.getVisibleDistances([84, 178, 286, 404, 536, 680, 836, 912], 18, 24);
+        let previous = this.projectRectFromDistance(18);
 
-        for (const slice of slices) {
-          const current = this.projectRect(slice);
+        for (const distance of slices) {
+          const current = this.projectRectFromDistance(distance);
 
           this.graphics.fillStyle(0x232624, 1);
           this.graphics.beginPath();
@@ -394,9 +386,9 @@ const Hallway13: React.FC = () => {
           previous = current;
         }
 
-        const runnerDepths = this.getVisibleTravelDepths([0.16, 0.31, 0.46, 0.62, 0.79], 0.08);
-        runnerDepths.forEach((depth, index) => {
-          const point = this.projectPoint(depth, 0, 0.83);
+        const runnerDepths = this.getVisibleDistances([118, 252, 404, 572, 748], 36, 54);
+        runnerDepths.forEach((distance, index) => {
+          const point = this.projectPointAtDistance(distance, 0, 0.83);
           const width = 148 * point.scale;
           const height = 16 * point.scale;
           const color = this.currentAnomaly === "trim-break" && index === 2 ? 0x4a2f2f : 0x6f5b33;
@@ -409,9 +401,9 @@ const Hallway13: React.FC = () => {
       }
 
       drawDoor() {
-        const doorZ = this.getDoorZ();
-        const doorRect = this.projectRect(doorZ);
-        const wallRect = this.projectRect(Math.min(0.995, doorZ + 0.04));
+        const doorDistance = this.getDoorDistance();
+        const doorRect = this.projectRectFromDistance(doorDistance);
+        const wallRect = this.projectRectFromDistance(doorDistance + 24);
         const doorWidth = doorRect.width * 0.24;
         const doorHeight = doorRect.height * 0.58;
         const doorX = doorRect.centerX - doorWidth / 2;
@@ -455,12 +447,12 @@ const Hallway13: React.FC = () => {
         this.plaqueShadowText
           .setText(this.currentAnomaly === "door-number" ? "14" : "13")
           .setPosition(doorRect.centerX + 1, plaqueY + plaqueHeight / 2 + 1)
-          .setFontSize(`${Math.max(10, Math.round(16 + (1 - doorZ) * 16))}px`)
+          .setFontSize(`${Math.max(10, Math.round(16 + (CAMERA_FOCAL / (doorDistance + CAMERA_FOCAL)) * 18))}px`)
           .setVisible(true);
         this.plaqueText
           .setText(this.currentAnomaly === "door-number" ? "14" : "13")
           .setPosition(doorRect.centerX, plaqueY + plaqueHeight / 2)
-          .setFontSize(`${Math.max(10, Math.round(16 + (1 - doorZ) * 16))}px`)
+          .setFontSize(`${Math.max(10, Math.round(16 + (CAMERA_FOCAL / (doorDistance + CAMERA_FOCAL)) * 18))}px`)
           .setVisible(true);
 
         const knobX = doorX + doorWidth - 18;
@@ -485,14 +477,17 @@ const Hallway13: React.FC = () => {
       }
 
       drawLights() {
-        const lightDepths = this.getVisibleTravelDepths([0.18, 0.34, 0.5, 0.66, 0.82], 0.1);
-        lightDepths.forEach((depth, index) => {
-          if (this.currentAnomaly === "missing-light" && index === 1) {
+        [156, 322, 488, 654, 820].forEach((worldDistance, index) => {
+          const distance = worldDistance - this.getPlayerDepth();
+          if (distance <= 52 || distance >= this.getDoorDistance() - 80) {
+            return;
+          }
+          if (this.currentAnomaly === "missing-light" && index === 2) {
             return;
           }
 
-          const point = this.projectPoint(depth, 0, -0.92);
-          const isRed = this.currentAnomaly === "red-light" && index === 1;
+          const point = this.projectPointAtDistance(distance, 0, -0.92);
+          const isRed = this.currentAnomaly === "red-light" && index === 2;
           const baseColor = isRed ? 0xdb2777 : 0xf8f3c9;
           const flicker = isRed ? 0.55 + Math.sin(this.time.now * 0.02) * 0.25 : 0.84;
           this.graphics.fillStyle(baseColor, 0.12 + flicker * 0.16);
@@ -511,7 +506,7 @@ const Hallway13: React.FC = () => {
       }
 
       drawFrame(depth: number, side: "left" | "right", hasPortrait: boolean) {
-        const point = this.projectPoint(depth, side === "left" ? -0.77 : 0.77, -0.04);
+        const point = this.projectPointAtDistance(depth, side === "left" ? -0.77 : 0.77, -0.04);
         const width = 38 * point.scale;
         const height = 56 * point.scale;
         this.graphics.fillStyle(0x1c1917, 0.95);
@@ -530,27 +525,33 @@ const Hallway13: React.FC = () => {
         this.decorText.setVisible(false);
         this.decorShadowText.setVisible(false);
 
-        const leftFrameDepths = this.getVisibleTravelDepths([0.24, 0.56, 0.84], 0.11);
-        const rightFrameDepths = this.getVisibleTravelDepths([0.39, 0.71], 0.11);
-        leftFrameDepths.forEach((depth) => {
-          const hasPortrait = !(this.currentAnomaly === "left-portrait" && Math.abs(depth - leftFrameDepths[1]) < 0.001);
-          this.drawFrame(depth, "left", hasPortrait);
+        [228, 536, 812].forEach((worldDistance, index) => {
+          const distance = worldDistance - this.getPlayerDepth();
+          if (distance <= 56 || distance >= this.getDoorDistance() - 92) {
+            return;
+          }
+          const hasPortrait = !(this.currentAnomaly === "left-portrait" && index === 1);
+          this.drawFrame(distance, "left", hasPortrait);
         });
-        rightFrameDepths.forEach((depth) => {
-          this.drawFrame(depth, "right", true);
+        [344, 688].forEach((worldDistance) => {
+          const distance = worldDistance - this.getPlayerDepth();
+          if (distance <= 56 || distance >= this.getDoorDistance() - 92) {
+            return;
+          }
+          this.drawFrame(distance, "right", true);
         });
 
         if (this.currentAnomaly === "left-portrait") {
-          const portraitDepth = this.wrapDepth(0.49 - this.progress * 0.94);
-          if (isDepthVisibleInFrontOfDoor(portraitDepth, this.getDoorZ(), 0.11)) {
-            this.drawFrame(portraitDepth, "left", true);
+          const portraitDistance = 536 - this.getPlayerDepth();
+          if (portraitDistance > 56 && portraitDistance < this.getDoorDistance() - 92) {
+            this.drawFrame(portraitDistance, "left", true);
           }
         }
 
         if (this.currentAnomaly === "blood-text") {
-          const textDepth = this.wrapDepth(0.56 - this.progress * 0.94);
-          if (isDepthVisibleInFrontOfDoor(textDepth, this.getDoorZ(), 0.12)) {
-            const point = this.projectPoint(textDepth, 0, 0.06);
+          const textDistance = 612 - this.getPlayerDepth();
+          if (textDistance > 60 && textDistance < this.getDoorDistance() - 96) {
+            const point = this.projectPointAtDistance(textDistance, 0, 0.06);
             const fontSize = `${Math.max(12, Math.round(18 * point.scale))}px`;
             this.decorShadowText
               .setText("TURN AROUND")
@@ -566,9 +567,9 @@ const Hallway13: React.FC = () => {
         }
 
         if (this.currentAnomaly === "floor-stain") {
-          const stainDepth = this.wrapDepth(0.34 - this.progress * 0.94);
-          if (isDepthVisibleInFrontOfDoor(stainDepth, this.getDoorZ(), 0.08)) {
-            const point = this.projectPoint(stainDepth, -0.24, 0.78);
+          const stainDistance = 266 - this.getPlayerDepth();
+          if (stainDistance > 30 && stainDistance < this.getDoorDistance() - 70) {
+            const point = this.projectPointAtDistance(stainDistance, -0.24, 0.78);
             this.graphics.fillStyle(0x0f172a, 0.28);
             this.graphics.fillEllipse(point.x, point.y, 108 * point.scale, 56 * point.scale);
             this.graphics.fillStyle(0x7f1d1d, 0.45);
@@ -576,14 +577,17 @@ const Hallway13: React.FC = () => {
           }
         }
 
-        const panelDepths = this.getVisibleTravelDepths([0.18, 0.29, 0.41, 0.53, 0.64, 0.76, 0.88], 0.09);
-        panelDepths.forEach((depth, index) => {
+        [170, 274, 390, 512, 634, 756, 878].forEach((worldDistance, index) => {
+          const distance = worldDistance - this.getPlayerDepth();
+          if (distance <= 40 || distance >= this.getDoorDistance() - 76) {
+            return;
+          }
           if (this.currentAnomaly === "trim-break" && index === 4) {
             return;
           }
 
-          const left = this.projectPoint(depth, -0.95, 0.56);
-          const right = this.projectPoint(depth, 0.95, 0.56);
+          const left = this.projectPointAtDistance(distance, -0.95, 0.56);
+          const right = this.projectPointAtDistance(distance, 0.95, 0.56);
           this.graphics.lineStyle(2, 0x8b6e3f, 0.22);
           this.graphics.strokeLineShape(new Phaser.Geom.Line(left.x, left.y, left.x + 22 * left.scale, left.y));
           this.graphics.strokeLineShape(new Phaser.Geom.Line(right.x, right.y, right.x - 22 * right.scale, right.y));
@@ -591,9 +595,12 @@ const Hallway13: React.FC = () => {
 
         const threatVisible = this.mistakes > 0 || this.currentAnomaly === "shadow-figure";
         if (threatVisible) {
-          const z = this.currentAnomaly === "shadow-figure" ? 0.48 : Phaser.Math.Linear(0.9, 0.62, this.mistakes / MAX_MISTAKES);
+          const distance =
+            this.currentAnomaly === "shadow-figure"
+              ? Math.max(126, 412 - this.getPlayerDepth())
+              : Phaser.Math.Linear(620, 420, this.mistakes / MAX_MISTAKES);
           const xRatio = this.currentAnomaly === "shadow-figure" ? -0.72 : 0.78;
-          const point = this.projectPoint(z, xRatio, 0.24);
+          const point = this.projectPointAtDistance(distance, xRatio, 0.24);
           const alpha = this.currentAnomaly === "shadow-figure" ? 0.72 : 0.22 + this.mistakes * 0.12;
           this.graphics.fillStyle(0x000000, alpha);
           this.graphics.fillCircle(point.x, point.y - 36 * point.scale, 15 * point.scale);
