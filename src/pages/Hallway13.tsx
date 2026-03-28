@@ -45,6 +45,9 @@ const randomAnomaly = (): AnomalyId => {
   return Phaser.Utils.Array.GetRandom(ANOMALIES);
 };
 
+const isDepthVisibleInFrontOfDoor = (depth: number, doorZ: number, margin = 0.05) =>
+  depth <= doorZ - margin;
+
 const Hallway13: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -209,7 +212,7 @@ const Hallway13: React.FC = () => {
         this.phase = "walking";
         this.progress = 0;
         this.lookDrift = Phaser.Math.FloatBetween(-0.01, 0.01);
-        this.currentAnomaly = randomAnomaly();
+        this.currentAnomaly = isFirstLoop || this.currentLoop === 1 ? "none" : randomAnomaly();
         this.hallwayHistory.push({
           loop: this.currentLoop,
           anomaly: this.currentAnomaly
@@ -303,6 +306,11 @@ const Hallway13: React.FC = () => {
           .sort((left, right) => left - right);
       }
 
+      getVisibleTravelDepths(baseDepths: number[], margin = 0.05) {
+        const doorZ = this.getDoorZ();
+        return this.getTravelDepths(baseDepths).filter((depth) => isDepthVisibleInFrontOfDoor(depth, doorZ, margin));
+      }
+
       getDoorZ() {
         return Phaser.Math.Linear(0.96, 0.22, this.progress);
       }
@@ -330,7 +338,7 @@ const Hallway13: React.FC = () => {
       }
 
       drawHallway() {
-        const slices = this.getTravelDepths([0.12, 0.22, 0.32, 0.42, 0.54, 0.66, 0.78, 0.9]);
+        const slices = this.getVisibleTravelDepths([0.12, 0.22, 0.32, 0.42, 0.54, 0.66, 0.78, 0.9], 0.02);
         let previous = this.projectRect(0.03);
 
         for (const slice of slices) {
@@ -386,7 +394,7 @@ const Hallway13: React.FC = () => {
           previous = current;
         }
 
-        const runnerDepths = this.getTravelDepths([0.16, 0.31, 0.46, 0.62, 0.79]);
+        const runnerDepths = this.getVisibleTravelDepths([0.16, 0.31, 0.46, 0.62, 0.79], 0.08);
         runnerDepths.forEach((depth, index) => {
           const point = this.projectPoint(depth, 0, 0.83);
           const width = 148 * point.scale;
@@ -477,7 +485,7 @@ const Hallway13: React.FC = () => {
       }
 
       drawLights() {
-        const lightDepths = this.getTravelDepths([0.18, 0.34, 0.5, 0.66, 0.82]);
+        const lightDepths = this.getVisibleTravelDepths([0.18, 0.34, 0.5, 0.66, 0.82], 0.1);
         lightDepths.forEach((depth, index) => {
           if (this.currentAnomaly === "missing-light" && index === 1) {
             return;
@@ -522,8 +530,8 @@ const Hallway13: React.FC = () => {
         this.decorText.setVisible(false);
         this.decorShadowText.setVisible(false);
 
-        const leftFrameDepths = this.getTravelDepths([0.24, 0.56, 0.84]);
-        const rightFrameDepths = this.getTravelDepths([0.39, 0.71]);
+        const leftFrameDepths = this.getVisibleTravelDepths([0.24, 0.56, 0.84], 0.11);
+        const rightFrameDepths = this.getVisibleTravelDepths([0.39, 0.71], 0.11);
         leftFrameDepths.forEach((depth) => {
           const hasPortrait = !(this.currentAnomaly === "left-portrait" && Math.abs(depth - leftFrameDepths[1]) < 0.001);
           this.drawFrame(depth, "left", hasPortrait);
@@ -533,33 +541,42 @@ const Hallway13: React.FC = () => {
         });
 
         if (this.currentAnomaly === "left-portrait") {
-          this.drawFrame(this.wrapDepth(0.49 - this.progress * 0.94), "left", true);
+          const portraitDepth = this.wrapDepth(0.49 - this.progress * 0.94);
+          if (isDepthVisibleInFrontOfDoor(portraitDepth, this.getDoorZ(), 0.11)) {
+            this.drawFrame(portraitDepth, "left", true);
+          }
         }
 
         if (this.currentAnomaly === "blood-text") {
-          const point = this.projectPoint(0.56, 0, 0.06);
-          const fontSize = `${Math.max(12, Math.round(18 * point.scale))}px`;
-          this.decorShadowText
-            .setText("TURN AROUND")
-            .setPosition(point.x + 2, point.y + 2)
-            .setFontSize(fontSize)
-            .setVisible(true);
-          this.decorText
-            .setText("TURN AROUND")
-            .setPosition(point.x, point.y)
-            .setFontSize(fontSize)
-            .setVisible(true);
+          const textDepth = this.wrapDepth(0.56 - this.progress * 0.94);
+          if (isDepthVisibleInFrontOfDoor(textDepth, this.getDoorZ(), 0.12)) {
+            const point = this.projectPoint(textDepth, 0, 0.06);
+            const fontSize = `${Math.max(12, Math.round(18 * point.scale))}px`;
+            this.decorShadowText
+              .setText("TURN AROUND")
+              .setPosition(point.x + 2, point.y + 2)
+              .setFontSize(fontSize)
+              .setVisible(true);
+            this.decorText
+              .setText("TURN AROUND")
+              .setPosition(point.x, point.y)
+              .setFontSize(fontSize)
+              .setVisible(true);
+          }
         }
 
         if (this.currentAnomaly === "floor-stain") {
-          const point = this.projectPoint(0.34, -0.24, 0.78);
-          this.graphics.fillStyle(0x0f172a, 0.28);
-          this.graphics.fillEllipse(point.x, point.y, 108 * point.scale, 56 * point.scale);
-          this.graphics.fillStyle(0x7f1d1d, 0.45);
-          this.graphics.fillEllipse(point.x + 10 * point.scale, point.y - 4 * point.scale, 82 * point.scale, 38 * point.scale);
+          const stainDepth = this.wrapDepth(0.34 - this.progress * 0.94);
+          if (isDepthVisibleInFrontOfDoor(stainDepth, this.getDoorZ(), 0.08)) {
+            const point = this.projectPoint(stainDepth, -0.24, 0.78);
+            this.graphics.fillStyle(0x0f172a, 0.28);
+            this.graphics.fillEllipse(point.x, point.y, 108 * point.scale, 56 * point.scale);
+            this.graphics.fillStyle(0x7f1d1d, 0.45);
+            this.graphics.fillEllipse(point.x + 10 * point.scale, point.y - 4 * point.scale, 82 * point.scale, 38 * point.scale);
+          }
         }
 
-        const panelDepths = this.getTravelDepths([0.18, 0.29, 0.41, 0.53, 0.64, 0.76, 0.88]);
+        const panelDepths = this.getVisibleTravelDepths([0.18, 0.29, 0.41, 0.53, 0.64, 0.76, 0.88], 0.09);
         panelDepths.forEach((depth, index) => {
           if (this.currentAnomaly === "trim-break" && index === 4) {
             return;
