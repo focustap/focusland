@@ -297,7 +297,7 @@ const Hallway13: React.FC = () => {
         };
       }
 
-      getVisibleDistances(worldPositions: number[], frontMargin = 24, backMargin = 36) {
+      getVisibleDistances(worldPositions: number[], frontMargin = 10, backMargin = 24) {
         const playerDepth = this.getPlayerDepth();
         const doorDistance = this.getDoorDistance();
 
@@ -505,19 +505,50 @@ const Hallway13: React.FC = () => {
         });
       }
 
-      drawFrame(depth: number, side: "left" | "right", hasPortrait: boolean) {
-        const point = this.projectPointAtDistance(depth, side === "left" ? -0.77 : 0.77, -0.04);
-        const width = 38 * point.scale;
-        const height = 56 * point.scale;
+      drawFrame(distance: number, side: "left" | "right", hasPortrait: boolean) {
+        const nearRect = this.projectRectFromDistance(Math.max(18, distance - 22));
+        const farRect = this.projectRectFromDistance(distance + 22);
+        const nearX = side === "left" ? nearRect.left + 20 : nearRect.right - 20;
+        const farX = side === "left" ? farRect.left + 14 : farRect.right - 14;
+        const nearTop = nearRect.centerY - nearRect.height * 0.13;
+        const nearBottom = nearRect.centerY + nearRect.height * 0.19;
+        const farTop = farRect.centerY - farRect.height * 0.13;
+        const farBottom = farRect.centerY + farRect.height * 0.19;
+
         this.graphics.fillStyle(0x1c1917, 0.95);
-        this.graphics.fillRect(point.x - width / 2, point.y - height / 2, width, height);
+        this.graphics.beginPath();
+        this.graphics.moveTo(nearX, nearTop);
+        this.graphics.lineTo(farX, farTop);
+        this.graphics.lineTo(farX, farBottom);
+        this.graphics.lineTo(nearX, nearBottom);
+        this.graphics.closePath();
+        this.graphics.fillPath();
+
         this.graphics.lineStyle(3, 0xd6c08d, 0.9);
-        this.graphics.strokeRect(point.x - width / 2, point.y - height / 2, width, height);
+        this.graphics.beginPath();
+        this.graphics.moveTo(nearX, nearTop);
+        this.graphics.lineTo(farX, farTop);
+        this.graphics.lineTo(farX, farBottom);
+        this.graphics.lineTo(nearX, nearBottom);
+        this.graphics.closePath();
+        this.graphics.strokePath();
+
         if (hasPortrait) {
+          const centerX = (nearX + farX) / 2;
+          const centerY = (nearTop + nearBottom + farTop + farBottom) / 4;
+          const scale = nearRect.width / (HALL_HALF_WIDTH * 2);
+          const xInset = Math.abs(nearX - farX) * 0.18 + 3;
+          const portraitWidth = Math.max(6, Math.abs(nearX - farX) * 0.32);
+          const portraitHeight = Math.max(8, (nearBottom - nearTop) * 0.18);
           this.graphics.fillStyle(0x7f1d1d, 0.78);
-          this.graphics.fillCircle(point.x, point.y - 5 * point.scale, 7 * point.scale);
+          this.graphics.fillCircle(centerX + (side === "left" ? xInset : -xInset), centerY - 8 * scale, Math.max(3, 6 * scale));
           this.graphics.fillStyle(0xe2e8f0, 0.84);
-          this.graphics.fillRect(point.x - 9 * point.scale, point.y + 10 * point.scale, 18 * point.scale, 10 * point.scale);
+          this.graphics.fillRect(
+            centerX - portraitWidth / 2 + (side === "left" ? xInset * 0.45 : -xInset * 0.45),
+            centerY + 6 * scale,
+            portraitWidth,
+            portraitHeight
+          );
         }
       }
 
