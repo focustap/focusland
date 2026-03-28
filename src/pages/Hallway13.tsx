@@ -1,8 +1,9 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
 import Phaser from "phaser";
+import { recordArcadeResult } from "../lib/progression";
 
-type Phase = "walking" | "judging" | "dead" | "won";
+type Phase = "walking" | "judging" | "dead";
 
 type AnomalyId =
   | "none"
@@ -28,6 +29,12 @@ type HallSnapshot = {
   anomaly: AnomalyId;
 };
 
+type MistakeDetail = {
+  loop: number;
+  anomaly: AnomalyId;
+  guessedAnomaly: boolean;
+};
+
 const GAME_WIDTH = 920;
 const GAME_HEIGHT = 540;
 const HALL_LENGTH = 960;
@@ -35,7 +42,6 @@ const PLAYER_STOP_DISTANCE = 140;
 const CAMERA_FOCAL = 340;
 const HALL_HALF_WIDTH = 310;
 const HALL_HALF_HEIGHT = 184;
-const TARGET_LOOPS = 8;
 const MAX_MISTAKES = 3;
 const LIGHT_WORLD_DISTANCES = [132, 272, 430, 596, 760, 908];
 const LEFT_FRAME_WORLD_DISTANCES = [220, 460, 708];
@@ -68,15 +74,49 @@ const randomAnomaly = (): AnomalyId => {
   return Phaser.Utils.Array.GetRandom(ANOMALIES);
 };
 
+const formatAnomalyLabel = (anomaly: AnomalyId) => {
+  if (anomaly === "none") {
+    return "No anomaly";
+  }
+
+  return anomaly
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
 const Hallway13: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  const [lastRun, setLastRun] = useState<number | null>(null);
+  const [mistakeReport, setMistakeReport] = useState<MistakeDetail[] | null>(null);
+  const [status, setStatus] = useState("Endless corridor. Three mistakes and it gets you.");
   const assetBase = import.meta.env.BASE_URL;
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) {
       return;
     }
+
+    const handleRunOver = (completedLoops: number, mistakes: MistakeDetail[]) => {
+      setLastRun(completedLoops);
+      setMistakeReport(mistakes);
+      setStatus("Run over. Saving hallway score...");
+
+      void (async () => {
+        try {
+          const goldEarned = Math.max(2, Math.min(28, Math.floor(completedLoops / 2) + 2));
+          await recordArcadeResult({
+            scoreGameName: "hallway13",
+            score: completedLoops,
+            goldEarned
+          });
+          setStatus(`Run over. Best hallway score saved. +${goldEarned} gold.`);
+        } catch {
+          setStatus("Run over. Hallway score could not be saved.");
+        }
+      })();
+    };
 
     class HallwayScene extends Phaser.Scene {
       graphics!: Phaser.GameObjects.Graphics;
@@ -91,7 +131,10 @@ const Hallway13: React.FC = () => {
       decorShadowText!: Phaser.GameObjects.Text;
       vignette!: Phaser.GameObjects.Rectangle;
       fadeOverlay!: Phaser.GameObjects.Rectangle;
+      rushFace!: Phaser.GameObjects.Image;
+      loseFace!: Phaser.GameObjects.Image;
       hallwayHistory: HallSnapshot[] = [];
+      mistakeLog: MistakeDetail[] = [];
       currentLoop = 1;
       mistakes = 0;
       progress = 0;
@@ -116,6 +159,8 @@ const Hallway13: React.FC = () => {
         this.load.audio("hallway-ambience", `${assetBase}audio/hallway/ambient_horror_0.ogg`);
         this.load.audio("hallway-creepy", `${assetBase}audio/hallway/creepy-hit.mp3`);
         this.load.audio("hallway-jumpscare", `${assetBase}audio/hallway/jumpscare.mp3`);
+        this.load.image("hallway-rush-face", `${assetBase}assets/hallway/scaryface.png`);
+        this.load.image("hallway-lose-face", `${assetBase}assets/hallway/scaryfacefull.jpg`);
       }
 
       create() {
@@ -199,6 +244,11 @@ const Hallway13: React.FC = () => {
           0
         );
         this.fadeOverlay.setDepth(30);
+        this.rushFace = this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, "hallway-rush-face");
+        this.rushFace.setDepth(34).setAlpha(0).setScale(0.1);
+        this.loseFace = this.add.image(GAME_WIDTH / 2, GAME_HEIGHT / 2, "hallway-lose-face");
+        this.loseFace.setDepth(35).setAlpha(0);
+        this.loseFace.setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
 
         this.keys = this.input.keyboard!.addKeys({
           forward: Phaser.Input.Keyboard.KeyCodes.W,
@@ -247,14 +297,50 @@ const Hallway13: React.FC = () => {
         return anomaly;
       }
 
+      triggerRushFace() {
+        this.rushFace.setPosition(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 12).setScale(0.08).setAlpha(0);
+        this.tweens.killTweensOf(this.rushFace);
+        this.tweens.add({
+          targets: this.rushFace,
+          alpha: { from: 0.08, to: 0.95 },
+          scale: { from: 0.08, to: 1.9 },
+          y: { from: GAME_HEIGHT / 2 + 16, to: GAME_HEIGHT / 2 },
+          duration: 300,
+          ease: "Cubic.In",
+          yoyo: false,
+          onUpdate: () => {
+            this.cameras.main.shake(28, 0.0024);
+          },
+          onComplete: () => {
+            this.rushFace.setAlpha(0).setScale(0.08);
+          }
+        });
+      }
+
+      triggerLoseFace() {
+        this.loseFace.setAlpha(1);
+        this.rushFace.setAlpha(0);
+        this.time.delayedCall(900, () => {
+          if (this.phase === "dead") {
+            this.tweens.add({
+              targets: this.loseFace,
+              alpha: 0.18,
+              duration: 420
+            });
+          }
+        });
+      }
+
       beginLoop(isFirstLoop = false) {
         this.phase = "walking";
         this.progress = 0;
         this.lookDrift = Phaser.Math.FloatBetween(-0.01, 0.01);
         this.blackoutScarePlayed = false;
+        this.loseFace.setAlpha(0);
+        this.rushFace.setAlpha(0);
         this.currentAnomaly = this.pickLoopAnomaly(isFirstLoop);
         console.info(
-          `[Hallway 13] Loop ${this.currentLoop}/${TARGET_LOOPS}: ${this.currentAnomaly === "none" ? "no anomaly" : this.currentAnomaly}`
+          `[Hallway 13] Loop ${this.currentLoop}: ${this.currentAnomaly === "none" ? "no anomaly" : this.currentAnomaly}`
         );
         this.hallwayHistory.push({
           loop: this.currentLoop,
@@ -274,7 +360,7 @@ const Hallway13: React.FC = () => {
       }
 
       refreshHud(message?: string) {
-        this.loopText.setText(`Hallway 13  |  Loop ${this.currentLoop}/${TARGET_LOOPS}`);
+        this.loopText.setText("Hallway 13");
         this.threatText.setText(`Mistakes ${this.mistakes}/${MAX_MISTAKES}`);
 
         if (this.phase === "walking") {
@@ -297,10 +383,6 @@ const Hallway13: React.FC = () => {
           this.footerText.setText("The door was never locked. You just kept choosing wrong.");
           return;
         }
-
-        this.phaseText.setText("You made it through.");
-        this.promptText.setText(message ?? "Press Space to run the hallway again.");
-        this.footerText.setText("For now, the thing on the other side stayed behind the door.");
       }
 
       getPlayerDepth() {
@@ -449,6 +531,45 @@ const Hallway13: React.FC = () => {
           const width = 148 * point.scale;
           const height = 16 * point.scale;
           if (this.currentAnomaly === "runner-gap" && index === 2) {
+            const tearWidth = width * 0.62;
+            const tearHeight = height * 1.45;
+            this.graphics.fillStyle(0x050507, 0.96);
+            this.graphics.fillRoundedRect(point.x - tearWidth / 2, point.y - tearHeight / 2, tearWidth, tearHeight, 3);
+            this.graphics.fillStyle(0x2a1818, 0.34);
+            this.graphics.fillEllipse(point.x, point.y + 1, tearWidth * 1.12, tearHeight * 0.68);
+            this.graphics.lineStyle(2, 0xa78b54, 0.34);
+            this.graphics.strokeLineShape(
+              new Phaser.Geom.Line(
+                point.x - width / 2,
+                point.y - height / 2,
+                point.x - tearWidth / 2,
+                point.y - height / 2
+              )
+            );
+            this.graphics.strokeLineShape(
+              new Phaser.Geom.Line(
+                point.x + tearWidth / 2,
+                point.y - height / 2,
+                point.x + width / 2,
+                point.y - height / 2
+              )
+            );
+            this.graphics.strokeLineShape(
+              new Phaser.Geom.Line(
+                point.x - width / 2,
+                point.y + height / 2,
+                point.x - tearWidth / 2,
+                point.y + height / 2
+              )
+            );
+            this.graphics.strokeLineShape(
+              new Phaser.Geom.Line(
+                point.x + tearWidth / 2,
+                point.y + height / 2,
+                point.x + width / 2,
+                point.y + height / 2
+              )
+            );
             return;
           }
           const color = this.currentAnomaly === "trim-break" && index === 2 ? 0x4a2f2f : 0x6f5b33;
@@ -489,10 +610,18 @@ const Hallway13: React.FC = () => {
         this.graphics.fillStyle(0xeee4c1, 1);
         this.graphics.fillRect(doorX, doorY, doorWidth, doorHeight);
         if (this.currentAnomaly === "door-glow") {
-          this.graphics.fillStyle(0x9dd6ff, 0.34);
-          this.graphics.fillRect(doorX + 6, doorY + doorHeight - 6, doorWidth - 12, 6);
-          this.graphics.fillStyle(0x9dd6ff, 0.12);
-          this.graphics.fillEllipse(doorRect.centerX, doorY + doorHeight + 6, doorWidth * 0.8, doorHeight * 0.08);
+          const pulse = 0.72 + Math.sin(this.time.now * 0.012) * 0.18;
+          this.graphics.fillStyle(0x9dd6ff, 0.16 * pulse);
+          this.graphics.fillRoundedRect(doorX - 12, doorY - 12, doorWidth + 24, doorHeight + 24, 8);
+          this.graphics.fillStyle(0xb9e6ff, 0.32 * pulse);
+          this.graphics.fillRect(doorX + 4, doorY + doorHeight - 10, doorWidth - 8, 10);
+          this.graphics.fillStyle(0xb9e6ff, 0.2 * pulse);
+          this.graphics.fillRect(doorX + 3, doorY + 5, 8, doorHeight - 10);
+          this.graphics.fillRect(doorX + doorWidth - 11, doorY + 5, 8, doorHeight - 10);
+          this.graphics.fillStyle(0x9dd6ff, 0.18 * pulse);
+          this.graphics.fillEllipse(doorRect.centerX, doorY + doorHeight + 8, doorWidth * 1.28, doorHeight * 0.16);
+          this.graphics.fillStyle(0x9dd6ff, 0.1 * pulse);
+          this.graphics.fillEllipse(doorRect.centerX, doorY + doorHeight + 16, doorWidth * 1.7, doorHeight * 0.24);
         }
         this.graphics.fillStyle(0xddcf9c, 0.65);
         this.graphics.fillRect(doorX + doorWidth * 0.18, doorY + 12, doorWidth * 0.05, doorHeight - 24);
@@ -758,7 +887,7 @@ const Hallway13: React.FC = () => {
           if (scareWindow > 0) {
             overlayAlpha = Math.max(
               overlayAlpha,
-              Phaser.Math.Clamp(0.2 + scareWindow * 0.5 + Math.sin(this.time.now * 0.07) * 0.18, 0, 0.92)
+              Phaser.Math.Clamp(0.42 + scareWindow * 0.5 + Math.sin(this.time.now * 0.11) * 0.2, 0, 0.98)
             );
           }
         }
@@ -776,7 +905,10 @@ const Hallway13: React.FC = () => {
 
         if (this.currentAnomaly === "blackout-scare" && !this.blackoutScarePlayed && this.progress >= 0.84) {
           this.creepySound?.play();
-          this.cameras.main.shake(180, 0.0036);
+          this.jumpscareSound?.play();
+          this.cameras.main.flash(90, 255, 255, 255);
+          this.cameras.main.shake(260, 0.012);
+          this.triggerRushFace();
           this.blackoutScarePlayed = true;
         }
 
@@ -791,8 +923,18 @@ const Hallway13: React.FC = () => {
       resolveGuess(sawAnomaly: boolean) {
         const anomalyPresent = this.currentAnomaly !== "none";
         const wasCorrect = sawAnomaly === anomalyPresent;
+        let updatedMistakeLog = this.mistakeLog;
 
         if (!wasCorrect) {
+          updatedMistakeLog = [
+            ...this.mistakeLog,
+            {
+              loop: this.currentLoop,
+              anomaly: this.currentAnomaly,
+              guessedAnomaly: sawAnomaly
+            }
+          ];
+          this.mistakeLog = updatedMistakeLog;
           this.mistakes += 1;
           this.cameras.main.shake(220, 0.0028);
         }
@@ -801,14 +943,9 @@ const Hallway13: React.FC = () => {
           this.phase = "dead";
           this.jumpscareSound?.play();
           this.cameras.main.flash(220, 255, 255, 255);
+          this.triggerLoseFace();
+          handleRunOver(Math.max(0, this.currentLoop - 1), updatedMistakeLog);
           this.refreshHud(wasCorrect ? "You were too late." : "Wrong again. It was waiting at the door.");
-          return;
-        }
-
-        if (this.currentLoop >= TARGET_LOOPS) {
-          this.phase = "won";
-          this.cameras.main.flash(260, 240, 248, 255);
-          this.refreshHud(wasCorrect ? "You caught enough of the lies to get out." : "You escaped, barely.");
           return;
         }
 
@@ -820,8 +957,11 @@ const Hallway13: React.FC = () => {
         this.currentLoop = 1;
         this.mistakes = 0;
         this.hallwayHistory = [];
+        this.mistakeLog = [];
         this.lastNonNoneAnomaly = "none";
         this.phase = "walking";
+        setMistakeReport(null);
+        setStatus("Endless corridor. Three mistakes and it gets you.");
         this.beginLoop(true);
       }
 
@@ -848,7 +988,7 @@ const Hallway13: React.FC = () => {
           if (Phaser.Input.Keyboard.JustDown(this.keys.clear)) {
             this.resolveGuess(false);
           }
-        } else if ((this.phase === "dead" || this.phase === "won") && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
+        } else if (this.phase === "dead" && Phaser.Input.Keyboard.JustDown(this.keys.restart)) {
           this.restartRun();
         }
       }
@@ -932,6 +1072,52 @@ const Hallway13: React.FC = () => {
         >
           <div ref={containerRef} style={{ width: "100%", maxWidth: GAME_WIDTH, margin: "0 auto", borderRadius: 16, overflow: "hidden" }} />
         </div>
+        <p className="score-display">
+          {lastRun !== null ? `Last hallway run: ${lastRun}` : "Survive as many loops as you can."}
+        </p>
+        <p className="info">{status}</p>
+        {mistakeReport?.length ? (
+          <div
+            style={{
+              marginTop: "1rem",
+              padding: "1rem",
+              borderRadius: 18,
+              background: "linear-gradient(180deg, rgba(18, 12, 16, 0.96), rgba(8, 6, 9, 0.98))",
+              border: "1px solid rgba(248, 250, 252, 0.08)",
+              boxShadow: "0 16px 40px rgba(0,0,0,0.32)"
+            }}
+          >
+            <h3 style={{ margin: "0 0 0.45rem", color: "#fff7ed" }}>Where It Got You</h3>
+            <p style={{ margin: "0 0 0.75rem", color: "#cbd5e1" }}>
+              Your last run ended after {lastRun ?? 0} completed loops. These were the calls that cost you.
+            </p>
+            <div style={{ display: "grid", gap: "0.55rem" }}>
+              {mistakeReport.map((mistake, index) => (
+                <div
+                  key={`${mistake.loop}-${mistake.anomaly}-${index}`}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: "1rem",
+                    alignItems: "center",
+                    padding: "0.7rem 0.8rem",
+                    borderRadius: 14,
+                    background: "rgba(15, 23, 42, 0.34)",
+                    border: "1px solid rgba(248,250,252,0.06)"
+                  }}
+                >
+                  <strong style={{ color: "#fef2f2" }}>Loop {mistake.loop}</strong>
+                  <span style={{ color: "#fca5a5" }}>
+                    You guessed {mistake.guessedAnomaly ? "anomaly" : "clear"}
+                  </span>
+                  <span style={{ color: "#e2e8f0" }}>
+                    Actual: {formatAnomalyLabel(mistake.anomaly)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

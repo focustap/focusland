@@ -9,6 +9,7 @@ type LeaderboardEntry = {
   gold: number;
   dodgeBestScore: number;
   catchBestScore: number;
+  hallwayBestRun: number;
   invadersBestWave: number;
   brawlWins: number;
   brawlPveHighestBoss: number;
@@ -40,9 +41,19 @@ const Leaderboard: React.FC = () => {
           throw cardWinError;
         }
 
+        const { data: hallwayRows, error: hallwayError } = await supabase
+          .from("scores")
+          .select("user_id, score")
+          .eq("game_name", "hallway13");
+
+        if (hallwayError) {
+          throw hallwayError;
+        }
+
         const allUserIds = [
           ...(statsRows ?? []).map((row) => row.user_id),
-          ...(cardWinRows ?? []).map((row) => row.user_id)
+          ...(cardWinRows ?? []).map((row) => row.user_id),
+          ...(hallwayRows ?? []).map((row) => row.user_id)
         ];
         const userIds = Array.from(new Set(allUserIds));
         if (!userIds.length) {
@@ -75,19 +86,25 @@ const Leaderboard: React.FC = () => {
           cardWinsByUser.set(row.user_id, (cardWinsByUser.get(row.user_id) ?? 0) + 1);
         });
 
+        const hallwayBestByUser = new Map<string, number>();
+        (hallwayRows ?? []).forEach((row) => {
+          hallwayBestByUser.set(row.user_id, Math.max(hallwayBestByUser.get(row.user_id) ?? 0, Number(row.score ?? 0)));
+        });
+
         setEntries(
           userIds.map((userId) => {
             const row = (statsRows ?? []).find((item) => item.user_id === userId);
-            const profile = profileById.get(row.user_id);
+            const profile = profileById.get(userId);
             return {
               userId,
               username: profile?.username ?? "Player",
               color: profile?.color ?? null,
               gold: profile?.gold ?? 0,
-              dodgeBestScore: Number(row.dodge_best_score ?? 0),
-              catchBestScore: Number(row.catch_best_score ?? 0),
-              invadersBestWave: Number(row.invaders_best_wave ?? 0),
-              brawlWins: Number(row.brawl_wins ?? 0),
+              dodgeBestScore: Number(row?.dodge_best_score ?? 0),
+              catchBestScore: Number(row?.catch_best_score ?? 0),
+              hallwayBestRun: Number(hallwayBestByUser.get(userId) ?? 0),
+              invadersBestWave: Number(row?.invaders_best_wave ?? 0),
+              brawlWins: Number(row?.brawl_wins ?? 0),
               brawlPveHighestBoss: Number(row?.brawl_pve_highest_boss ?? 0),
               cardDuelWins: Number(cardWinsByUser.get(userId) ?? 0)
             };
@@ -107,7 +124,7 @@ const Leaderboard: React.FC = () => {
     title: string,
     keyName: keyof Pick<
       LeaderboardEntry,
-      "gold" | "dodgeBestScore" | "catchBestScore" | "invadersBestWave" | "brawlWins" | "brawlPveHighestBoss"
+      "gold" | "dodgeBestScore" | "catchBestScore" | "hallwayBestRun" | "invadersBestWave" | "brawlWins" | "brawlPveHighestBoss"
       | "cardDuelWins"
     >,
     suffix = ""
@@ -156,6 +173,7 @@ const Leaderboard: React.FC = () => {
             {renderBoard("Highest PvE Stage", "brawlPveHighestBoss")}
             {renderBoard("Best Catch Score", "catchBestScore")}
             {renderBoard("Best Dodge Score", "dodgeBestScore")}
+            {renderBoard("Best Hallway Run", "hallwayBestRun")}
             {renderBoard("Best Invader Wave", "invadersBestWave")}
           </div>
         ) : null}
