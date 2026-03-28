@@ -253,6 +253,9 @@ const Hallway13: React.FC = () => {
         this.lookDrift = Phaser.Math.FloatBetween(-0.01, 0.01);
         this.blackoutScarePlayed = false;
         this.currentAnomaly = this.pickLoopAnomaly(isFirstLoop);
+        console.info(
+          `[Hallway 13] Loop ${this.currentLoop}/${TARGET_LOOPS}: ${this.currentAnomaly === "none" ? "no anomaly" : this.currentAnomaly}`
+        );
         this.hallwayHistory.push({
           loop: this.currentLoop,
           anomaly: this.currentAnomaly
