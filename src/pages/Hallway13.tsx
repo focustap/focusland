@@ -14,11 +14,13 @@ type AnomalyId =
   | "door-number"
   | "door-glow"
   | "trim-break"
-  | "runner-gap"
   | "left-portrait"
   | "extra-frame-left"
   | "extra-frame-right"
   | "painting-color-shift"
+  | "upside-down-left"
+  | "upside-down-right"
+  | "crooked-frame-left"
   | "blood-text"
   | "door-eye"
   | "floor-stain"
@@ -51,7 +53,6 @@ const ANOMALIES: AnomalyId[] = [
   "door-number",
   "door-glow",
   "trim-break",
-  "runner-gap",
   "red-light",
   "missing-light",
   "cold-light",
@@ -60,6 +61,9 @@ const ANOMALIES: AnomalyId[] = [
   "extra-frame-left",
   "extra-frame-right",
   "painting-color-shift",
+  "upside-down-left",
+  "upside-down-right",
+  "crooked-frame-left",
   "blood-text",
   "door-eye",
   "floor-stain",
@@ -148,6 +152,7 @@ const Hallway13: React.FC = () => {
       jumpscareSound?: Phaser.Sound.BaseSound;
       keys!: {
         forward: Phaser.Input.Keyboard.Key;
+        backward: Phaser.Input.Keyboard.Key;
         up: Phaser.Input.Keyboard.Key;
         open: Phaser.Input.Keyboard.Key;
         anomaly: Phaser.Input.Keyboard.Key;
@@ -252,6 +257,7 @@ const Hallway13: React.FC = () => {
 
         this.keys = this.input.keyboard!.addKeys({
           forward: Phaser.Input.Keyboard.KeyCodes.W,
+          backward: Phaser.Input.Keyboard.KeyCodes.S,
           up: Phaser.Input.Keyboard.KeyCodes.UP,
           open: Phaser.Input.Keyboard.KeyCodes.E,
           anomaly: Phaser.Input.Keyboard.KeyCodes.Q,
@@ -365,8 +371,8 @@ const Hallway13: React.FC = () => {
 
         if (this.phase === "walking") {
           this.phaseText.setText(this.currentAnomaly === "none" ? "The hallway looks familiar." : "Something feels wrong.");
-          this.promptText.setText(message ?? "Hold W to move. Press E at the door.");
-          this.footerText.setText("One anomaly max per loop   |   Q = anomaly   |   R = clear hallway   |   E = open door");
+          this.promptText.setText(message ?? "Hold W to move up the hall. Hold S to back up and re-check.");
+          this.footerText.setText("One anomaly max per loop   |   W/S move   |   Q = anomaly   |   R = clear hallway   |   E = open door");
           return;
         }
 
@@ -530,48 +536,6 @@ const Hallway13: React.FC = () => {
           const point = this.projectPointAtDistance(distance, 0, 0.83);
           const width = 148 * point.scale;
           const height = 16 * point.scale;
-          if (this.currentAnomaly === "runner-gap" && index === 2) {
-            const tearWidth = width * 0.62;
-            const tearHeight = height * 1.45;
-            this.graphics.fillStyle(0x050507, 0.96);
-            this.graphics.fillRoundedRect(point.x - tearWidth / 2, point.y - tearHeight / 2, tearWidth, tearHeight, 3);
-            this.graphics.fillStyle(0x2a1818, 0.34);
-            this.graphics.fillEllipse(point.x, point.y + 1, tearWidth * 1.12, tearHeight * 0.68);
-            this.graphics.lineStyle(2, 0xa78b54, 0.34);
-            this.graphics.strokeLineShape(
-              new Phaser.Geom.Line(
-                point.x - width / 2,
-                point.y - height / 2,
-                point.x - tearWidth / 2,
-                point.y - height / 2
-              )
-            );
-            this.graphics.strokeLineShape(
-              new Phaser.Geom.Line(
-                point.x + tearWidth / 2,
-                point.y - height / 2,
-                point.x + width / 2,
-                point.y - height / 2
-              )
-            );
-            this.graphics.strokeLineShape(
-              new Phaser.Geom.Line(
-                point.x - width / 2,
-                point.y + height / 2,
-                point.x - tearWidth / 2,
-                point.y + height / 2
-              )
-            );
-            this.graphics.strokeLineShape(
-              new Phaser.Geom.Line(
-                point.x + tearWidth / 2,
-                point.y + height / 2,
-                point.x + width / 2,
-                point.y + height / 2
-              )
-            );
-            return;
-          }
           const color = this.currentAnomaly === "trim-break" && index === 2 ? 0x4a2f2f : 0x6f5b33;
           const alpha = this.currentAnomaly === "trim-break" && index === 2 ? 0.18 : 0.46;
           this.graphics.fillStyle(color, alpha);
@@ -729,14 +693,18 @@ const Hallway13: React.FC = () => {
         distance: number,
         side: "left" | "right",
         hasPortrait: boolean,
-        palette: { head: number; body: number } = { head: 0x7f1d1d, body: 0xe2e8f0 }
+        palette: { head: number; body: number } = { head: 0x7f1d1d, body: 0xe2e8f0 },
+        options: { upsideDown?: boolean; crookedOffset?: number } = {}
       ) {
         const nearRect = this.projectRectFromDistance(Math.max(18, distance - 22));
         const farRect = this.projectRectFromDistance(distance + 22);
         const nearInset = Math.max(6, nearRect.width * 0.022);
         const farInset = Math.max(4, farRect.width * 0.022);
-        const nearX = side === "left" ? nearRect.left + nearInset : nearRect.right - nearInset;
-        const farX = side === "left" ? farRect.left + farInset : farRect.right - farInset;
+        const crookedOffset = options.crookedOffset ?? 0;
+        const nearXBase = side === "left" ? nearRect.left + nearInset : nearRect.right - nearInset;
+        const farXBase = side === "left" ? farRect.left + farInset : farRect.right - farInset;
+        const nearX = nearXBase + crookedOffset;
+        const farX = farXBase + crookedOffset * 0.42;
         const nearTop = nearRect.centerY - nearRect.height * 0.13;
         const nearBottom = nearRect.centerY + nearRect.height * 0.19;
         const farTop = farRect.centerY - farRect.height * 0.13;
@@ -767,12 +735,14 @@ const Hallway13: React.FC = () => {
           const xInset = Math.abs(nearX - farX) * 0.18 + 3;
           const portraitWidth = Math.max(6, Math.abs(nearX - farX) * 0.32);
           const portraitHeight = Math.max(8, (nearBottom - nearTop) * 0.18);
+          const headY = options.upsideDown ? centerY + 10 * scale : centerY - 8 * scale;
+          const bodyY = options.upsideDown ? centerY - 10 * scale : centerY + 6 * scale;
           this.graphics.fillStyle(palette.head, 0.78);
-          this.graphics.fillCircle(centerX + (side === "left" ? xInset : -xInset), centerY - 8 * scale, Math.max(3, 6 * scale));
+          this.graphics.fillCircle(centerX + (side === "left" ? xInset : -xInset), headY, Math.max(3, 6 * scale));
           this.graphics.fillStyle(palette.body, 0.84);
           this.graphics.fillRect(
             centerX - portraitWidth / 2 + (side === "left" ? xInset * 0.45 : -xInset * 0.45),
-            centerY + 6 * scale,
+            bodyY,
             portraitWidth,
             portraitHeight
           );
@@ -793,7 +763,13 @@ const Hallway13: React.FC = () => {
             this.currentAnomaly === "painting-color-shift" && index === 1
               ? { head: 0x0ea5e9, body: 0xfef08a }
               : { head: 0x7f1d1d, body: 0xe2e8f0 };
-          this.drawFrame(distance, "left", hasPortrait, palette);
+          this.drawFrame(distance, "left", hasPortrait, palette, {
+            upsideDown: this.currentAnomaly === "upside-down-left" && index === 2,
+            crookedOffset:
+              this.currentAnomaly === "crooked-frame-left" && index === 1
+                ? 18 * Math.max(0.52, distance / HALL_LENGTH)
+                : 0
+          });
         });
         RIGHT_FRAME_WORLD_DISTANCES.forEach((worldDistance, index) => {
           const distance = worldDistance - this.getPlayerDepth();
@@ -804,7 +780,9 @@ const Hallway13: React.FC = () => {
             this.currentAnomaly === "painting-color-shift" && index === 1
               ? { head: 0x38bdf8, body: 0xf0abfc }
               : { head: 0x7f1d1d, body: 0xe2e8f0 };
-          this.drawFrame(distance, "right", true, palette);
+          this.drawFrame(distance, "right", true, palette, {
+            upsideDown: this.currentAnomaly === "upside-down-right" && index === 0
+          });
         });
 
         if (this.currentAnomaly === "extra-frame-left") {
@@ -897,8 +875,11 @@ const Hallway13: React.FC = () => {
 
       handleWalking(deltaSeconds: number) {
         const forwardHeld = this.keys.forward.isDown || this.keys.up.isDown;
-        if (forwardHeld) {
+        const backwardHeld = this.keys.backward.isDown;
+        if (forwardHeld && !backwardHeld) {
           this.progress = Phaser.Math.Clamp(this.progress + deltaSeconds * 0.32, 0, 1);
+        } else if (backwardHeld && !forwardHeld) {
+          this.progress = Phaser.Math.Clamp(this.progress - deltaSeconds * 0.24, 0, 1);
         } else {
           this.progress = Phaser.Math.Clamp(this.progress - deltaSeconds * 0.03, 0, 1);
         }
@@ -917,6 +898,8 @@ const Hallway13: React.FC = () => {
           this.refreshHud("The next door is open. Decide what you saw before stepping through.");
         } else if (this.progress >= 0.95) {
           this.refreshHud("You're at the door. Press E and make your call.");
+        } else if (this.progress <= 0.12 && backwardHeld) {
+          this.refreshHud("Back at the start. Walk forward when you're ready to check again.");
         }
       }
 
@@ -1042,7 +1025,7 @@ const Hallway13: React.FC = () => {
             marginBottom: "0.9rem"
           }}
         >
-          {["W / Up move", "E open door", "Q anomaly", "R clear hallway"].map((label) => (
+          {["W / Up forward", "S back up", "E open door", "Q anomaly", "R clear hallway"].map((label) => (
             <span
               key={label}
               style={{
