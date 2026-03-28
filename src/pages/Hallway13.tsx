@@ -307,13 +307,26 @@ const Hallway13: React.FC = () => {
         return Phaser.Math.Linear(0.96, 0.22, this.progress);
       }
 
+      drawFilmGrain() {
+        this.graphics.fillStyle(0xffffff, 0.025);
+        for (let index = 0; index < 80; index += 1) {
+          const x = (index * 113 + Math.floor(this.time.now * 0.12)) % GAME_WIDTH;
+          const y = (index * 57 + Math.floor(this.time.now * 0.19)) % GAME_HEIGHT;
+          this.graphics.fillRect(x, y, 2, 2);
+        }
+      }
+
       drawBackground() {
         this.graphics.fillStyle(0x04030a, 1);
         this.graphics.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-        this.graphics.fillStyle(0x120f17, 1);
-        this.graphics.fillRect(0, 0, GAME_WIDTH, 92);
-        this.graphics.fillStyle(0x07070a, 1);
-        this.graphics.fillRect(0, GAME_HEIGHT - 118, GAME_WIDTH, 118);
+        this.graphics.fillGradientStyle(0x140f17, 0x140f17, 0x06070a, 0x06070a, 1);
+        this.graphics.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        this.graphics.fillStyle(0x201620, 0.38);
+        this.graphics.fillRect(0, 0, GAME_WIDTH, 98);
+        this.graphics.fillStyle(0x050507, 0.74);
+        this.graphics.fillRect(0, GAME_HEIGHT - 124, GAME_WIDTH, 124);
+        this.graphics.lineStyle(4, 0x000000, 0.55);
+        this.graphics.strokeRect(8, 8, GAME_WIDTH - 16, GAME_HEIGHT - 16);
       }
 
       drawHallway() {
@@ -390,19 +403,36 @@ const Hallway13: React.FC = () => {
       drawDoor() {
         const doorZ = this.getDoorZ();
         const doorRect = this.projectRect(doorZ);
+        const wallRect = this.projectRect(Math.min(0.995, doorZ + 0.04));
         const doorWidth = doorRect.width * 0.24;
         const doorHeight = doorRect.height * 0.58;
         const doorX = doorRect.centerX - doorWidth / 2;
         const doorY = doorRect.bottom - doorHeight;
         const reachedDoor = this.progress >= 0.97;
 
-        this.graphics.fillStyle(0xddd4b3, 1);
-        this.graphics.fillRect(doorX - 12, doorY - 12, doorWidth + 24, doorHeight + 18);
+        this.graphics.fillStyle(0x2b2624, 1);
+        this.graphics.fillRect(wallRect.left, wallRect.top, wallRect.width, wallRect.height);
+        this.graphics.fillStyle(0x1d1a18, 0.85);
+        this.graphics.fillRect(wallRect.left, wallRect.bottom - wallRect.height * 0.16, wallRect.width, wallRect.height * 0.16);
+        this.graphics.lineStyle(2, 0x5c4e34, 0.32);
+        this.graphics.strokeRect(wallRect.left, wallRect.top, wallRect.width, wallRect.height);
+
+        const frameOuterX = doorX - 18;
+        const frameOuterY = doorY - 18;
+        const frameOuterWidth = doorWidth + 36;
+        const frameOuterHeight = doorHeight + 30;
+        this.graphics.fillStyle(0xcbb489, 0.98);
+        this.graphics.fillRect(frameOuterX, frameOuterY, frameOuterWidth, frameOuterHeight);
+        this.graphics.fillStyle(0x9d7d49, 0.55);
+        this.graphics.fillRect(frameOuterX + 8, frameOuterY + 8, frameOuterWidth - 16, frameOuterHeight - 16);
+
         this.graphics.fillStyle(0xeee4c1, 1);
         this.graphics.fillRect(doorX, doorY, doorWidth, doorHeight);
         this.graphics.fillStyle(0xddcf9c, 0.65);
         this.graphics.fillRect(doorX + doorWidth * 0.18, doorY + 12, doorWidth * 0.05, doorHeight - 24);
         this.graphics.fillRect(doorX + doorWidth * 0.77, doorY + 12, doorWidth * 0.05, doorHeight - 24);
+        this.graphics.fillStyle(0xffffff, 0.1);
+        this.graphics.fillRect(doorX + 8, doorY + 8, doorWidth * 0.18, doorHeight - 16);
         this.graphics.lineStyle(3, 0xb39b6b, 0.85);
         this.graphics.strokeRect(doorX, doorY, doorWidth, doorHeight);
 
@@ -544,8 +574,9 @@ const Hallway13: React.FC = () => {
 
         const threatVisible = this.mistakes > 0 || this.currentAnomaly === "shadow-figure";
         if (threatVisible) {
-          const z = this.currentAnomaly === "shadow-figure" ? 0.63 : Phaser.Math.Linear(0.94, 0.7, this.mistakes / MAX_MISTAKES);
-          const point = this.projectPoint(z, 0.1, 0.28);
+          const z = this.currentAnomaly === "shadow-figure" ? 0.48 : Phaser.Math.Linear(0.9, 0.62, this.mistakes / MAX_MISTAKES);
+          const xRatio = this.currentAnomaly === "shadow-figure" ? -0.72 : 0.78;
+          const point = this.projectPoint(z, xRatio, 0.24);
           const alpha = this.currentAnomaly === "shadow-figure" ? 0.72 : 0.22 + this.mistakes * 0.12;
           this.graphics.fillStyle(0x000000, alpha);
           this.graphics.fillCircle(point.x, point.y - 36 * point.scale, 15 * point.scale);
@@ -623,6 +654,7 @@ const Hallway13: React.FC = () => {
         this.drawDoor();
         this.drawDecor();
         this.drawHudEffects();
+        this.drawFilmGrain();
 
         const deltaSeconds = delta / 1000;
 
@@ -661,12 +693,64 @@ const Hallway13: React.FC = () => {
   return (
     <div className="page">
       <NavBar />
-      <div className="content card" style={{ maxWidth: 980 }}>
-        <h2>Hallway 13</h2>
-        <p>
-          Walk the loop, study the corridor, and decide whether the hallway changed before it catches up to you.
-        </p>
-        <div ref={containerRef} style={{ width: "100%", maxWidth: GAME_WIDTH, margin: "1rem auto" }} />
+      <div
+        className="content card"
+        style={{
+          maxWidth: 1040,
+          background:
+            "radial-gradient(circle at top, rgba(120, 28, 28, 0.18), transparent 32%), linear-gradient(180deg, rgba(12, 10, 14, 0.98), rgba(6, 5, 8, 0.98))",
+          color: "#f8fafc",
+          border: "1px solid rgba(148, 163, 184, 0.16)",
+          boxShadow: "0 24px 70px rgba(0, 0, 0, 0.42)"
+        }}
+      >
+        <div style={{ display: "grid", gap: "0.35rem", marginBottom: "0.9rem" }}>
+          <span style={{ color: "#fca5a5", fontSize: "0.82rem", letterSpacing: "0.2em", textTransform: "uppercase" }}>
+            Arcade Experiment
+          </span>
+          <h2 style={{ margin: 0, color: "#fff7ed" }}>Hallway 13</h2>
+          <p style={{ margin: 0, color: "#cbd5e1", maxWidth: 760 }}>
+            Walk the corridor, inspect the details, and decide whether the loop changed before the thing in the walls reaches the door with you.
+          </p>
+        </div>
+        <div
+          style={{
+            display: "flex",
+            gap: "0.6rem",
+            flexWrap: "wrap",
+            marginBottom: "0.9rem"
+          }}
+        >
+          {["W / Up move", "E open door", "Q anomaly", "R clear hallway"].map((label) => (
+            <span
+              key={label}
+              style={{
+                padding: "0.42rem 0.72rem",
+                borderRadius: 999,
+                background: "rgba(15, 23, 42, 0.48)",
+                border: "1px solid rgba(248, 250, 252, 0.12)",
+                color: "#e2e8f0",
+                fontSize: "0.92rem"
+              }}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+        <div
+          style={{
+            width: "100%",
+            maxWidth: GAME_WIDTH,
+            margin: "0 auto",
+            padding: 12,
+            borderRadius: 24,
+            background: "linear-gradient(180deg, rgba(20, 20, 26, 0.9), rgba(5, 5, 8, 0.96))",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.03), 0 18px 40px rgba(0,0,0,0.38)"
+          }}
+        >
+          <div ref={containerRef} style={{ width: "100%", maxWidth: GAME_WIDTH, margin: "0 auto", borderRadius: 16, overflow: "hidden" }} />
+        </div>
       </div>
     </div>
   );
