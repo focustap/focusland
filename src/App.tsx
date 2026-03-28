@@ -16,6 +16,7 @@ const CasinoRoom = lazy(() => import("./pages/CasinoRoom"));
 const CatchGame = lazy(() => import("./pages/CatchGame"));
 const Game = lazy(() => import("./pages/Game"));
 const Gwent = lazy(() => import("./pages/Gwent"));
+const Hallway13 = lazy(() => import("./pages/Hallway13"));
 const InvadersRoom = lazy(() => import("./pages/InvadersRoom"));
 const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const Lobby = lazy(() => import("./pages/Lobby"));
@@ -120,6 +121,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <ArcadeRoom />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/arcade/hallway-13"
+            element={
+              <ProtectedRoute>
+                <Hallway13 />
               </ProtectedRoute>
             }
           />
