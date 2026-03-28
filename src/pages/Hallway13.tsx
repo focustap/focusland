@@ -8,6 +8,8 @@ type AnomalyId =
   | "none"
   | "red-light"
   | "missing-light"
+  | "door-number"
+  | "trim-break"
   | "left-portrait"
   | "blood-text"
   | "door-eye"
@@ -24,6 +26,8 @@ const GAME_HEIGHT = 540;
 const TARGET_LOOPS = 6;
 const MAX_MISTAKES = 3;
 const ANOMALIES: AnomalyId[] = [
+  "door-number",
+  "trim-break",
   "red-light",
   "missing-light",
   "left-portrait",
@@ -34,7 +38,7 @@ const ANOMALIES: AnomalyId[] = [
 ];
 
 const randomAnomaly = (): AnomalyId => {
-  if (Math.random() < 0.32) {
+  if (Math.random() < 0.26) {
     return "none";
   }
 
@@ -58,6 +62,8 @@ const Hallway13: React.FC = () => {
       promptText!: Phaser.GameObjects.Text;
       phaseText!: Phaser.GameObjects.Text;
       footerText!: Phaser.GameObjects.Text;
+      plaqueText!: Phaser.GameObjects.Text;
+      plaqueShadowText!: Phaser.GameObjects.Text;
       decorText!: Phaser.GameObjects.Text;
       decorShadowText!: Phaser.GameObjects.Text;
       vignette!: Phaser.GameObjects.Rectangle;
@@ -120,6 +126,18 @@ const Hallway13: React.FC = () => {
           fontSize: "15px",
           align: "center"
         }).setOrigin(0.5);
+        this.plaqueShadowText = this.add.text(0, 0, "", {
+          color: "#020617",
+          fontFamily: "Georgia, serif",
+          fontSize: "18px",
+          fontStyle: "bold"
+        }).setOrigin(0.5);
+        this.plaqueText = this.add.text(0, 0, "", {
+          color: "#f8fafc",
+          fontFamily: "Georgia, serif",
+          fontSize: "18px",
+          fontStyle: "bold"
+        }).setOrigin(0.5);
         this.decorShadowText = this.add.text(0, 0, "", {
           color: "#020617",
           fontFamily: "Georgia, serif",
@@ -132,6 +150,8 @@ const Hallway13: React.FC = () => {
           fontSize: "18px",
           fontStyle: "bold"
         }).setOrigin(0.5);
+        this.plaqueShadowText.setVisible(false);
+        this.plaqueText.setVisible(false);
         this.decorShadowText.setVisible(false);
         this.decorText.setVisible(false);
 
@@ -263,19 +283,45 @@ const Hallway13: React.FC = () => {
         };
       }
 
+      wrapDepth(rawDepth: number, min = 0.12, max = 0.98) {
+        const range = max - min;
+        let depth = rawDepth;
+
+        while (depth < min) {
+          depth += range;
+        }
+        while (depth > max) {
+          depth -= range;
+        }
+
+        return depth;
+      }
+
+      getTravelDepths(baseDepths: number[]) {
+        return baseDepths
+          .map((baseDepth) => this.wrapDepth(baseDepth - this.progress * 0.94))
+          .sort((left, right) => left - right);
+      }
+
+      getDoorZ() {
+        return Phaser.Math.Linear(0.96, 0.22, this.progress);
+      }
+
       drawBackground() {
         this.graphics.fillStyle(0x04030a, 1);
         this.graphics.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
         this.graphics.fillStyle(0x120f17, 1);
         this.graphics.fillRect(0, 0, GAME_WIDTH, 92);
+        this.graphics.fillStyle(0x07070a, 1);
+        this.graphics.fillRect(0, GAME_HEIGHT - 118, GAME_WIDTH, 118);
       }
 
       drawHallway() {
-        const slices = [0.08, 0.18, 0.28, 0.4, 0.55, 0.7, 0.86];
-        let previous = this.projectRect(slices[0]);
+        const slices = this.getTravelDepths([0.12, 0.22, 0.32, 0.42, 0.54, 0.66, 0.78, 0.9]);
+        let previous = this.projectRect(0.03);
 
-        for (let index = 1; index < slices.length; index += 1) {
-          const current = this.projectRect(slices[index]);
+        for (const slice of slices) {
+          const current = this.projectRect(slice);
 
           this.graphics.fillStyle(0x232624, 1);
           this.graphics.beginPath();
@@ -317,12 +363,32 @@ const Hallway13: React.FC = () => {
           this.graphics.strokeRectShape(
             new Phaser.Geom.Rectangle(current.left, current.top, current.width, current.height)
           );
+
+          this.graphics.lineStyle(1.5, 0x4e3b1f, 0.34);
+          this.graphics.strokeLineShape(new Phaser.Geom.Line(current.left, current.bottom - 18, current.right, current.bottom - 18));
+          this.graphics.lineStyle(1.5, 0x8b7b55, 0.14);
+          this.graphics.strokeLineShape(new Phaser.Geom.Line(current.left + 22, current.top + 18, current.left + 22, current.bottom - 18));
+          this.graphics.strokeLineShape(new Phaser.Geom.Line(current.right - 22, current.top + 18, current.right - 22, current.bottom - 18));
+
           previous = current;
         }
+
+        const runnerDepths = this.getTravelDepths([0.16, 0.31, 0.46, 0.62, 0.79]);
+        runnerDepths.forEach((depth, index) => {
+          const point = this.projectPoint(depth, 0, 0.83);
+          const width = 148 * point.scale;
+          const height = 16 * point.scale;
+          const color = this.currentAnomaly === "trim-break" && index === 2 ? 0x4a2f2f : 0x6f5b33;
+          const alpha = this.currentAnomaly === "trim-break" && index === 2 ? 0.18 : 0.46;
+          this.graphics.fillStyle(color, alpha);
+          this.graphics.fillRoundedRect(point.x - width / 2, point.y - height / 2, width, height, 3);
+          this.graphics.lineStyle(1, 0xa78b54, 0.14);
+          this.graphics.strokeRoundedRect(point.x - width / 2, point.y - height / 2, width, height, 3);
+        });
       }
 
       drawDoor() {
-        const doorZ = Phaser.Math.Linear(0.94, 0.2, this.progress);
+        const doorZ = this.getDoorZ();
         const doorRect = this.projectRect(doorZ);
         const doorWidth = doorRect.width * 0.24;
         const doorHeight = doorRect.height * 0.58;
@@ -334,8 +400,30 @@ const Hallway13: React.FC = () => {
         this.graphics.fillRect(doorX - 12, doorY - 12, doorWidth + 24, doorHeight + 18);
         this.graphics.fillStyle(0xeee4c1, 1);
         this.graphics.fillRect(doorX, doorY, doorWidth, doorHeight);
+        this.graphics.fillStyle(0xddcf9c, 0.65);
+        this.graphics.fillRect(doorX + doorWidth * 0.18, doorY + 12, doorWidth * 0.05, doorHeight - 24);
+        this.graphics.fillRect(doorX + doorWidth * 0.77, doorY + 12, doorWidth * 0.05, doorHeight - 24);
         this.graphics.lineStyle(3, 0xb39b6b, 0.85);
         this.graphics.strokeRect(doorX, doorY, doorWidth, doorHeight);
+
+        const plaqueWidth = doorWidth * 0.26;
+        const plaqueHeight = doorHeight * 0.12;
+        const plaqueX = doorRect.centerX - plaqueWidth / 2;
+        const plaqueY = doorY - plaqueHeight - 12;
+        this.graphics.fillStyle(0x18181b, 0.9);
+        this.graphics.fillRoundedRect(plaqueX, plaqueY, plaqueWidth, plaqueHeight, 4);
+        this.graphics.lineStyle(2, 0xcbd5e1, 0.38);
+        this.graphics.strokeRoundedRect(plaqueX, plaqueY, plaqueWidth, plaqueHeight, 4);
+        this.plaqueShadowText
+          .setText(this.currentAnomaly === "door-number" ? "14" : "13")
+          .setPosition(doorRect.centerX + 1, plaqueY + plaqueHeight / 2 + 1)
+          .setFontSize(`${Math.max(10, Math.round(16 + (1 - doorZ) * 16))}px`)
+          .setVisible(true);
+        this.plaqueText
+          .setText(this.currentAnomaly === "door-number" ? "14" : "13")
+          .setPosition(doorRect.centerX, plaqueY + plaqueHeight / 2)
+          .setFontSize(`${Math.max(10, Math.round(16 + (1 - doorZ) * 16))}px`)
+          .setVisible(true);
 
         const knobX = doorX + doorWidth - 18;
         const knobY = doorY + doorHeight / 2;
@@ -359,7 +447,7 @@ const Hallway13: React.FC = () => {
       }
 
       drawLights() {
-        const lightDepths = [0.22, 0.43, 0.68];
+        const lightDepths = this.getTravelDepths([0.18, 0.34, 0.5, 0.66, 0.82]);
         lightDepths.forEach((depth, index) => {
           if (this.currentAnomaly === "missing-light" && index === 1) {
             return;
@@ -379,23 +467,43 @@ const Hallway13: React.FC = () => {
             12 * point.scale,
             4
           );
+          this.graphics.fillStyle(0x3f3f46, 0.4);
+          this.graphics.fillRect(point.x - 8 * point.scale, point.y - 16 * point.scale, 16 * point.scale, 7 * point.scale);
         });
+      }
+
+      drawFrame(depth: number, side: "left" | "right", hasPortrait: boolean) {
+        const point = this.projectPoint(depth, side === "left" ? -0.77 : 0.77, -0.04);
+        const width = 38 * point.scale;
+        const height = 56 * point.scale;
+        this.graphics.fillStyle(0x1c1917, 0.95);
+        this.graphics.fillRect(point.x - width / 2, point.y - height / 2, width, height);
+        this.graphics.lineStyle(3, 0xd6c08d, 0.9);
+        this.graphics.strokeRect(point.x - width / 2, point.y - height / 2, width, height);
+        if (hasPortrait) {
+          this.graphics.fillStyle(0x7f1d1d, 0.78);
+          this.graphics.fillCircle(point.x, point.y - 5 * point.scale, 7 * point.scale);
+          this.graphics.fillStyle(0xe2e8f0, 0.84);
+          this.graphics.fillRect(point.x - 9 * point.scale, point.y + 10 * point.scale, 18 * point.scale, 10 * point.scale);
+        }
       }
 
       drawDecor() {
         this.decorText.setVisible(false);
         this.decorShadowText.setVisible(false);
 
+        const leftFrameDepths = this.getTravelDepths([0.24, 0.56, 0.84]);
+        const rightFrameDepths = this.getTravelDepths([0.39, 0.71]);
+        leftFrameDepths.forEach((depth) => {
+          const hasPortrait = !(this.currentAnomaly === "left-portrait" && Math.abs(depth - leftFrameDepths[1]) < 0.001);
+          this.drawFrame(depth, "left", hasPortrait);
+        });
+        rightFrameDepths.forEach((depth) => {
+          this.drawFrame(depth, "right", true);
+        });
+
         if (this.currentAnomaly === "left-portrait") {
-          const point = this.projectPoint(0.46, -0.78, -0.05);
-          this.graphics.fillStyle(0x1c1917, 0.95);
-          this.graphics.fillRect(point.x - 20 * point.scale, point.y - 28 * point.scale, 40 * point.scale, 56 * point.scale);
-          this.graphics.lineStyle(3, 0xd6c08d, 0.9);
-          this.graphics.strokeRect(point.x - 20 * point.scale, point.y - 28 * point.scale, 40 * point.scale, 56 * point.scale);
-          this.graphics.fillStyle(0x7f1d1d, 0.9);
-          this.graphics.fillCircle(point.x, point.y - 3 * point.scale, 7 * point.scale);
-          this.graphics.fillStyle(0xe2e8f0, 0.9);
-          this.graphics.fillRect(point.x - 9 * point.scale, point.y + 10 * point.scale, 18 * point.scale, 10 * point.scale);
+          this.drawFrame(this.wrapDepth(0.49 - this.progress * 0.94), "left", true);
         }
 
         if (this.currentAnomaly === "blood-text") {
@@ -420,6 +528,19 @@ const Hallway13: React.FC = () => {
           this.graphics.fillStyle(0x7f1d1d, 0.45);
           this.graphics.fillEllipse(point.x + 10 * point.scale, point.y - 4 * point.scale, 82 * point.scale, 38 * point.scale);
         }
+
+        const panelDepths = this.getTravelDepths([0.18, 0.29, 0.41, 0.53, 0.64, 0.76, 0.88]);
+        panelDepths.forEach((depth, index) => {
+          if (this.currentAnomaly === "trim-break" && index === 4) {
+            return;
+          }
+
+          const left = this.projectPoint(depth, -0.95, 0.56);
+          const right = this.projectPoint(depth, 0.95, 0.56);
+          this.graphics.lineStyle(2, 0x8b6e3f, 0.22);
+          this.graphics.strokeLineShape(new Phaser.Geom.Line(left.x, left.y, left.x + 22 * left.scale, left.y));
+          this.graphics.strokeLineShape(new Phaser.Geom.Line(right.x, right.y, right.x - 22 * right.scale, right.y));
+        });
 
         const threatVisible = this.mistakes > 0 || this.currentAnomaly === "shadow-figure";
         if (threatVisible) {
@@ -494,6 +615,8 @@ const Hallway13: React.FC = () => {
 
       update(_time: number, delta: number) {
         this.graphics.clear();
+        this.plaqueText.setVisible(false);
+        this.plaqueShadowText.setVisible(false);
         this.drawBackground();
         this.drawHallway();
         this.drawLights();
