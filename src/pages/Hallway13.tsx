@@ -30,7 +30,6 @@ type AnomalyId =
   | "eye-in-painting"
   | "portrait-bleed"
   | "runner-symbol"
-  | "runner-stripe-missing"
   | "vent-missing-left"
   | "vent-open-right"
   | "wall-crack-left"
@@ -63,7 +62,6 @@ const LIGHT_WORLD_DISTANCES = [132, 272, 430, 596, 760, 908];
 const LEFT_FRAME_WORLD_DISTANCES = [220, 460, 708];
 const RIGHT_FRAME_WORLD_DISTANCES = [332, 612];
 const PANEL_WORLD_DISTANCES = [166, 270, 386, 508, 630, 752, 874];
-const RUNNER_STRIPE_DISTANCES = [156, 224, 292, 360, 428, 496, 564, 632, 700, 768, 836];
 const LEFT_VENT_WORLD_DISTANCES = [294, 642];
 const RIGHT_VENT_WORLD_DISTANCES = [212, 538];
 const ANOMALIES: AnomalyId[] = [
@@ -90,7 +88,6 @@ const ANOMALIES: AnomalyId[] = [
   "eye-in-painting",
   "portrait-bleed",
   "runner-symbol",
-  "runner-stripe-missing",
   "vent-missing-left",
   "vent-open-right",
   "wall-crack-left",
@@ -571,21 +568,6 @@ const Hallway13: React.FC = () => {
           this.graphics.fillRoundedRect(point.x - width / 2, point.y - height / 2, width, height, 3);
           this.graphics.lineStyle(1, 0xa78b54, 0.14);
           this.graphics.strokeRoundedRect(point.x - width / 2, point.y - height / 2, width, height, 3);
-        });
-
-        RUNNER_STRIPE_DISTANCES.forEach((worldDistance, index) => {
-          const distance = worldDistance - this.getPlayerDepth();
-          if (distance <= 14 || distance >= this.getDoorDistance() - 42) {
-            return;
-          }
-          if (this.currentAnomaly === "runner-stripe-missing" && index === 5) {
-            return;
-          }
-          const point = this.projectPointAtDistance(distance, 0, 0.79);
-          const width = 52 * point.scale;
-          const height = 6 * point.scale;
-          this.graphics.fillStyle(0xcbb489, 0.34);
-          this.graphics.fillRoundedRect(point.x - width / 2, point.y - height / 2, width, height, 2);
         });
 
         if (this.currentAnomaly === "runner-symbol") {
