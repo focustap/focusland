@@ -30,11 +30,10 @@ const AvatarSprite: React.FC<Props> = ({
   const skin = SKIN_OPTIONS[resolved.skinId];
   const multipliers = getAvatarScaleMultipliers(resolved);
   const frame = moving ? [0, 1, 0, 2][animationTick % 4] : 0;
-  const backgroundImage = moving
+  const imageSrc = moving
     ? `url(${assetBase}assets/avatar/skins/${skin.assetBaseName}-${facing}-strip.png)`
-    : `url(${assetBase}assets/avatar/skins/${skin.assetBaseName}-${facing}.png)`;
-  const backgroundSize = moving ? `300% 100%` : "100% 100%";
-  const backgroundPosition = moving ? `${frame === 0 ? 0 : frame === 1 ? 50 : 100}% 0%` : "0% 0%";
+    : `${assetBase}assets/avatar/skins/${skin.assetBaseName}-${facing}.png`;
+  const stripSrc = `${assetBase}assets/avatar/skins/${skin.assetBaseName}-${facing}-strip.png`;
 
   return (
     <div
@@ -45,16 +44,29 @@ const AvatarSprite: React.FC<Props> = ({
         width: size,
         height: size,
         borderRadius: 14,
+        overflow: "hidden",
+        display: "block",
         imageRendering: "pixelated",
         background: "rgba(15, 23, 42, 0.08)",
-        backgroundImage,
-        backgroundRepeat: "no-repeat",
-        backgroundSize,
-        backgroundPosition,
         transform: `scale(${multipliers.scaleX}, ${multipliers.scaleY})`,
         transformOrigin: "center bottom"
       }}
-    />
+    >
+      <img
+        src={moving ? stripSrc : imageSrc}
+        alt=""
+        aria-hidden="true"
+        style={{
+          width: moving ? `${size * 3}px` : `${size}px`,
+          height: `${size}px`,
+          imageRendering: "pixelated",
+          transform: moving ? `translateX(${-frame * size}px)` : "translateX(0px)",
+          transformOrigin: "left top",
+          display: "block",
+          maxWidth: "none"
+        }}
+      />
+    </div>
   );
 };
 
