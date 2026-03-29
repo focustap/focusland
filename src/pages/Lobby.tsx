@@ -348,6 +348,18 @@ const Lobby: React.FC = () => {
             height: 138
           },
           {
+        name: "Flutter",
+            color: 0x38bdf8,
+            body: null,
+            entranceX: 538,
+            entranceY: 420,
+            route: "/story",
+            x: 540,
+            y: 418,
+            width: 124,
+            height: 110
+          },
+          {
             name: "Arcade",
             color: 0x8b5cf6,
             body: null,
@@ -673,7 +685,7 @@ return () => {
       <NavBar />
       <div className="content card" style={{ maxWidth: 860 }}>
         <h2>Town Lobby</h2>
-        <p>Walk through the town square and click one of the glowing markers to head into the Casino, Arcade, Arena, Shop, Records House, or Profile House.</p>
+          <p>Walk through the town square and click one of the glowing markers to head into the Casino, Arcade, Arena, Flutter, Shop, Records House, or Profile House.</p>
         <div
           ref={containerRef}
           style={{
