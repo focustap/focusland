@@ -4110,6 +4110,36 @@ body[data-theme="dark"] .card-battle-card--hidden {
   padding-bottom: 0.5rem;
 }
 
+.story-battle-actions {
+  width: min(100%, 520px);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.7rem;
+}
+
+.story-battle-action {
+  border-radius: 0.95rem;
+  border: 1px solid rgba(191, 219, 254, 0.24);
+  background: rgba(14, 21, 36, 0.92);
+  color: #f8fafc;
+  padding: 0.8rem 0.95rem;
+  font-family: "PublicPixel", monospace;
+  font-size: 0.76rem;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.story-battle-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.5);
+  background: rgba(18, 29, 50, 0.96);
+}
+
+.story-battle-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .story-battle-ui__head,
 .story-battle-ui__foot {
   width: min(100%, 520px);
@@ -4129,9 +4159,43 @@ body[data-theme="dark"] .card-battle-card--hidden {
   color: rgba(226, 232, 240, 0.86);
 }
 
+.story-battle-ui__health {
+  width: min(100%, 520px);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #fecdd3;
+  font-size: 0.82rem;
+}
+
 .story-battle-ui .story-encounter__box {
   width: min(100%, 520px);
   height: 180px;
+}
+
+.story-encounter__command-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+  color: #dbeafe;
+  text-align: center;
+  font-size: 0.88rem;
+}
+
+.story-encounter__pellet--snowtree {
+  width: 14px;
+  height: 26px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #dbeafe, #93c5fd);
+}
+
+.story-encounter__pellet--homelessdrunk {
+  width: 12px;
+  height: 18px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #86efac, #15803d);
 }
 
 @keyframes story-enemy-bob {

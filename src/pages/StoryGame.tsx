@@ -76,7 +76,8 @@ type EncounterConfig = {
   key: "polarbear" | "snowtree" | "homelessdrunk";
   enemyName: string;
   enemyAsset: string;
-  durationMs: number;
+  dodgeDurationMs: number;
+  maxHp: number;
   introLines: string[];
   winLine: string;
   footRight: string;
@@ -87,7 +88,8 @@ const ENCOUNTERS: Record<EncounterConfig["key"], EncounterConfig> = {
     key: "polarbear",
     enemyName: "Polar Bear",
     enemyAsset: "polarbear.png",
-    durationMs: 12000,
+    dodgeDurationMs: 10000,
+    maxHp: 2,
     introLines: [
       "Polar Bear: 'Take this!'",
       "Polar Bear stomps the ice and growls.",
@@ -101,7 +103,8 @@ const ENCOUNTERS: Record<EncounterConfig["key"], EncounterConfig> = {
     key: "snowtree",
     enemyName: "Snow Tree",
     enemyAsset: "snowtree.png",
-    durationMs: 15000,
+    dodgeDurationMs: 9000,
+    maxHp: 3,
     introLines: [
       "Snow Tree crackles under the snow.",
       "Snow Tree hurls icicles from its branches.",
@@ -115,7 +118,8 @@ const ENCOUNTERS: Record<EncounterConfig["key"], EncounterConfig> = {
     key: "homelessdrunk",
     enemyName: "Homeless Drunk",
     enemyAsset: "homelessdrunk.png",
-    durationMs: 15000,
+    dodgeDurationMs: 8000,
+    maxHp: 3,
     introLines: [
       "Homeless Drunk staggers into the trail.",
       "Homeless Drunk flings bottles in lazy arcs.",
@@ -768,6 +772,14 @@ const StoryGame: React.FC = () => {
                       }));
                       setSaveStatus("Practice complete. Explore the camp again.");
                     }}
+                    onLose={() => {
+                      setProgress((current) => ({
+                        ...current,
+                        sceneId: "camp-free",
+                        updatedAt: new Date().toISOString()
+                      }));
+                      setSaveStatus("The polar bear knocks you back into the snow.");
+                    }}
                   />
                 ) : currentSceneId === "forest-tree-encounter" ? (
                   <EncounterBattle
@@ -784,6 +796,14 @@ const StoryGame: React.FC = () => {
                       }));
                       setSaveStatus("The snow tree splinters and the trail opens again.");
                     }}
+                    onLose={() => {
+                      setProgress((current) => ({
+                        ...current,
+                        sceneId: "forest-free",
+                        updatedAt: new Date().toISOString()
+                      }));
+                      setSaveStatus("The snow tree drives you back down the trail.");
+                    }}
                   />
                 ) : currentSceneId === "forest-drunk-encounter" ? (
                   <EncounterBattle
@@ -799,6 +819,14 @@ const StoryGame: React.FC = () => {
                         updatedAt: new Date().toISOString()
                       }));
                       setSaveStatus("The drunk stumbles off the path, muttering to himself.");
+                    }}
+                    onLose={() => {
+                      setProgress((current) => ({
+                        ...current,
+                        sceneId: "forest-free",
+                        updatedAt: new Date().toISOString()
+                      }));
+                      setSaveStatus("The drunk cracks you with a bottle and you stumble back.");
                     }}
                   />
                 ) : null}
@@ -1266,17 +1294,11 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
     const collisionRadius = 18;
     const spawn = { x: 506, y: 1620 };
     const blockers = [
-      new Phaser.Geom.Rectangle(0, 0, width, 0),
-      new Phaser.Geom.Rectangle(0, 0, 138, height),
-      new Phaser.Geom.Rectangle(886, 0, 138, height),
-      new Phaser.Geom.Rectangle(146, 0, 250, 1792),
-      new Phaser.Geom.Rectangle(648, 0, 232, 1792),
-      new Phaser.Geom.Rectangle(396, 210, 252, 72),
-      new Phaser.Geom.Rectangle(382, 650, 278, 88),
-      new Phaser.Geom.Rectangle(392, 1114, 260, 84)
+      new Phaser.Geom.Rectangle(0, 0, 118, height),
+      new Phaser.Geom.Rectangle(906, 0, 118, height)
     ];
-    const treeTrigger = new Phaser.Geom.Rectangle(430, 1200, 170, 80);
-    const drunkTrigger = new Phaser.Geom.Rectangle(430, 760, 170, 80);
+    const treeTrigger = new Phaser.Geom.Rectangle(360, 1160, 304, 96);
+    const drunkTrigger = new Phaser.Geom.Rectangle(360, 670, 304, 104);
 
     let player: ReturnType<typeof createAvatarRender> | null = null;
     let targetX: number | null = null;
@@ -1355,7 +1377,7 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
         this.cameras.main.scrollY = Math.max(0, spawn.y - 620);
 
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-          targetX = Phaser.Math.Clamp(pointer.x, 180, width - 180);
+          targetX = Phaser.Math.Clamp(pointer.x, 146, width - 146);
           targetY = Phaser.Math.Clamp(pointer.worldY - logicalYOffset, 80, height - 60);
         });
       }
@@ -1407,7 +1429,7 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
 
         const step = (walkSpeed * delta) / 1000;
         const moveDistance = Math.min(step, distance);
-        const nextX = Phaser.Math.Clamp(currentX + (dx / distance) * moveDistance, 180, width - 180);
+        const nextX = Phaser.Math.Clamp(currentX + (dx / distance) * moveDistance, 146, width - 146);
         const nextY = Phaser.Math.Clamp(currentY + (dy / distance) * moveDistance, 80, height - 60);
         const resolvedStep = resolveBlockedStep(currentX, currentY, nextX, nextY);
 
@@ -1473,16 +1495,36 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
 type EncounterBattleProps = {
   config: EncounterConfig;
   onComplete: () => void;
+  onLose: () => void;
 };
 
-const EncounterBattle: React.FC<EncounterBattleProps> = ({ config, onComplete }) => {
+const EncounterBattle: React.FC<EncounterBattleProps> = ({ config, onComplete, onLose }) => {
   const [soul, setSoul] = useState({ x: ENCOUNTER_BOX_WIDTH / 2, y: ENCOUNTER_BOX_HEIGHT / 2 });
   const [elapsed, setElapsed] = useState(0);
   const [flash, setFlash] = useState(false);
+  const [enemyHp, setEnemyHp] = useState(config.maxHp);
+  const [phase, setPhase] = useState<"command" | "dodging" | "won">("command");
+  const [bagUses, setBagUses] = useState(1);
+  const [playerHp, setPlayerHp] = useState(20);
+  const [statusLine, setStatusLine] = useState(`${config.enemyName} steps into your way.`);
   const keysRef = useRef<Record<string, boolean>>({});
   const lastHitRef = useRef(0);
+  const finishTimeoutRef = useRef<number | null>(null);
+  const hitDamage = config.key === "polarbear" ? 3 : config.key === "snowtree" ? 4 : 5;
 
   useEffect(() => {
+    return () => {
+      if (finishTimeoutRef.current) {
+        window.clearTimeout(finishTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (phase !== "dodging") {
+      return;
+    }
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (["w", "a", "s", "d", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
         keysRef.current[event.key] = true;
@@ -1522,9 +1564,10 @@ const EncounterBattle: React.FC<EncounterBattleProps> = ({ config, onComplete })
 
       setElapsed((current) => {
         const next = current + delta;
-        if (next >= config.durationMs) {
-          onComplete();
-          return config.durationMs;
+        if (next >= config.dodgeDurationMs) {
+          setPhase("command");
+          setStatusLine(`${config.enemyName} pauses. Your move.`);
+          return config.dodgeDurationMs;
         }
         return next;
       });
@@ -1539,7 +1582,7 @@ const EncounterBattle: React.FC<EncounterBattleProps> = ({ config, onComplete })
       window.removeEventListener("keyup", onKeyUp);
       window.cancelAnimationFrame(frameId);
     };
-  }, [config.durationMs, onComplete]);
+  }, [config.dodgeDurationMs, phase]);
 
   const pelletPositions = useMemo(() => {
     const t = elapsed / 1000;
@@ -1568,54 +1611,132 @@ const EncounterBattle: React.FC<EncounterBattleProps> = ({ config, onComplete })
   }, [config.key, elapsed]);
 
   useEffect(() => {
+    if (phase !== "dodging") {
+      return;
+    }
+
     const hit = pelletPositions.some((pellet) => Math.hypot(pellet.x - soul.x, pellet.y - soul.y) < 11);
     const now = performance.now();
     if (hit && now - lastHitRef.current > 600) {
       lastHitRef.current = now;
-      setElapsed(0);
       setFlash(true);
+      setPlayerHp((current) => {
+        const next = Math.max(0, current - hitDamage);
+        if (next <= 0) {
+          setStatusLine(`${config.enemyName} drops you. Flutter pulls you back.`);
+          finishTimeoutRef.current = window.setTimeout(() => {
+            onLose();
+          }, 900);
+          return 0;
+        }
+        setStatusLine(`${config.enemyName} hits you for ${hitDamage}.`);
+        return next;
+      });
       window.setTimeout(() => setFlash(false), 180);
     }
-  }, [pelletPositions, soul.x, soul.y]);
+  }, [config.enemyName, hitDamage, onLose, pelletPositions, phase, soul.x, soul.y]);
+
+  const startDodgePhase = () => {
+    setSoul({ x: ENCOUNTER_BOX_WIDTH / 2, y: ENCOUNTER_BOX_HEIGHT / 2 });
+    setElapsed(0);
+    setPhase("dodging");
+    setStatusLine(config.introLines[0] ?? `${config.enemyName} attacks.`);
+  };
+
+  const handleAttack = () => {
+    const remaining = enemyHp - 1;
+    setEnemyHp(remaining);
+    if (remaining <= 0) {
+      setPhase("won");
+      setStatusLine(config.winLine);
+      finishTimeoutRef.current = window.setTimeout(() => {
+        onComplete();
+      }, 900);
+      return;
+    }
+
+    setStatusLine(`You strike ${config.enemyName}. ${remaining} HP left.`);
+    startDodgePhase();
+  };
+
+  const handleBag = () => {
+    if (bagUses <= 0) {
+      setStatusLine("Your bag is empty.");
+      return;
+    }
+    setBagUses((current) => current - 1);
+    setPlayerHp((current) => Math.min(20, current + 6));
+    setStatusLine("You steady yourself with a quick snack.");
+    startDodgePhase();
+  };
+
+  const handleRun = () => {
+    setStatusLine("Flutter nudges you forward. Running is not an option.");
+  };
 
   return (
     <div className={`story-battle-shell ${flash ? "story-battle-shell--flash" : ""}`}>
       <div className="story-battle-field">
         <div className="story-battle-field__enemy-wrap">
           <img
-            className="story-battle-field__enemy"
+            className={`story-battle-field__enemy ${phase === "won" ? "story-battle-field__enemy--defeated" : ""}`}
             src={`${import.meta.env.BASE_URL}assets/story/${config.enemyAsset}`}
             alt={config.enemyName}
           />
           <div className="story-battle-field__speech">
-            {elapsed >= config.durationMs
+            {phase === "won"
               ? config.winLine
-              : config.introLines[Math.min(config.introLines.length - 1, Math.floor(elapsed / 3000))]}
+              : phase === "dodging"
+                ? config.introLines[Math.min(config.introLines.length - 1, Math.floor(elapsed / 2200))]
+                : statusLine}
           </div>
         </div>
 
         <div className="story-battle-ui">
           <div className="story-battle-ui__head">
             <strong>{config.enemyName} blocks the way.</strong>
-            <span>{`Survive ${Math.max(0, Math.ceil((config.durationMs - elapsed) / 1000))}s`}</span>
+            <span>{phase === "dodging"
+              ? `Hold for ${Math.max(0, Math.ceil((config.dodgeDurationMs - elapsed) / 1000))}s`
+              : `HP ${Math.max(enemyHp, 0)}/${config.maxHp}`}</span>
+          </div>
+          <div className="story-battle-ui__health">
+            <span>Your HP</span>
+            <strong>{playerHp}/20</strong>
           </div>
           <div className="story-encounter__box">
             <div className="story-encounter__grid" />
-            {pelletPositions.map((pellet, index) => (
-              <span
-                key={index}
-                className="story-encounter__pellet"
-                style={{ left: `${pellet.x}px`, top: `${pellet.y}px` }}
-              />
-            ))}
-            <span
-              className="story-encounter__soul"
-              style={{ left: `${soul.x}px`, top: `${soul.y}px` }}
-            />
+            {phase === "dodging" ? (
+              <>
+                {pelletPositions.map((pellet, index) => (
+                  <span
+                    key={index}
+                    className={`story-encounter__pellet story-encounter__pellet--${config.key}`}
+                    style={{ left: `${pellet.x}px`, top: `${pellet.y}px` }}
+                  />
+                ))}
+                <span
+                  className="story-encounter__soul"
+                  style={{ left: `${soul.x}px`, top: `${soul.y}px` }}
+                />
+              </>
+            ) : (
+              <div className="story-encounter__command-state">{statusLine}</div>
+            )}
+          </div>
+          <div className="story-battle-actions">
+            <button type="button" className="story-battle-action" onClick={handleAttack} disabled={phase !== "command"}>
+              Attack
+            </button>
+            <button type="button" className="story-battle-action" onClick={handleBag} disabled={phase !== "command"}>
+              Bag{bagUses > 0 ? ` (${bagUses})` : ""}
+            </button>
+            <button type="button" className="story-battle-action" onClick={handleRun} disabled={phase !== "command"}>
+              Run
+            </button>
           </div>
           <div className="story-battle-ui__foot">
-            <span>WASD / Arrow keys to move</span>
-            <span>{config.footRight}</span>
+            <span>{phase === "dodging" ? "WASD / Arrow keys to move" : "Choose your move"}</span>
+            <span>{phase === "dodging" ? config.footRight : "Attack, prep, then dodge."}</span>
           </div>
         </div>
       </div>
