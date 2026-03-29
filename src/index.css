@@ -3846,7 +3846,9 @@ body[data-theme="dark"] .card-battle-card--hidden {
     linear-gradient(180deg, rgba(8, 11, 18, 0.08), rgba(8, 11, 18, 0.22)),
     url("/assets/story/flutterstarterimage.png");
   background-position: center;
-  background-size: cover;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-color: #140f1d;
 }
 
 .story-map--snowcamp,
@@ -3858,7 +3860,9 @@ body[data-theme="dark"] .card-battle-card--hidden {
     linear-gradient(180deg, rgba(8, 11, 18, 0.04), rgba(8, 11, 18, 0.18)),
     url("/assets/story/spawncamp.png");
   background-position: center;
-  background-size: cover;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-color: #1b2034;
 }
 
 .story-map--camp-free {
@@ -3907,6 +3911,7 @@ body[data-theme="dark"] .card-battle-card--hidden {
 .story-map__player-avatar {
   background: transparent !important;
   filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.3));
+  border-radius: 0 !important;
 }
 
 .story-title-stage .story-title-stage__caption {
@@ -3981,6 +3986,115 @@ body[data-theme="dark"] .card-battle-card--hidden {
   background: rgba(8, 12, 20, 0.82);
 }
 
+.story-battle-shell {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  align-items: stretch;
+  padding: 1.2rem;
+  background:
+    radial-gradient(circle at top, rgba(255,255,255,0.08), transparent 28%),
+    linear-gradient(180deg, rgba(16, 18, 28, 0.96), rgba(9, 11, 18, 0.98));
+}
+
+.story-battle-shell--flash {
+  box-shadow: inset 0 0 0 3px rgba(248, 113, 113, 0.55);
+}
+
+.story-battle-field {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  gap: 1rem;
+  min-height: 100%;
+}
+
+.story-battle-field__enemy-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.story-battle-field__enemy-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at center, rgba(255,255,255,0.12), transparent 36%),
+    linear-gradient(180deg, rgba(182, 226, 255, 0.08), transparent 35%);
+  pointer-events: none;
+}
+
+.story-battle-field__enemy {
+  width: min(32vw, 340px);
+  max-height: 54%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 24px 30px rgba(0, 0, 0, 0.42));
+  animation: story-enemy-bob 2.6s ease-in-out infinite;
+}
+
+.story-battle-field__enemy--defeated {
+  opacity: 0.78;
+  transform: translateY(16px) rotate(-3deg);
+  animation: none;
+}
+
+.story-battle-field__speech {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 280px;
+  max-width: 70%;
+  padding: 0.8rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(10, 12, 20, 0.88);
+  color: #f8fafc;
+  text-align: center;
+  font-family: "PublicPixel", monospace;
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+
+.story-battle-ui {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: center;
+  padding-bottom: 0.5rem;
+}
+
+.story-battle-ui__head,
+.story-battle-ui__foot {
+  width: min(100%, 520px);
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  color: #f8fafc;
+}
+
+.story-battle-ui__head strong {
+  font-size: 0.95rem;
+}
+
+.story-battle-ui__foot {
+  font-size: 0.82rem;
+  color: rgba(226, 232, 240, 0.86);
+}
+
+.story-battle-ui .story-encounter__box {
+  width: min(100%, 520px);
+  height: 180px;
+}
+
+@keyframes story-enemy-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
 @media (max-width: 760px) {
   .flutter-map-shell,
   .story-title-stage {
@@ -3989,6 +4103,16 @@ body[data-theme="dark"] .card-battle-card--hidden {
 
   .story-choice-grid {
     grid-template-columns: 1fr;
+  }
+
+  .story-battle-field__enemy {
+    width: min(56vw, 280px);
+  }
+
+  .story-battle-field__speech {
+    min-width: 0;
+    width: calc(100% - 1rem);
+    max-width: calc(100% - 1rem);
   }
 }
 

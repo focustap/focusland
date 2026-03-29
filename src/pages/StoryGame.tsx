@@ -5,7 +5,8 @@ import {
   DEFAULT_AVATAR_CUSTOMIZATION,
   getStoredAvatarCustomization,
   normalizeAvatarCustomization,
-  type AvatarCustomization
+  type AvatarCustomization,
+  type AvatarFacing
 } from "../lib/avatarSprites";
 import {
   DEFAULT_STORY_PROGRESS,
@@ -229,6 +230,9 @@ const StoryGame: React.FC = () => {
   const [settings, setSettings] = useState<StorySettings>(loadStorySettings());
   const [loadingSave, setLoadingSave] = useState(true);
   const [playerPos, setPlayerPos] = useState<PlayerPosition>(CAMP_START);
+  const [playerFacing, setPlayerFacing] = useState<AvatarFacing>("front");
+  const [playerMoving, setPlayerMoving] = useState(false);
+  const [walkFrameTick, setWalkFrameTick] = useState(0);
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const activeMusicRef = useRef<string | null>(null);
   const movementKeysRef = useRef<Record<string, boolean>>({});
@@ -431,14 +435,33 @@ const StoryGame: React.FC = () => {
       lastTime = time;
       const step = delta * 0.018;
 
+      let moving = false;
+      let nextFacing: AvatarFacing = playerFacing;
+
       setPlayerPos((current) => {
         let nextX = current.x;
         let nextY = current.y;
 
-        if (movementKeysRef.current.a || movementKeysRef.current.ArrowLeft) nextX -= step;
-        if (movementKeysRef.current.d || movementKeysRef.current.ArrowRight) nextX += step;
-        if (movementKeysRef.current.w || movementKeysRef.current.ArrowUp) nextY -= step;
-        if (movementKeysRef.current.s || movementKeysRef.current.ArrowDown) nextY += step;
+        if (movementKeysRef.current.a || movementKeysRef.current.ArrowLeft) {
+          nextX -= step;
+          moving = true;
+          nextFacing = "left";
+        }
+        if (movementKeysRef.current.d || movementKeysRef.current.ArrowRight) {
+          nextX += step;
+          moving = true;
+          nextFacing = "right";
+        }
+        if (movementKeysRef.current.w || movementKeysRef.current.ArrowUp) {
+          nextY -= step;
+          moving = true;
+          nextFacing = "back";
+        }
+        if (movementKeysRef.current.s || movementKeysRef.current.ArrowDown) {
+          nextY += step;
+          moving = true;
+          nextFacing = "front";
+        }
 
         nextX = Math.max(CAMP_MIN_X, Math.min(CAMP_MAX_X, nextX));
         nextY = Math.max(CAMP_MIN_Y, Math.min(CAMP_MAX_Y, nextY));
@@ -450,6 +473,12 @@ const StoryGame: React.FC = () => {
         return { x: nextX, y: nextY };
       });
 
+      setPlayerFacing(nextFacing);
+      setPlayerMoving(moving);
+      if (moving) {
+        setWalkFrameTick((current) => (current + 1) % 4);
+      }
+
       frameId = window.requestAnimationFrame(tick);
     };
 
@@ -460,7 +489,7 @@ const StoryGame: React.FC = () => {
       window.removeEventListener("keyup", onKeyUp);
       window.cancelAnimationFrame(frameId);
     };
-  }, [activeHotspot, movementUnlocked, mode, tutorialCompleted]);
+  }, [activeHotspot, movementUnlocked, mode, playerFacing, tutorialCompleted]);
 
   const handleSettingChange = (nextSettings: StorySettings) => {
     setSettings(nextSettings);
@@ -475,6 +504,9 @@ const StoryGame: React.FC = () => {
       flags: {}
     });
     setPlayerPos(CAMP_START);
+    setPlayerFacing("front");
+    setPlayerMoving(false);
+    setWalkFrameTick(0);
     setMode("playing");
     setSaveStatus("New file started. Manual save is available from the story screen.");
   };
@@ -647,6 +679,9 @@ const StoryGame: React.FC = () => {
                       customization={avatarCustomization}
                       size={104}
                       className="story-map__player-avatar"
+                      facing={playerFacing}
+                      moving={playerMoving}
+                      animationTick={walkFrameTick}
                     />
                   </div>
                   <div className="story-stage__butterfly" aria-hidden="true">
@@ -767,6 +802,15 @@ const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComp
   const [flash, setFlash] = useState(false);
   const keysRef = useRef<Record<string, boolean>>({});
   const lastHitRef = useRef(0);
+  const enemyLines = useMemo(
+    () => [
+      "Polar Bear: 'Take this!'",
+      "Polar Bear stomps the ice and growls.",
+      "Polar Bear: 'You picked the wrong igloo.'",
+      "Polar Bear snorts a frosty warning."
+    ],
+    []
+  );
 
   useEffect(() => {
     if (completed) {
@@ -856,28 +900,45 @@ const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComp
   }, [completed, pelletPositions, soul.x, soul.y]);
 
   return (
-    <div className={`story-encounter ${flash ? "story-encounter--flash" : ""}`}>
-      <div className="story-encounter__head">
-        <strong>{completed ? "Practice complete" : "Practice encounter"}</strong>
-        <span>{completed ? "Ready to continue" : "Survive 6 seconds"}</span>
-      </div>
-      <div className="story-encounter__box">
-        <div className="story-encounter__grid" />
-        {pelletPositions.map((pellet, index) => (
-          <span
-            key={index}
-            className="story-encounter__pellet"
-            style={{ left: `${pellet.x}px`, top: `${pellet.y}px` }}
+    <div className={`story-battle-shell ${flash ? "story-battle-shell--flash" : ""}`}>
+      <div className="story-battle-field">
+        <div className="story-battle-field__enemy-wrap">
+          <img
+            className={`story-battle-field__enemy ${completed ? "story-battle-field__enemy--defeated" : ""}`}
+            src={`${import.meta.env.BASE_URL}assets/story/polarbear.png`}
+            alt="Polar Bear"
           />
-        ))}
-        <span
-          className="story-encounter__soul"
-          style={{ left: `${soul.x}px`, top: `${soul.y}px` }}
-        />
-      </div>
-      <div className="story-encounter__foot">
-        <span>WASD / Arrow keys to move</span>
-        <span>{completed ? "Lesson cleared" : `Timer ${Math.ceil((6000 - elapsed) / 1000)}s`}</span>
+          <div className="story-battle-field__speech">
+            {completed
+              ? "Polar Bear: 'My den-mates are going to hear about this...'"
+              : enemyLines[Math.min(enemyLines.length - 1, Math.floor(elapsed / 1500))]}
+          </div>
+        </div>
+
+        <div className="story-battle-ui">
+          <div className="story-battle-ui__head">
+            <strong>{completed ? "Practice complete" : "Polar Bear blocks the igloo."}</strong>
+            <span>{completed ? "Flutter seems pleased." : `Survive ${Math.ceil((6000 - elapsed) / 1000)}s`}</span>
+          </div>
+          <div className="story-encounter__box">
+            <div className="story-encounter__grid" />
+            {pelletPositions.map((pellet, index) => (
+              <span
+                key={index}
+                className="story-encounter__pellet"
+                style={{ left: `${pellet.x}px`, top: `${pellet.y}px` }}
+              />
+            ))}
+            <span
+              className="story-encounter__soul"
+              style={{ left: `${soul.x}px`, top: `${soul.y}px` }}
+            />
+          </div>
+          <div className="story-battle-ui__foot">
+            <span>WASD / Arrow keys to move</span>
+            <span>{completed ? "The way is clear." : "Stay calm and dodge."}</span>
+          </div>
+        </div>
       </div>
     </div>
   );
