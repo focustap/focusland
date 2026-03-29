@@ -18,6 +18,7 @@ export type StoryProgress = {
   defiance: number;
   playerHp: number;
   bagPotions: number;
+  returnSpawns: Record<string, string>;
   updatedAt: string;
 };
 
@@ -46,6 +47,7 @@ export const DEFAULT_STORY_PROGRESS: StoryProgress = {
   defiance: 0,
   playerHp: 20,
   bagPotions: 1,
+  returnSpawns: {},
   updatedAt: new Date().toISOString()
 };
 
@@ -88,6 +90,10 @@ export async function fetchStoryProgress() {
     sceneId: row.scene_id,
     playerHp: typeof row.save_data.playerHp === "number" ? row.save_data.playerHp : 20,
     bagPotions: typeof row.save_data.bagPotions === "number" ? row.save_data.bagPotions : 1,
+    returnSpawns:
+      row.save_data.returnSpawns && typeof row.save_data.returnSpawns === "object"
+        ? row.save_data.returnSpawns
+        : {},
     updatedAt: row.updated_at
   } satisfies StoryProgress;
 }

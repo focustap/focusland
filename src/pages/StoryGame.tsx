@@ -61,6 +61,11 @@ type PlayerPosition = {
   y: number;
 };
 
+type DeathState = {
+  title: string;
+  body: string;
+};
+
 const STORY_MUSIC = {
   title: `${import.meta.env.BASE_URL}audio/story/private-temp/flutter-title.mp3`,
   night: `${import.meta.env.BASE_URL}audio/story/private-temp/flutter-night.mp3`,
@@ -166,7 +171,11 @@ function normalizeLoadedProgress(progress: StoryProgress): StoryProgress {
     chapterId: "chapter-1",
     sceneId: mapLegacySceneId(progress.sceneId),
     playerHp: typeof progress.playerHp === "number" ? progress.playerHp : 20,
-    bagPotions: typeof progress.bagPotions === "number" ? progress.bagPotions : 1
+    bagPotions: typeof progress.bagPotions === "number" ? progress.bagPotions : 1,
+    returnSpawns:
+      progress.returnSpawns && typeof progress.returnSpawns === "object"
+        ? progress.returnSpawns
+        : {}
   };
 }
 
@@ -242,7 +251,7 @@ function getOldManScene(tutorialCompleted: boolean, playerHp: number): DialogueS
       "The cabin smells like cedar smoke and old paper. An old man looks up from the stove, studies you for a moment, and then talks as if you arrived in the middle of a story he has already told a hundred times. " +
       "The name you need to know is Velmora. Villages whisper it every winter now. Gangs gather under that banner, roads go dark, and people disappear between one town and the next. " +
       (playerHp < 20
-        ? "His eyes drop to your bruises. \"If that polar bear clipped you,\" he adds, \"sleeping by my fire will put you back together by morning.\""
+        ? "His eyes drop to your bruises. \"If that polar bear clipped you,\" he adds, \"sleeping by my fire will put you back together by morning. And when you turn in here, that's your safe point too. If the woods finish the job later, you'll wake back up where you last slept.\""
         : ""),
     choices: [
       {
@@ -278,12 +287,12 @@ function getOldManMoreScene(tutorialCompleted: boolean, playerHp: number): Dialo
       "The old man shakes his head. Nobody agrees on what Velmora wants, only on what follows behind the name: burned storehouses, frightened caravans, and gangs bold enough to move openly through the back roads. " +
       "He tells you the villages are holding together for now, but only barely. If someone does not push back, spring will never feel safe again. " +
       (playerHp < 20
-        ? "\"And don't be proud about those cuts,\" he says. \"A proper night's sleep here will bring your strength right back.\""
+        ? "\"And don't be proud about those cuts,\" he says. \"A proper night's sleep here will bring your strength right back. Rest here, and if you die out there after that, this cabin is where you'll start again.\""
         : ""),
     note: tutorialCompleted
       ? (playerHp < 20
-          ? "The old man notices your bruises. He says a real night's sleep by the fire will get you back to full strength."
-          : "You've seen enough of the camp to ask for a place to rest.")
+          ? "The old man notices your bruises. He says a real night's sleep by the fire will get you back to full strength, auto-save your progress, and become your return point if you die."
+          : "You've seen enough of the camp to ask for a place to rest. Sleeping here will auto-save your progress.")
       : "This conversation is worldbuilding only. Check the igloo before you ask to stay the night.",
     choices: [
       ...(tutorialCompleted
@@ -312,7 +321,7 @@ const SLEEP_TRANSITION_SCENE: DialogueScene = {
   body:
     "The old man points to the bed near the wall and tells you to get some sleep while the fire still has life in it. " +
     "You drift off to the sound of the stove, the crackle of the hearth, and the wind fading somewhere beyond the logs. When you wake, the blue of the night has thinned toward morning.",
-  note: "Stepping outside will bring you back to camp at sunrise.",
+  note: "Stepping outside will bring you back to camp at sunrise, fully healed, and your progress will auto-save here.",
   choices: [
     {
       id: "wake-up",
@@ -361,6 +370,7 @@ const StoryGame: React.FC = () => {
   const [saveStatus, setSaveStatus] = useState("Checking save data...");
   const [settings, setSettings] = useState<StorySettings>(loadStorySettings());
   const [loadingSave, setLoadingSave] = useState(true);
+  const [deathState, setDeathState] = useState<DeathState | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const activeMusicRef = useRef<string | null>(null);
 
@@ -518,6 +528,42 @@ const StoryGame: React.FC = () => {
     persistStorySettings(nextSettings);
   };
 
+  const loadLastSave = async () => {
+    setSaveStatus("Loading last save...");
+    try {
+      const savedProgress = await fetchStoryProgress();
+      if (!savedProgress) {
+        setDeathState(null);
+        setMode("title");
+        setSaveStatus("No save found yet. Start a new file to create one.");
+        return;
+      }
+
+      const normalized = normalizeLoadedProgress(savedProgress);
+      setProgress(normalized);
+      setHasExistingSave(true);
+      setDeathState(null);
+      setMode("playing");
+      setSaveStatus("Last save loaded.");
+    } catch {
+      setSaveStatus("Could not load the last save.");
+    }
+  };
+
+  const autoSaveCheckpoint = async (nextProgress: StoryProgress, successMessage: string) => {
+    try {
+      const saved = await saveStoryProgress({
+        ...nextProgress,
+        chapterId: "chapter-1"
+      });
+      setProgress(saved);
+      setHasExistingSave(true);
+      setSaveStatus(successMessage);
+    } catch {
+      setSaveStatus("Rested until morning, but the auto-save did not go through.");
+    }
+  };
+
   const startNewGame = () => {
     setProgress({
       ...DEFAULT_STORY_PROGRESS,
@@ -525,13 +571,16 @@ const StoryGame: React.FC = () => {
       sceneId: "wake-intro",
       flags: {},
       playerHp: 20,
-      bagPotions: 1
+      bagPotions: 1,
+      returnSpawns: {}
     });
+    setDeathState(null);
     setMode("playing");
     setSaveStatus("New file started. Manual save is available from the story screen.");
   };
 
   const continueGame = () => {
+    setDeathState(null);
     setMode("playing");
   };
 
@@ -563,6 +612,8 @@ const StoryGame: React.FC = () => {
   };
 
   const goToScene = (nextSceneId: SceneId) => {
+    let autoSaveTarget: StoryProgress | null = null;
+
     setProgress((current) => {
       const nextFlags = { ...current.flags };
 
@@ -571,7 +622,7 @@ const StoryGame: React.FC = () => {
         nextFlags.pending_sunrise_transition = true;
       }
 
-      return {
+      const nextProgress = {
         ...current,
         sceneId: nextSceneId,
         playerHp: nextSceneId === "camp-free" && current.sceneId === "sleep-transition"
@@ -580,16 +631,26 @@ const StoryGame: React.FC = () => {
         flags: nextFlags,
         updatedAt: new Date().toISOString()
       };
+
+      if (nextSceneId === "camp-free" && current.sceneId === "sleep-transition") {
+        autoSaveTarget = nextProgress;
+      }
+
+      return nextProgress;
     });
 
     if (nextSceneId === "camp-free") {
       setSaveStatus(currentSceneId === "sleep-transition"
-        ? "Morning breaks over the camp."
+        ? "Morning breaks over the camp. Saving..."
         : "Movement unlocked. Explore the camp.");
     }
 
     if (nextSceneId === "sleep-transition") {
       setSaveStatus("You settle in by the fire and wait for morning.");
+    }
+
+    if (autoSaveTarget) {
+      void autoSaveCheckpoint(autoSaveTarget, "Morning breaks over the camp. Auto-save complete.");
     }
   };
 
@@ -739,6 +800,7 @@ const StoryGame: React.FC = () => {
                       customization={avatarCustomization}
                       variant={campIsMorning ? "day" : "night"}
                       playSunriseTransition={sunrisePending}
+                      spawnPointId={progress.returnSpawns.camp}
                       onEnterCabin={() => {
                         setProgress((current) => ({
                           ...current,
@@ -747,11 +809,22 @@ const StoryGame: React.FC = () => {
                           flags: {
                             ...current.flags,
                             house_visited: true
+                          },
+                          returnSpawns: {
+                            ...current.returnSpawns,
+                            camp: "cabin"
                           }
                         }));
                         setSaveStatus("You step inside the cabin.");
                       }}
                       onEnterIgloo={() => {
+                        setProgress((current) => ({
+                          ...current,
+                          returnSpawns: {
+                            ...current.returnSpawns,
+                            camp: "igloo"
+                          }
+                        }));
                         if (!tutorialCompleted) {
                           goToScene("igloo-encounter");
                           setSaveStatus("The air snaps cold as the igloo challenge begins.");
@@ -761,7 +834,16 @@ const StoryGame: React.FC = () => {
                       }}
                       onEnterForest={() => {
                         if (forestUnlocked) {
-                          goToScene("forest-free");
+                          setProgress((current) => ({
+                            ...current,
+                            sceneId: "forest-free",
+                            updatedAt: new Date().toISOString(),
+                            returnSpawns: {
+                              ...current.returnSpawns,
+                              camp: "forest",
+                              forest: "south"
+                            }
+                          }));
                           setSaveStatus("You head down the forest path.");
                         }
                       }}
@@ -785,13 +867,18 @@ const StoryGame: React.FC = () => {
                   <>
                     <FlutterForestExploration
                       customization={avatarCustomization}
+                      spawnPointId={progress.returnSpawns.forest}
                       treeEncounterComplete={forestTreeDone}
                       drunkEncounterComplete={forestDrunkDone}
                       onTriggerTreeEncounter={() => {
                         setProgress((current) => ({
                           ...current,
                           sceneId: "forest-tree-encounter",
-                          updatedAt: new Date().toISOString()
+                          updatedAt: new Date().toISOString(),
+                          returnSpawns: {
+                            ...current.returnSpawns,
+                            forest: "tree"
+                          }
                         }));
                         setSaveStatus("A snow-laden tree tears itself out of the silence.");
                       }}
@@ -799,7 +886,11 @@ const StoryGame: React.FC = () => {
                         setProgress((current) => ({
                           ...current,
                           sceneId: "forest-drunk-encounter",
-                          updatedAt: new Date().toISOString()
+                          updatedAt: new Date().toISOString(),
+                          returnSpawns: {
+                            ...current.returnSpawns,
+                            forest: "drunk"
+                          }
                         }));
                         setSaveStatus("Someone lurches into the trail ahead.");
                       }}
@@ -831,17 +922,20 @@ const StoryGame: React.FC = () => {
                           ...current.flags,
                           tutorial_completed: true
                         },
+                        returnSpawns: {
+                          ...current.returnSpawns,
+                          camp: "igloo"
+                        },
                         updatedAt: new Date().toISOString()
                       }));
                       setSaveStatus("Practice complete. Explore the camp again.");
                     }}
                     onLose={() => {
-                      setProgress((current) => ({
-                        ...current,
-                        sceneId: "camp-free",
-                        updatedAt: new Date().toISOString()
-                      }));
-                      setSaveStatus("The polar bear knocks you back into the snow.");
+                      setDeathState({
+                        title: "You Died",
+                        body: "The polar bear slams you into the snow. You'll return to your last save."
+                      });
+                      setSaveStatus("You died. Load your last save to continue.");
                     }}
                     playerHp={progress.playerHp}
                     bagPotions={progress.bagPotions}
@@ -863,17 +957,20 @@ const StoryGame: React.FC = () => {
                           ...current.flags,
                           forest_tree_done: true
                         },
+                        returnSpawns: {
+                          ...current.returnSpawns,
+                          forest: "tree"
+                        },
                         updatedAt: new Date().toISOString()
                       }));
                       setSaveStatus("The snow tree splinters and the trail opens again.");
                     }}
                     onLose={() => {
-                      setProgress((current) => ({
-                        ...current,
-                        sceneId: "forest-free",
-                        updatedAt: new Date().toISOString()
-                      }));
-                      setSaveStatus("The snow tree drives you back down the trail.");
+                      setDeathState({
+                        title: "You Died",
+                        body: "The snow tree tears through you with ice and bark. You'll return to your last save."
+                      });
+                      setSaveStatus("You died. Load your last save to continue.");
                     }}
                     playerHp={progress.playerHp}
                     bagPotions={progress.bagPotions}
@@ -890,22 +987,25 @@ const StoryGame: React.FC = () => {
                     onComplete={() => {
                       setProgress((current) => ({
                         ...current,
-                          sceneId: "forest-after-drunk",
-                          flags: {
-                            ...current.flags,
-                            forest_drunk_done: true
+                        sceneId: "forest-after-drunk",
+                        flags: {
+                          ...current.flags,
+                          forest_drunk_done: true
+                        },
+                        returnSpawns: {
+                          ...current.returnSpawns,
+                          forest: "drunk"
                         },
                         updatedAt: new Date().toISOString()
                       }));
                       setSaveStatus("The drunk stumbles off the path, muttering to himself.");
                     }}
                     onLose={() => {
-                      setProgress((current) => ({
-                        ...current,
-                        sceneId: "forest-free",
-                        updatedAt: new Date().toISOString()
-                      }));
-                      setSaveStatus("The drunk cracks you with a bottle and you stumble back.");
+                      setDeathState({
+                        title: "You Died",
+                        body: "The bottle connects hard and the forest goes dark. You'll return to your last save."
+                      });
+                      setSaveStatus("You died. Load your last save to continue.");
                     }}
                     playerHp={progress.playerHp}
                     bagPotions={progress.bagPotions}
@@ -932,13 +1032,13 @@ const StoryGame: React.FC = () => {
                     <p>
                       {forestMovementUnlocked
                         ? (forestDrunkDone
-                            ? "Flutter keeps checking in now. Every so often it asks if you're steady, if you want it closer, or if you need a second before the two of you keep walking."
+                            ? "Flutter keeps checking in now. Every so often it asks if you're steady, if you want it closer, if you need a second before the two of you keep walking, or if you want it to keep talking so the road feels less empty."
                             : forestTreeDone
-                              ? "Flutter stays a little nearer after the tree fight and fills the quiet with small comments about the snow, the path, and whether you're still doing alright."
-                              : "The trees crowd in on both sides of the path. Flutter chatters lightly while you move, pointing out the trail and asking now and then if you're holding up.")
+                              ? "Flutter stays a little nearer after the tree fight and fills the quiet with small comments about the snow, the path, whether you're still doing alright, and whether it should scout a little farther ahead."
+                              : "The trees crowd in on both sides of the path. Flutter chatters lightly while you move, pointing out the trail, asking if you're cold, and checking now and then that you're holding up.")
                         : campIsMorning
-                        ? "The camp is brighter now. Flutter sounds relieved to have daylight back and keeps your spirits up with little observations about the snow and the road ahead."
-                        : "The camp is quiet for now. Flutter keeps close, talking just enough to keep the silence from settling too hard around you."}
+                        ? "The camp is brighter now. Flutter sounds relieved to have daylight back and keeps your spirits up with little observations about the snow, the road ahead, and whether you feel more like yourself after resting."
+                        : "The camp is quiet for now. Flutter keeps close, talking just enough to keep the silence from settling too hard around you and checking that you're alright after waking up alone out here."}
                     </p>
                     <p className="story-subtle">
                       Velmora explained: {houseVisited ? "yes" : "not yet"} | Fight tutorial complete: {tutorialCompleted ? "yes" : "not yet"} | Morning: {campIsMorning ? "yes" : "not yet"} | Forest fights: {Number(forestTreeDone) + Number(forestDrunkDone)}/2 | HP: {progress.playerHp}/20 | Potions: {progress.bagPotions}
@@ -963,6 +1063,34 @@ const StoryGame: React.FC = () => {
               </div>
             ) : null}
 
+            {deathState ? (
+              <div className="story-death-screen">
+                <div className="story-death-screen__panel">
+                  <span className="story-kicker">{deathState.title}</span>
+                  <h3>{deathState.title}</h3>
+                  <p>{deathState.body}</p>
+                  <p className="story-subtle">
+                    Death sends you back to your last save. Sleeping in the cabin creates that checkpoint.
+                  </p>
+                  <div className="button-row">
+                    <button type="button" className="primary-button" onClick={() => void loadLastSave()}>
+                      Load Last Save
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        setDeathState(null);
+                        setMode("title");
+                      }}
+                    >
+                      Title Screen
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <p className="info">{saveStatus}</p>
           </section>
         ) : null}
@@ -975,6 +1103,7 @@ type FlutterCampExplorationProps = {
   customization: AvatarCustomization;
   variant: "night" | "day";
   playSunriseTransition: boolean;
+  spawnPointId?: string;
   onEnterCabin: () => void;
   onEnterIgloo: () => void;
   onEnterForest: () => void;
@@ -987,6 +1116,7 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
   customization,
   variant,
   playSunriseTransition,
+  spawnPointId,
   onEnterCabin,
   onEnterIgloo,
   onEnterForest,
@@ -1026,7 +1156,13 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
     const walkSpeed = 220;
     const arrivalThreshold = 14;
     const collisionRadius = 20;
-    const spawn = { x: 500, y: 735 };
+    const spawnPoints = {
+      center: { x: 500, y: 735 },
+      cabin: { x: 291, y: 388 },
+      igloo: { x: 778, y: 526 },
+      forest: { x: 498, y: 852 }
+    } as const;
+    const spawn = spawnPoints[(spawnPointId as keyof typeof spawnPoints) ?? "center"] ?? spawnPoints.center;
     const blockers = [
       new Phaser.Geom.Rectangle(0, 0, width, 108),
       new Phaser.Geom.Rectangle(0, 0, 58, height),
@@ -1329,13 +1465,14 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
         gameRef.current = null;
       }
     };
-  }, [assetBase, customization, playSunriseTransition, variant]);
+  }, [assetBase, customization, playSunriseTransition, spawnPointId, variant]);
 
   return <div ref={containerRef} className="flutter-phaser-camp" />;
 };
 
 type FlutterForestExplorationProps = {
   customization: AvatarCustomization;
+  spawnPointId?: string;
   treeEncounterComplete: boolean;
   drunkEncounterComplete: boolean;
   onTriggerTreeEncounter: () => void;
@@ -1345,6 +1482,7 @@ type FlutterForestExplorationProps = {
 
 const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
   customization,
+  spawnPointId,
   treeEncounterComplete,
   drunkEncounterComplete,
   onTriggerTreeEncounter,
@@ -1383,7 +1521,12 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
     const walkSpeed = 220;
     const arrivalThreshold = 14;
     const collisionRadius = 18;
-    const spawn = { x: 506, y: 1620 };
+    const spawnPoints = {
+      south: { x: 506, y: 1620 },
+      tree: { x: 512, y: 1260 },
+      drunk: { x: 512, y: 760 }
+    } as const;
+    const spawn = spawnPoints[(spawnPointId as keyof typeof spawnPoints) ?? "south"] ?? spawnPoints.south;
     const blockers = [
       new Phaser.Geom.Rectangle(0, 0, 118, height),
       new Phaser.Geom.Rectangle(906, 0, 118, height)
@@ -1578,7 +1721,7 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
         gameRef.current = null;
       }
     };
-  }, [assetBase, customization, drunkEncounterComplete, onStatusChange, onTriggerDrunkEncounter, onTriggerTreeEncounter, treeEncounterComplete]);
+  }, [assetBase, customization, drunkEncounterComplete, onStatusChange, onTriggerDrunkEncounter, onTriggerTreeEncounter, spawnPointId, treeEncounterComplete]);
 
   return <div ref={containerRef} className="flutter-phaser-camp" />;
 };

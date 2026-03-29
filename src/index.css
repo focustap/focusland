@@ -3101,6 +3101,38 @@ body[data-theme="dark"] .card-battle-card--hidden {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.story-death-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(2, 6, 23, 0.82);
+  backdrop-filter: blur(6px);
+}
+
+.story-death-screen__panel {
+  width: min(100%, 520px);
+  display: grid;
+  gap: 0.9rem;
+  border-radius: 1.4rem;
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  background: linear-gradient(180deg, rgba(22, 12, 18, 0.96), rgba(10, 10, 16, 0.98));
+  padding: 1.4rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
+}
+
+.story-death-screen__panel h3 {
+  margin: 0;
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  color: #fecaca;
+}
+
+.story-death-screen__panel p {
+  margin: 0;
+}
+
 .story-choice-card {
   color: #f8fafc;
   text-align: left;
