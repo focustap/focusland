@@ -31,7 +31,8 @@ type SceneId =
   | "igloo-brief"
   | "igloo-encounter"
   | "cabin-oldman"
-  | "cabin-oldman-more";
+  | "cabin-oldman-more"
+  | "sleep-transition";
 
 type DialogueChoice = {
   id: string;
@@ -58,7 +59,9 @@ type PlayerPosition = {
 
 const STORY_MUSIC = {
   title: `${import.meta.env.BASE_URL}audio/story/private-temp/flutter-title.mp3`,
+  night: `${import.meta.env.BASE_URL}audio/story/private-temp/flutter-night.mp3`,
   overworld: `${import.meta.env.BASE_URL}audio/story/private-temp/flutter-overworld.mp3`,
+  cabin: `${import.meta.env.BASE_URL}audio/story/private-temp/flutter-cabin.mp3`,
   tense: `${import.meta.env.BASE_URL}audio/story/private-temp/flutter-tense.mp3`
 } as const;
 
@@ -83,6 +86,7 @@ function mapLegacySceneId(sceneId: string): SceneId {
     case "igloo-encounter":
     case "cabin-oldman":
     case "cabin-oldman-more":
+    case "sleep-transition":
       return sceneId;
     default:
       return "wake-intro";
@@ -158,41 +162,79 @@ const IGLOO_BRIEF_SCENE: DialogueScene = {
   ]
 };
 
-const OLD_MAN_SCENE: DialogueScene = {
-  id: "cabin-oldman",
-  title: "The Cabin Lamp",
-  speaker: "Old Man",
-  location: "Inside the cabin",
-  body:
-    "The cabin smells like cedar smoke and old paper. An old man looks up from the stove, studies you for a moment, and then talks as if you arrived in the middle of a story he has already told a hundred times. " +
-    "The name you need to know is Velmora. Villages whisper it every winter now. Gangs gather under that banner, roads go dark, and people disappear between one town and the next.",
-  choices: [
-    {
-      id: "ask-velmora",
-      label: "Ask what Velmora actually wants.",
-      nextSceneId: "cabin-oldman-more"
-    },
-    {
-      id: "leave-cabin",
-      label: "Thank him and head back outside.",
-      nextSceneId: "camp-free"
-    }
-  ]
-};
+function getOldManScene(tutorialCompleted: boolean): DialogueScene {
+  return {
+    id: "cabin-oldman",
+    title: "The Cabin Lamp",
+    speaker: "Old Man",
+    location: "Inside the cabin",
+    body:
+      "The cabin smells like cedar smoke and old paper. An old man looks up from the stove, studies you for a moment, and then talks as if you arrived in the middle of a story he has already told a hundred times. " +
+      "The name you need to know is Velmora. Villages whisper it every winter now. Gangs gather under that banner, roads go dark, and people disappear between one town and the next.",
+    choices: [
+      {
+        id: "ask-velmora",
+        label: "Ask what Velmora actually wants.",
+        nextSceneId: "cabin-oldman-more"
+      },
+      ...(tutorialCompleted
+        ? [{
+            id: "ask-to-rest",
+            label: "Ask if you can stay here until morning.",
+            nextSceneId: "sleep-transition" as const
+          }]
+        : []),
+      {
+        id: "leave-cabin",
+        label: "Thank him and head back outside.",
+        nextSceneId: "camp-free"
+      }
+    ]
+  };
+}
 
-const OLD_MAN_MORE_SCENE: DialogueScene = {
-  id: "cabin-oldman-more",
-  title: "Velmora",
+function getOldManMoreScene(tutorialCompleted: boolean): DialogueScene {
+  return {
+    id: "cabin-oldman-more",
+    title: "Velmora",
+    speaker: "Old Man",
+    location: "Inside the cabin",
+    body:
+      "The old man shakes his head. Nobody agrees on what Velmora wants, only on what follows behind the name: burned storehouses, frightened caravans, and gangs bold enough to move openly through the back roads. " +
+      "He tells you the villages are holding together for now, but only barely. If someone does not push back, spring will never feel safe again.",
+    note: tutorialCompleted
+      ? "You've seen enough of the camp to ask for a place to rest."
+      : "This conversation is worldbuilding only. Check the igloo before you ask to stay the night.",
+    choices: [
+      ...(tutorialCompleted
+        ? [{
+            id: "rest-after-lore",
+            label: "Ask if you can sleep here until morning.",
+            nextSceneId: "sleep-transition" as const
+          }]
+        : []),
+      {
+        id: "leave-after-lore",
+        label: "Step back outside into the snow.",
+        nextSceneId: "camp-free"
+      }
+    ]
+  };
+}
+
+const SLEEP_TRANSITION_SCENE: DialogueScene = {
+  id: "sleep-transition",
+  title: "Before Sunrise",
   speaker: "Old Man",
   location: "Inside the cabin",
   body:
-    "The old man shakes his head. Nobody agrees on what Velmora wants, only on what follows behind the name: burned storehouses, frightened caravans, and gangs bold enough to move openly through the back roads. " +
-    "He tells you the villages are holding together for now, but only barely. If someone does not push back, spring will never feel safe again.",
-  note: "This conversation is worldbuilding only. Nothing you say here changes the route.",
+    "The old man points to the bed near the wall and tells you to get some sleep while the fire still has life in it. " +
+    "You drift off to the sound of the stove, the crackle of the hearth, and the wind fading somewhere beyond the logs. When you wake, the blue of the night has thinned toward morning.",
+  note: "Stepping outside will bring you back to camp at sunrise.",
   choices: [
     {
-      id: "leave-after-lore",
-      label: "Step back outside into the snow.",
+      id: "wake-up",
+      label: "Step outside.",
       nextSceneId: "camp-free"
     }
   ]
@@ -217,6 +259,12 @@ const StoryGame: React.FC = () => {
   const movementUnlocked = currentSceneId === "camp-free";
   const tutorialCompleted = Boolean(progress.flags.tutorial_completed);
   const houseVisited = Boolean(progress.flags.house_visited);
+  const campIsMorning = Boolean(progress.flags.morning_arrived);
+  const sunrisePending = Boolean(progress.flags.pending_sunrise_transition);
+  const inCabinScene =
+    currentSceneId === "cabin-oldman" ||
+    currentSceneId === "cabin-oldman-more" ||
+    currentSceneId === "sleep-transition";
 
   const currentDialogueScene = useMemo<DialogueScene | null>(() => {
     switch (currentSceneId) {
@@ -227,13 +275,15 @@ const StoryGame: React.FC = () => {
       case "igloo-brief":
         return IGLOO_BRIEF_SCENE;
       case "cabin-oldman":
-        return OLD_MAN_SCENE;
+        return getOldManScene(tutorialCompleted);
       case "cabin-oldman-more":
-        return OLD_MAN_MORE_SCENE;
+        return getOldManMoreScene(tutorialCompleted);
+      case "sleep-transition":
+        return SLEEP_TRANSITION_SCENE;
       default:
         return null;
     }
-  }, [currentSceneId, playerName]);
+  }, [currentSceneId, playerName, tutorialCompleted]);
 
   useEffect(() => {
     let cancelled = false;
@@ -311,7 +361,11 @@ const StoryGame: React.FC = () => {
         ? STORY_MUSIC.title
         : currentSceneId === "igloo-encounter"
           ? STORY_MUSIC.tense
-          : STORY_MUSIC.overworld;
+          : inCabinScene
+            ? STORY_MUSIC.cabin
+            : campIsMorning
+              ? STORY_MUSIC.overworld
+              : STORY_MUSIC.night;
 
     if (!musicRef.current) {
       const audio = new Audio(nextTrack);
@@ -332,7 +386,7 @@ const StoryGame: React.FC = () => {
       activeMusicRef.current = nextTrack;
     }
     void audio.play().catch(() => {});
-  }, [currentSceneId, mode, settings.ambientAudio]);
+  }, [campIsMorning, currentSceneId, inCabinScene, mode, settings.ambientAudio]);
 
   useEffect(() => {
     return () => {
@@ -379,14 +433,30 @@ const StoryGame: React.FC = () => {
   };
 
   const goToScene = (nextSceneId: SceneId) => {
-    setProgress((current) => ({
-      ...current,
-      sceneId: nextSceneId,
-      updatedAt: new Date().toISOString()
-    }));
+    setProgress((current) => {
+      const nextFlags = { ...current.flags };
+
+      if (nextSceneId === "camp-free" && current.sceneId === "sleep-transition") {
+        nextFlags.morning_arrived = true;
+        nextFlags.pending_sunrise_transition = true;
+      }
+
+      return {
+        ...current,
+        sceneId: nextSceneId,
+        flags: nextFlags,
+        updatedAt: new Date().toISOString()
+      };
+    });
 
     if (nextSceneId === "camp-free") {
-      setSaveStatus("Movement unlocked. Explore the camp.");
+      setSaveStatus(currentSceneId === "sleep-transition"
+        ? "Morning breaks over the camp."
+        : "Movement unlocked. Explore the camp.");
+    }
+
+    if (nextSceneId === "sleep-transition") {
+      setSaveStatus("You settle in by the fire and wait for morning.");
     }
   };
 
@@ -506,7 +576,7 @@ const StoryGame: React.FC = () => {
                     ?? (currentSceneId === "camp-free" ? "Snowbound Clearing" : "Practice Encounter")}
                 </h2>
                 <p className="story-subtle">
-                  {currentDialogueScene?.location ?? "Forest edge camp"} | {movementUnlocked ? "Exploration" : "Conversation"}
+                  {currentDialogueScene?.location ?? (campIsMorning ? "Forest edge camp" : "Night camp")} | {movementUnlocked ? "Exploration" : "Conversation"}
                 </p>
               </div>
               <div className="button-row">
@@ -525,6 +595,8 @@ const StoryGame: React.FC = () => {
                   <>
                     <FlutterCampExploration
                       customization={avatarCustomization}
+                      variant={campIsMorning ? "day" : "night"}
+                      playSunriseTransition={sunrisePending}
                       onEnterCabin={() => {
                         setProgress((current) => ({
                           ...current,
@@ -545,14 +617,25 @@ const StoryGame: React.FC = () => {
                           setSaveStatus("The igloo is quiet now.");
                         }
                       }}
+                      onSunriseTransitionComplete={() => {
+                        setProgress((current) => ({
+                          ...current,
+                          flags: {
+                            ...current.flags,
+                            pending_sunrise_transition: false
+                          }
+                        }));
+                      }}
                       onStatusChange={setSaveStatus}
                     />
                     <div className="story-stage__hint">
-                      Click the snow to move. Click the cabin or igloo to enter.
+                      Click the snow to move. Walk to the cabin or igloo, then press E to enter.
                     </div>
                   </>
+                ) : inCabinScene ? (
+                  <div className="story-map story-map--cabininside" />
                 ) : (
-                  <div className="story-map story-map--snowcamp">
+                  <div className={`story-map ${campIsMorning ? "story-map--snowcamp" : "story-map--snowcamp-night"}`}>
                     <div className="story-stage__butterfly" aria-hidden="true">
                       <span />
                       <span />
@@ -590,11 +673,12 @@ const StoryGame: React.FC = () => {
                   <>
                     <div className="story-dialogue__speaker">Flutter</div>
                     <p>
-                      The camp is quiet for now. The cabin still has a lamp in the window,
-                      and the igloo is the only other place here that looks in use.
+                      {campIsMorning
+                        ? "The camp is brighter now. The cabin still has a lamp in the window, and the igloo is the only other place here that looks in use."
+                        : "The camp is quiet for now. The cabin still has a lamp in the window, and the igloo is the only other place here that looks in use."}
                     </p>
                     <p className="story-subtle">
-                      Velmora explained: {houseVisited ? "yes" : "not yet"} | Fight tutorial complete: {tutorialCompleted ? "yes" : "not yet"}
+                      Velmora explained: {houseVisited ? "yes" : "not yet"} | Fight tutorial complete: {tutorialCompleted ? "yes" : "not yet"} | Morning: {campIsMorning ? "yes" : "not yet"}
                     </p>
                   </>
                 )}
@@ -688,6 +772,7 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
     let targetX: number | null = null;
     let targetY: number | null = null;
     let butterfly: Phaser.GameObjects.Container | null = null;
+    let butterflyBob: Phaser.GameObjects.Container | null = null;
     let currentHotspot: "cabin" | "igloo" | null = null;
     let hotspotHint: Phaser.GameObjects.Text | null = null;
 
@@ -741,7 +826,8 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
         const leftWing = this.add.ellipse(-7, 0, 12, 10, 0xe7f6ff, 0.85).setAngle(-18);
         const rightWing = this.add.ellipse(7, 0, 12, 10, 0xe7f6ff, 0.85).setAngle(18);
         const glow = this.add.circle(0, 0, 3.5, 0xa9e6ff, 0.95);
-        butterfly = this.add.container(spawn.x - 18, spawn.y - 10, [leftWing, rightWing, glow]).setDepth(9);
+        butterflyBob = this.add.container(0, 0, [leftWing, rightWing, glow]);
+        butterfly = this.add.container(spawn.x - 18, spawn.y - 10, [butterflyBob]).setDepth(9);
 
         this.tweens.add({
           targets: [leftWing, rightWing],
@@ -753,8 +839,8 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
         });
 
         this.tweens.add({
-          targets: butterfly,
-          y: butterfly.y - 6,
+          targets: butterflyBob,
+          y: -6,
           yoyo: true,
           repeat: -1,
           duration: 900,
@@ -833,6 +919,16 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
 
         if (targetX == null || targetY == null) {
           updateAvatarRender(player, customization, player.facing, false);
+          if (butterfly) {
+            const idleOffsets = {
+              front: { x: -16, y: -8 },
+              back: { x: 16, y: 12 },
+              left: { x: 18, y: 2 },
+              right: { x: -18, y: 2 }
+            } as const;
+            const offset = idleOffsets[player.facing];
+            butterfly.setPosition(player.container.x + offset.x, player.container.y - logicalYOffset + offset.y);
+          }
           return;
         }
 
