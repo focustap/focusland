@@ -649,36 +649,38 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
       return;
     }
 
-    const width = 768;
-    const height = 560;
+    const width = 1024;
+    const height = 1024;
     const logicalYOffset = 18;
-    const walkSpeed = 165;
-    const arrivalThreshold = 10;
-    const collisionRadius = 14;
-    const spawn = { x: 376, y: 398 };
+    const walkSpeed = 220;
+    const arrivalThreshold = 14;
+    const collisionRadius = 20;
+    const spawn = { x: 500, y: 735 };
     const blockers = [
-      new Phaser.Geom.Rectangle(0, 0, width, 92),
-      new Phaser.Geom.Rectangle(0, 0, 44, height),
-      new Phaser.Geom.Rectangle(724, 0, 44, height),
-      new Phaser.Geom.Rectangle(76, 104, 170, 118),
-      new Phaser.Geom.Rectangle(556, 186, 116, 94),
-      new Phaser.Geom.Rectangle(505, 382, 208, 128),
-      new Phaser.Geom.Rectangle(326, 278, 86, 66)
+      new Phaser.Geom.Rectangle(0, 0, width, 132),
+      new Phaser.Geom.Rectangle(0, 0, 86, height),
+      new Phaser.Geom.Rectangle(938, 0, 86, height),
+      new Phaser.Geom.Rectangle(122, 140, 274, 206),
+      new Phaser.Geom.Rectangle(692, 286, 208, 186),
+      new Phaser.Geom.Rectangle(601, 705, 365, 250),
+      new Phaser.Geom.Rectangle(436, 454, 156, 104),
+      new Phaser.Geom.Rectangle(196, 674, 94, 94),
+      new Phaser.Geom.Rectangle(760, 618, 92, 90)
     ];
     const buildings = [
       {
         name: "cabin",
-        bounds: new Phaser.Geom.Rectangle(102, 124, 180, 124),
-        entranceX: 188,
-        entranceY: 244,
-        interactBounds: new Phaser.Geom.Rectangle(154, 226, 58, 42)
+        bounds: new Phaser.Geom.Rectangle(126, 146, 266, 196),
+        entranceX: 291,
+        entranceY: 362,
+        interactBounds: new Phaser.Geom.Rectangle(258, 340, 74, 48)
       },
       {
         name: "igloo",
-        bounds: new Phaser.Geom.Rectangle(542, 184, 130, 118),
-        entranceX: 587,
-        entranceY: 301,
-        interactBounds: new Phaser.Geom.Rectangle(560, 280, 58, 40)
+        bounds: new Phaser.Geom.Rectangle(691, 288, 214, 188),
+        entranceX: 778,
+        entranceY: 498,
+        interactBounds: new Phaser.Geom.Rectangle(744, 476, 84, 52)
       }
     ] as const;
 
@@ -757,8 +759,8 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
             return;
           }
 
-          targetX = Phaser.Math.Clamp(pointer.x, 24, width - 24);
-          targetY = Phaser.Math.Clamp(pointer.y - logicalYOffset, 150, height - 34);
+          targetX = Phaser.Math.Clamp(pointer.x, 28, width - 28);
+          targetY = Phaser.Math.Clamp(pointer.y - logicalYOffset, 146, height - 28);
 
           for (const building of buildings) {
             if (building.bounds.contains(pointer.x, pointer.y)) {
@@ -842,8 +844,8 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
 
         const step = (walkSpeed * delta) / 1000;
         const moveDistance = Math.min(step, distance);
-        const nextX = Phaser.Math.Clamp(currentX + (dx / distance) * moveDistance, 20, width - 20);
-        const nextY = Phaser.Math.Clamp(currentY + (dy / distance) * moveDistance, 146, height - 26);
+        const nextX = Phaser.Math.Clamp(currentX + (dx / distance) * moveDistance, 28, width - 28);
+        const nextY = Phaser.Math.Clamp(currentY + (dy / distance) * moveDistance, 146, height - 28);
         const resolvedStep = resolveBlockedStep(currentX, currentY, nextX, nextY);
 
         if (resolvedStep.blocked) {
