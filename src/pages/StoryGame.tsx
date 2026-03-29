@@ -63,6 +63,8 @@ const STORY_MUSIC = {
 } as const;
 
 const CHAPTER_LABEL = "Chapter 1: Snowbound Clearing";
+const ENCOUNTER_BOX_WIDTH = 520;
+const ENCOUNTER_BOX_HEIGHT = 180;
 
 function mapLegacySceneId(sceneId: string): SceneId {
   switch (sceneId) {
@@ -657,15 +659,13 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
     const collisionRadius = 20;
     const spawn = { x: 500, y: 735 };
     const blockers = [
-      new Phaser.Geom.Rectangle(0, 0, width, 132),
-      new Phaser.Geom.Rectangle(0, 0, 86, height),
-      new Phaser.Geom.Rectangle(938, 0, 86, height),
-      new Phaser.Geom.Rectangle(122, 140, 274, 206),
-      new Phaser.Geom.Rectangle(692, 286, 208, 186),
-      new Phaser.Geom.Rectangle(601, 705, 365, 250),
-      new Phaser.Geom.Rectangle(436, 454, 156, 104),
-      new Phaser.Geom.Rectangle(196, 674, 94, 94),
-      new Phaser.Geom.Rectangle(760, 618, 92, 90)
+      new Phaser.Geom.Rectangle(0, 0, width, 108),
+      new Phaser.Geom.Rectangle(0, 0, 58, height),
+      new Phaser.Geom.Rectangle(966, 0, 58, height),
+      new Phaser.Geom.Rectangle(150, 158, 220, 154),
+      new Phaser.Geom.Rectangle(726, 312, 160, 132),
+      new Phaser.Geom.Rectangle(640, 734, 288, 176),
+      new Phaser.Geom.Rectangle(454, 470, 106, 82)
     ];
     const buildings = [
       {
@@ -728,7 +728,14 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
         bg.setDisplaySize(width, height);
         bg.setDepth(0);
 
-        player = createAvatarRender(this, spawn.x, spawn.y + logicalYOffset, customization, 8, TOWN_AVATAR_SCALE);
+        player = createAvatarRender(
+          this,
+          spawn.x,
+          spawn.y + logicalYOffset,
+          customization,
+          8,
+          TOWN_AVATAR_SCALE * 1.16
+        );
         updateAvatarRender(player, customization, "front", false);
 
         const leftWing = this.add.ellipse(-7, 0, 12, 10, 0xe7f6ff, 0.85).setAngle(-18);
@@ -964,8 +971,8 @@ const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComp
         if (keysRef.current.s || keysRef.current.ArrowDown) nextY += speed;
 
         return {
-          x: Math.max(12, Math.min(172, nextX)),
-          y: Math.max(12, Math.min(144, nextY))
+          x: Math.max(12, Math.min(ENCOUNTER_BOX_WIDTH - 12, nextX)),
+          y: Math.max(12, Math.min(ENCOUNTER_BOX_HEIGHT - 12, nextY))
         };
       });
 
@@ -993,9 +1000,9 @@ const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComp
   const pelletPositions = useMemo(() => {
     const t = elapsed / 1000;
     return [
-      { x: 24 + ((t * 48) % 152), y: 30 + Math.sin(t * 1.5) * 18 },
-      { x: 176 - ((t * 54) % 152), y: 78 + Math.cos(t * 1.7) * 24 },
-      { x: 32 + ((t * 38) % 148), y: 126 + Math.sin(t * 2.1) * 14 }
+      { x: 36 + ((t * 132) % (ENCOUNTER_BOX_WIDTH - 72)), y: 34 + Math.sin(t * 1.5) * 18 },
+      { x: ENCOUNTER_BOX_WIDTH - 36 - ((t * 148) % (ENCOUNTER_BOX_WIDTH - 72)), y: 86 + Math.cos(t * 1.7) * 28 },
+      { x: 42 + ((t * 116) % (ENCOUNTER_BOX_WIDTH - 84)), y: 138 + Math.sin(t * 2.1) * 16 }
     ];
   }, [elapsed]);
 
