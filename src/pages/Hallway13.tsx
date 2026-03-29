@@ -62,8 +62,7 @@ const LIGHT_WORLD_DISTANCES = [132, 272, 430, 596, 760, 908];
 const LEFT_FRAME_WORLD_DISTANCES = [220, 460, 708];
 const RIGHT_FRAME_WORLD_DISTANCES = [332, 612];
 const PANEL_WORLD_DISTANCES = [166, 270, 386, 508, 630, 752, 874];
-const LEFT_VENT_WORLD_DISTANCES = [294, 642];
-const RIGHT_VENT_WORLD_DISTANCES = [212, 538];
+const LEFT_VENT_WORLD_DISTANCES = [438];
 const ANOMALIES: AnomalyId[] = [
   "door-number",
   "door-glow",
@@ -818,7 +817,7 @@ const Hallway13: React.FC = () => {
         this.graphics.strokePath();
 
         if (hasPortrait) {
-          this.graphics.fillStyle(0x2f2a22, 0.98);
+          this.graphics.fillStyle(0x2a241d, 0.98);
           this.graphics.beginPath();
           this.graphics.moveTo(innerNearX, innerNearTop);
           this.graphics.lineTo(innerFarX, innerFarTop);
@@ -827,64 +826,52 @@ const Hallway13: React.FC = () => {
           this.graphics.closePath();
           this.graphics.fillPath();
 
-          const centerX = (innerNearX + innerFarX) / 2;
-          const centerY = (innerNearTop + innerNearBottom + innerFarTop + innerFarBottom) / 4;
           const scale = nearRect.width / (HALL_HALF_WIDTH * 2);
-          const xInset = Math.abs(innerNearX - innerFarX) * 0.18 + 3;
-          const portraitWidth = Math.max(6, Math.abs(innerNearX - innerFarX) * 0.32);
-          const portraitHeight = Math.max(8, (innerNearBottom - innerNearTop) * 0.18);
-          const headY = options.upsideDown ? centerY + 10 * scale : centerY - 8 * scale;
-          const bodyY = options.upsideDown ? centerY - 10 * scale : centerY + 6 * scale;
-          const horizonY = centerY + 2 * scale;
+          const portraitCenterX = Phaser.Math.Linear(innerNearX, innerFarX, 0.5);
+          const portraitTop = Phaser.Math.Linear(innerNearTop, innerFarTop, 0.22);
+          const portraitBottom = Phaser.Math.Linear(innerNearBottom, innerFarBottom, 0.82);
+          const portraitWidth = Math.max(10, Math.abs(innerNearX - innerFarX) * 0.42);
+          const portraitHeight = Math.max(14, (portraitBottom - portraitTop) * 0.68);
+          const portraitX = portraitCenterX - portraitWidth / 2;
+          const portraitY = options.upsideDown ? portraitBottom - portraitHeight : portraitTop;
+          const headX = portraitCenterX;
+          const headY = options.upsideDown
+            ? portraitY + portraitHeight * 0.72
+            : portraitY + portraitHeight * 0.28;
+          const bodyY = options.upsideDown
+            ? portraitY + portraitHeight * 0.08
+            : portraitY + portraitHeight * 0.42;
 
-          this.graphics.fillStyle(0x334155, 0.82);
-          this.graphics.beginPath();
-          this.graphics.moveTo(innerNearX, innerNearTop);
-          this.graphics.lineTo(innerFarX, innerFarTop);
-          this.graphics.lineTo(innerFarX, horizonY - 8 * scale);
-          this.graphics.lineTo(innerNearX, horizonY);
-          this.graphics.closePath();
-          this.graphics.fillPath();
-          this.graphics.fillStyle(0x4b3a2b, 0.92);
-          this.graphics.beginPath();
-          this.graphics.moveTo(innerNearX, horizonY);
-          this.graphics.lineTo(innerFarX, horizonY - 8 * scale);
-          this.graphics.lineTo(innerFarX, innerFarBottom);
-          this.graphics.lineTo(innerNearX, innerNearBottom);
-          this.graphics.closePath();
-          this.graphics.fillPath();
-
-          this.graphics.fillStyle(palette.head, 0.78);
-          this.graphics.fillCircle(centerX + (side === "left" ? xInset : -xInset), headY, Math.max(3, 6 * scale));
-          this.graphics.fillStyle(palette.body, 0.84);
+          this.graphics.fillStyle(0x4a4234, 0.92);
+          this.graphics.fillRect(portraitX, portraitY, portraitWidth, portraitHeight);
+          this.graphics.fillStyle(0x6f6654, 0.35);
+          this.graphics.fillRect(portraitX + 1, portraitY + 1, portraitWidth * 0.3, portraitHeight - 2);
+          this.graphics.fillStyle(palette.head, 0.88);
+          this.graphics.fillCircle(headX, headY, Math.max(3, 5.5 * scale));
+          this.graphics.fillStyle(palette.body, 0.9);
           this.graphics.fillRect(
-            centerX - portraitWidth / 2 + (side === "left" ? xInset * 0.45 : -xInset * 0.45),
+            portraitCenterX - portraitWidth * 0.18,
             bodyY,
-            portraitWidth,
-            portraitHeight
+            portraitWidth * 0.36,
+            portraitHeight * 0.26
           );
-          this.graphics.fillStyle(0xe7d8a2, 0.34);
-          this.graphics.fillCircle(centerX - xInset * 0.4, innerNearTop + 12 * scale, Math.max(2, 4 * scale));
 
           if (options.eye) {
-            const eyeX = centerX - xInset * 0.4;
-            const eyeY = innerNearTop + 14 * scale;
+            const eyeY = portraitY + portraitHeight * 0.18;
             this.graphics.fillStyle(0x09090b, 0.92);
-            this.graphics.fillEllipse(eyeX, eyeY, 16 * scale, 9 * scale);
+            this.graphics.fillEllipse(portraitCenterX, eyeY, portraitWidth * 0.34, portraitHeight * 0.12);
             this.graphics.fillStyle(0xf8fafc, 0.95);
-            this.graphics.fillCircle(eyeX, eyeY, Math.max(2, 3 * scale));
-            this.graphics.fillStyle(0x0f172a, 0.95);
-            this.graphics.fillCircle(eyeX, eyeY, Math.max(1, 1.5 * scale));
+            this.graphics.fillCircle(portraitCenterX, eyeY, Math.max(2, 2.5 * scale));
           }
 
           if (options.bleed) {
-            this.graphics.lineStyle(Math.max(1, 1.5 * scale), 0x991b1b, 0.75);
+            this.graphics.lineStyle(Math.max(1, 1.4 * scale), 0x991b1b, 0.76);
             this.graphics.strokeLineShape(
               new Phaser.Geom.Line(
-                centerX + (side === "left" ? xInset * 0.45 : -xInset * 0.45),
-                bodyY + portraitHeight,
-                centerX + (side === "left" ? xInset * 0.25 : -xInset * 0.25),
-                innerNearBottom
+                portraitCenterX,
+                portraitY + portraitHeight * 0.78,
+                portraitCenterX,
+                innerNearBottom - 2
               )
             );
           }
@@ -896,10 +883,10 @@ const Hallway13: React.FC = () => {
         const farRect = this.projectRectFromDistance(distance + 18);
         const nearX = side === "left" ? nearRect.left + nearRect.width * 0.08 : nearRect.right - nearRect.width * 0.08;
         const farX = side === "left" ? farRect.left + farRect.width * 0.08 : farRect.right - farRect.width * 0.08;
-        const nearTop = nearRect.centerY + nearRect.height * 0.04;
-        const nearBottom = nearRect.centerY + nearRect.height * 0.14;
-        const farTop = farRect.centerY + farRect.height * 0.04;
-        const farBottom = farRect.centerY + farRect.height * 0.14;
+        const nearTop = nearRect.centerY - nearRect.height * 0.2;
+        const nearBottom = nearRect.centerY - nearRect.height * 0.08;
+        const farTop = farRect.centerY - farRect.height * 0.2;
+        const farBottom = farRect.centerY - farRect.height * 0.08;
 
         this.graphics.fillStyle(open ? 0x09090b : 0x4b5563, 0.92);
         this.graphics.beginPath();
@@ -928,6 +915,16 @@ const Hallway13: React.FC = () => {
             this.graphics.lineStyle(1, 0x1f2937, 0.55);
             this.graphics.strokeLineShape(new Phaser.Geom.Line(nearX, y1, farX, y2));
           }
+        } else {
+          const centerX = (nearX + farX) / 2;
+          const centerY = (nearTop + nearBottom + farTop + farBottom) / 4;
+          const scale = nearRect.width / (HALL_HALF_WIDTH * 2);
+          this.graphics.fillStyle(0xf8fafc, 0.88);
+          this.graphics.fillCircle(centerX - 5 * scale, centerY, Math.max(1.8, 2.6 * scale));
+          this.graphics.fillCircle(centerX + 5 * scale, centerY, Math.max(1.8, 2.6 * scale));
+          this.graphics.fillStyle(0x09090b, 0.95);
+          this.graphics.fillCircle(centerX - 5 * scale, centerY, Math.max(0.8, 1.3 * scale));
+          this.graphics.fillCircle(centerX + 5 * scale, centerY, Math.max(0.8, 1.3 * scale));
         }
       }
 
@@ -978,16 +975,18 @@ const Hallway13: React.FC = () => {
           if (this.currentAnomaly === "vent-missing-left" && index === 0) {
             return;
           }
+          if (this.currentAnomaly === "vent-open-right") {
+            return;
+          }
           this.drawVent(distance, "left");
         });
 
-        RIGHT_VENT_WORLD_DISTANCES.forEach((worldDistance, index) => {
-          const distance = worldDistance - this.getPlayerDepth();
-          if (distance <= 12 || distance >= this.getDoorDistance() - 54) {
-            return;
+        if (this.currentAnomaly === "vent-open-right") {
+          const distance = LEFT_VENT_WORLD_DISTANCES[0] - this.getPlayerDepth();
+          if (distance > 12 && distance < this.getDoorDistance() - 54) {
+            this.drawVent(distance, "right", true);
           }
-          this.drawVent(distance, "right", this.currentAnomaly === "vent-open-right" && index === 1);
-        });
+        }
 
         if (this.currentAnomaly === "extra-frame-left") {
           const portraitDistance = 346 - this.getPlayerDepth();
