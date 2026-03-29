@@ -32,7 +32,10 @@ type SceneId =
   | "igloo-encounter"
   | "cabin-oldman"
   | "cabin-oldman-more"
-  | "sleep-transition";
+  | "sleep-transition"
+  | "forest-free"
+  | "forest-tree-encounter"
+  | "forest-drunk-encounter";
 
 type DialogueChoice = {
   id: string;
@@ -69,6 +72,61 @@ const CHAPTER_LABEL = "Chapter 1: Snowbound Clearing";
 const ENCOUNTER_BOX_WIDTH = 520;
 const ENCOUNTER_BOX_HEIGHT = 180;
 
+type EncounterConfig = {
+  key: "polarbear" | "snowtree" | "homelessdrunk";
+  enemyName: string;
+  enemyAsset: string;
+  durationMs: number;
+  introLines: string[];
+  winLine: string;
+  footRight: string;
+};
+
+const ENCOUNTERS: Record<EncounterConfig["key"], EncounterConfig> = {
+  polarbear: {
+    key: "polarbear",
+    enemyName: "Polar Bear",
+    enemyAsset: "polarbear.png",
+    durationMs: 12000,
+    introLines: [
+      "Polar Bear: 'Take this!'",
+      "Polar Bear stomps the ice and growls.",
+      "Polar Bear: 'You picked the wrong igloo.'",
+      "Polar Bear snorts a frosty warning."
+    ],
+    winLine: "Polar Bear: 'My den-mates are going to hear about this...'",
+    footRight: "Stay calm and dodge."
+  },
+  snowtree: {
+    key: "snowtree",
+    enemyName: "Snow Tree",
+    enemyAsset: "snowtree.png",
+    durationMs: 15000,
+    introLines: [
+      "Snow Tree crackles under the snow.",
+      "Snow Tree hurls icicles from its branches.",
+      "Snow Tree: 'Root yourself if you can.'",
+      "The air turns sharp and splintered."
+    ],
+    winLine: "Snow Tree: 'Spring... would have been easier...'",
+    footRight: "Watch the falling lanes."
+  },
+  homelessdrunk: {
+    key: "homelessdrunk",
+    enemyName: "Homeless Drunk",
+    enemyAsset: "homelessdrunk.png",
+    durationMs: 15000,
+    introLines: [
+      "Homeless Drunk staggers into the trail.",
+      "Homeless Drunk flings bottles in lazy arcs.",
+      "Homeless Drunk: 'Nobody gets by for free.'",
+      "The path fills with wobbling glass."
+    ],
+    winLine: "Homeless Drunk: 'Ugh... my bottle had better aim than me...'",
+    footRight: "Follow the gaps."
+  }
+};
+
 function mapLegacySceneId(sceneId: string): SceneId {
   switch (sceneId) {
     case "wake":
@@ -87,6 +145,9 @@ function mapLegacySceneId(sceneId: string): SceneId {
     case "cabin-oldman":
     case "cabin-oldman-more":
     case "sleep-transition":
+    case "forest-free":
+    case "forest-tree-encounter":
+    case "forest-drunk-encounter":
       return sceneId;
     default:
       return "wake-intro";
@@ -256,11 +317,16 @@ const StoryGame: React.FC = () => {
   const activeMusicRef = useRef<string | null>(null);
 
   const currentSceneId = mapLegacySceneId(progress.sceneId);
-  const movementUnlocked = currentSceneId === "camp-free";
+  const campMovementUnlocked = currentSceneId === "camp-free";
+  const forestMovementUnlocked = currentSceneId === "forest-free";
+  const movementUnlocked = campMovementUnlocked || forestMovementUnlocked;
   const tutorialCompleted = Boolean(progress.flags.tutorial_completed);
   const houseVisited = Boolean(progress.flags.house_visited);
   const campIsMorning = Boolean(progress.flags.morning_arrived);
   const sunrisePending = Boolean(progress.flags.pending_sunrise_transition);
+  const forestUnlocked = campIsMorning;
+  const forestTreeDone = Boolean(progress.flags.forest_tree_done);
+  const forestDrunkDone = Boolean(progress.flags.forest_drunk_done);
   const inCabinScene =
     currentSceneId === "cabin-oldman" ||
     currentSceneId === "cabin-oldman-more" ||
@@ -573,10 +639,19 @@ const StoryGame: React.FC = () => {
                 <span className="story-kicker">{CHAPTER_LABEL}</span>
                 <h2>
                   {currentDialogueScene?.title
-                    ?? (currentSceneId === "camp-free" ? "Snowbound Clearing" : "Practice Encounter")}
+                    ?? (currentSceneId === "camp-free"
+                      ? "Snowbound Clearing"
+                      : currentSceneId === "forest-free"
+                        ? "Forest Trail"
+                        : "Encounter")}
                 </h2>
                 <p className="story-subtle">
-                  {currentDialogueScene?.location ?? (campIsMorning ? "Forest edge camp" : "Night camp")} | {movementUnlocked ? "Exploration" : "Conversation"}
+                  {currentDialogueScene?.location
+                    ?? (currentSceneId === "forest-free"
+                      ? "Forest path"
+                      : campIsMorning
+                        ? "Forest edge camp"
+                        : "Night camp")} | {movementUnlocked ? "Exploration" : "Conversation"}
                 </p>
               </div>
               <div className="button-row">
@@ -591,7 +666,7 @@ const StoryGame: React.FC = () => {
 
             <div className="flutter-play-grid">
               <div className="flutter-map-shell">
-                {movementUnlocked ? (
+                {campMovementUnlocked ? (
                   <>
                     <FlutterCampExploration
                       customization={avatarCustomization}
@@ -611,12 +686,19 @@ const StoryGame: React.FC = () => {
                       }}
                       onEnterIgloo={() => {
                         if (!tutorialCompleted) {
-                          goToScene("igloo-brief");
-                          setSaveStatus("Flutter has something to show you.");
+                          goToScene("igloo-encounter");
+                          setSaveStatus("The air snaps cold as the igloo challenge begins.");
                         } else {
                           setSaveStatus("The igloo is quiet now.");
                         }
                       }}
+                      onEnterForest={() => {
+                        if (forestUnlocked) {
+                          goToScene("forest-free");
+                          setSaveStatus("You head down the forest path.");
+                        }
+                      }}
+                      forestUnlocked={forestUnlocked}
                       onSunriseTransitionComplete={() => {
                         setProgress((current) => ({
                           ...current,
@@ -632,6 +714,34 @@ const StoryGame: React.FC = () => {
                       Click the snow to move. Walk to the cabin or igloo, then press E to enter.
                     </div>
                   </>
+                ) : forestMovementUnlocked ? (
+                  <>
+                    <FlutterForestExploration
+                      customization={avatarCustomization}
+                      treeEncounterComplete={forestTreeDone}
+                      drunkEncounterComplete={forestDrunkDone}
+                      onTriggerTreeEncounter={() => {
+                        setProgress((current) => ({
+                          ...current,
+                          sceneId: "forest-tree-encounter",
+                          updatedAt: new Date().toISOString()
+                        }));
+                        setSaveStatus("A snow-laden tree tears itself out of the silence.");
+                      }}
+                      onTriggerDrunkEncounter={() => {
+                        setProgress((current) => ({
+                          ...current,
+                          sceneId: "forest-drunk-encounter",
+                          updatedAt: new Date().toISOString()
+                        }));
+                        setSaveStatus("Someone lurches into the trail ahead.");
+                      }}
+                      onStatusChange={setSaveStatus}
+                    />
+                    <div className="story-stage__hint">
+                      Follow the path. The next fights start the moment you reach them.
+                    </div>
+                  </>
                 ) : inCabinScene ? (
                   <div className="story-map story-map--cabininside" />
                 ) : (
@@ -644,8 +754,8 @@ const StoryGame: React.FC = () => {
                 )}
 
                 {currentSceneId === "igloo-encounter" ? (
-                  <EncounterTutorial
-                    completed={tutorialCompleted}
+                  <EncounterBattle
+                    config={ENCOUNTERS.polarbear}
                     onComplete={() => {
                       setProgress((current) => ({
                         ...current,
@@ -657,6 +767,38 @@ const StoryGame: React.FC = () => {
                         updatedAt: new Date().toISOString()
                       }));
                       setSaveStatus("Practice complete. Explore the camp again.");
+                    }}
+                  />
+                ) : currentSceneId === "forest-tree-encounter" ? (
+                  <EncounterBattle
+                    config={ENCOUNTERS.snowtree}
+                    onComplete={() => {
+                      setProgress((current) => ({
+                        ...current,
+                        sceneId: "forest-free",
+                        flags: {
+                          ...current.flags,
+                          forest_tree_done: true
+                        },
+                        updatedAt: new Date().toISOString()
+                      }));
+                      setSaveStatus("The snow tree splinters and the trail opens again.");
+                    }}
+                  />
+                ) : currentSceneId === "forest-drunk-encounter" ? (
+                  <EncounterBattle
+                    config={ENCOUNTERS.homelessdrunk}
+                    onComplete={() => {
+                      setProgress((current) => ({
+                        ...current,
+                        sceneId: "forest-free",
+                        flags: {
+                          ...current.flags,
+                          forest_drunk_done: true
+                        },
+                        updatedAt: new Date().toISOString()
+                      }));
+                      setSaveStatus("The drunk stumbles off the path, muttering to himself.");
                     }}
                   />
                 ) : null}
@@ -673,12 +815,14 @@ const StoryGame: React.FC = () => {
                   <>
                     <div className="story-dialogue__speaker">Flutter</div>
                     <p>
-                      {campIsMorning
+                      {forestMovementUnlocked
+                        ? "The trees crowd in on both sides of the path. Whatever is out here does not wait politely."
+                        : campIsMorning
                         ? "The camp is brighter now. The cabin still has a lamp in the window, and the igloo is the only other place here that looks in use."
                         : "The camp is quiet for now. The cabin still has a lamp in the window, and the igloo is the only other place here that looks in use."}
                     </p>
                     <p className="story-subtle">
-                      Velmora explained: {houseVisited ? "yes" : "not yet"} | Fight tutorial complete: {tutorialCompleted ? "yes" : "not yet"} | Morning: {campIsMorning ? "yes" : "not yet"}
+                      Velmora explained: {houseVisited ? "yes" : "not yet"} | Fight tutorial complete: {tutorialCompleted ? "yes" : "not yet"} | Morning: {campIsMorning ? "yes" : "not yet"} | Forest fights: {Number(forestTreeDone) + Number(forestDrunkDone)}/2
                     </p>
                   </>
                 )}
@@ -714,6 +858,8 @@ type FlutterCampExplorationProps = {
   playSunriseTransition: boolean;
   onEnterCabin: () => void;
   onEnterIgloo: () => void;
+  onEnterForest: () => void;
+  forestUnlocked: boolean;
   onSunriseTransitionComplete: () => void;
   onStatusChange: (message: string) => void;
 };
@@ -724,6 +870,8 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
   playSunriseTransition,
   onEnterCabin,
   onEnterIgloo,
+  onEnterForest,
+  forestUnlocked,
   onSunriseTransitionComplete,
   onStatusChange
 }) => {
@@ -741,10 +889,12 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
     callbacksRef.current = {
       onEnterCabin,
       onEnterIgloo,
+      onEnterForest,
+      forestUnlocked,
       onSunriseTransitionComplete,
       onStatusChange
     };
-  }, [onEnterCabin, onEnterIgloo, onSunriseTransitionComplete, onStatusChange]);
+  }, [forestUnlocked, onEnterCabin, onEnterForest, onEnterIgloo, onSunriseTransitionComplete, onStatusChange]);
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) {
@@ -781,6 +931,13 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
         entranceX: 778,
         entranceY: 498,
         interactBounds: new Phaser.Geom.Rectangle(744, 476, 84, 52)
+      },
+      {
+        name: "forest",
+        bounds: new Phaser.Geom.Rectangle(430, 908, 176, 104),
+        entranceX: 498,
+        entranceY: 894,
+        interactBounds: new Phaser.Geom.Rectangle(458, 864, 88, 64)
       }
     ] as const;
 
@@ -789,7 +946,7 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
     let targetY: number | null = null;
     let butterfly: Phaser.GameObjects.Container | null = null;
     let butterflyBob: Phaser.GameObjects.Container | null = null;
-    let currentHotspot: "cabin" | "igloo" | null = null;
+    let currentHotspot: "cabin" | "igloo" | "forest" | null = null;
     let hotspotHint: Phaser.GameObjects.Text | null = null;
 
     const isBlocked = (x: number, y: number) => {
@@ -901,7 +1058,9 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
               callbacksRef.current.onStatusChange(
                 building.name === "cabin"
                   ? "Walking to the cabin."
-                  : "Flutter guides you toward the igloo."
+                  : building.name === "igloo"
+                    ? "Flutter guides you toward the igloo."
+                    : "You head for the forest trail."
               );
               break;
             }
@@ -924,6 +1083,8 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
             callbacksRef.current.onEnterCabin();
           } else if (currentHotspot === "igloo") {
             callbacksRef.current.onEnterIgloo();
+          } else if (currentHotspot === "forest" && callbacksRef.current.forestUnlocked) {
+            callbacksRef.current.onEnterForest();
           }
         });
 
@@ -932,6 +1093,8 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
             callbacksRef.current.onEnterCabin();
           } else if (currentHotspot === "igloo") {
             callbacksRef.current.onEnterIgloo();
+          } else if (currentHotspot === "forest" && callbacksRef.current.forestUnlocked) {
+            callbacksRef.current.onEnterForest();
           }
         });
       }
@@ -951,6 +1114,10 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
             hotspotHint.setText("Press E to enter the cabin").setVisible(true);
           } else if (currentHotspot === "igloo") {
             hotspotHint.setText("Press E to inspect the igloo").setVisible(true);
+          } else if (currentHotspot === "forest" && callbacksRef.current.forestUnlocked) {
+            hotspotHint.setText("Press E to head into the forest").setVisible(true);
+          } else if (currentHotspot === "forest") {
+            hotspotHint.setText("Wait until morning before heading into the forest").setVisible(true);
           } else {
             hotspotHint.setVisible(false);
           }
@@ -1048,32 +1215,274 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
   return <div ref={containerRef} className="flutter-phaser-camp" />;
 };
 
-type EncounterTutorialProps = {
-  completed: boolean;
+type FlutterForestExplorationProps = {
+  customization: AvatarCustomization;
+  treeEncounterComplete: boolean;
+  drunkEncounterComplete: boolean;
+  onTriggerTreeEncounter: () => void;
+  onTriggerDrunkEncounter: () => void;
+  onStatusChange: (message: string) => void;
+};
+
+const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
+  customization,
+  treeEncounterComplete,
+  drunkEncounterComplete,
+  onTriggerTreeEncounter,
+  onTriggerDrunkEncounter,
+  onStatusChange
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const gameRef = useRef<Phaser.Game | null>(null);
+  const callbacksRef = useRef({
+    onTriggerTreeEncounter,
+    onTriggerDrunkEncounter,
+    onStatusChange,
+    treeEncounterComplete,
+    drunkEncounterComplete
+  });
+  const assetBase = import.meta.env.BASE_URL;
+
+  useEffect(() => {
+    callbacksRef.current = {
+      onTriggerTreeEncounter,
+      onTriggerDrunkEncounter,
+      onStatusChange,
+      treeEncounterComplete,
+      drunkEncounterComplete
+    };
+  }, [drunkEncounterComplete, onStatusChange, onTriggerDrunkEncounter, onTriggerTreeEncounter, treeEncounterComplete]);
+
+  useEffect(() => {
+    if (!containerRef.current || gameRef.current) {
+      return;
+    }
+
+    const width = 1024;
+    const height = 1792;
+    const logicalYOffset = 18;
+    const walkSpeed = 220;
+    const arrivalThreshold = 14;
+    const collisionRadius = 18;
+    const spawn = { x: 506, y: 1620 };
+    const blockers = [
+      new Phaser.Geom.Rectangle(0, 0, width, 0),
+      new Phaser.Geom.Rectangle(0, 0, 138, height),
+      new Phaser.Geom.Rectangle(886, 0, 138, height),
+      new Phaser.Geom.Rectangle(146, 0, 250, 1792),
+      new Phaser.Geom.Rectangle(648, 0, 232, 1792),
+      new Phaser.Geom.Rectangle(396, 210, 252, 72),
+      new Phaser.Geom.Rectangle(382, 650, 278, 88),
+      new Phaser.Geom.Rectangle(392, 1114, 260, 84)
+    ];
+    const treeTrigger = new Phaser.Geom.Rectangle(430, 1200, 170, 80);
+    const drunkTrigger = new Phaser.Geom.Rectangle(430, 760, 170, 80);
+
+    let player: ReturnType<typeof createAvatarRender> | null = null;
+    let targetX: number | null = null;
+    let targetY: number | null = null;
+    let butterfly: Phaser.GameObjects.Container | null = null;
+    let butterflyBob: Phaser.GameObjects.Container | null = null;
+
+    const isBlocked = (x: number, y: number) => {
+      const footprint = new Phaser.Geom.Circle(x, y, collisionRadius);
+      return blockers.some((blocker) => Phaser.Geom.Intersects.CircleToRectangle(footprint, blocker));
+    };
+
+    const resolveBlockedStep = (
+      currentX: number,
+      currentY: number,
+      nextX: number,
+      nextY: number
+    ) => {
+      if (!isBlocked(nextX, nextY)) {
+        return { x: nextX, y: nextY, blocked: false };
+      }
+      if (!isBlocked(nextX, currentY)) {
+        return { x: nextX, y: currentY, blocked: false };
+      }
+      if (!isBlocked(currentX, nextY)) {
+        return { x: currentX, y: nextY, blocked: false };
+      }
+      return { x: currentX, y: currentY, blocked: true };
+    };
+
+    class FlutterForestScene extends Phaser.Scene {
+      preload() {
+        loadAvatarSpriteSheet(this, assetBase);
+        this.load.image("flutter-forest", `${assetBase}assets/story/forestmap.png`);
+      }
+
+      create() {
+        const bg = this.add.image(width / 2, height / 2, "flutter-forest");
+        bg.setDisplaySize(width, height);
+        bg.setDepth(0);
+
+        player = createAvatarRender(
+          this,
+          spawn.x,
+          spawn.y + logicalYOffset,
+          customization,
+          8,
+          TOWN_AVATAR_SCALE * 1.16
+        );
+        updateAvatarRender(player, customization, "front", false);
+
+        const leftWing = this.add.ellipse(-7, 0, 12, 10, 0xe7f6ff, 0.85).setAngle(-18);
+        const rightWing = this.add.ellipse(7, 0, 12, 10, 0xe7f6ff, 0.85).setAngle(18);
+        const glow = this.add.circle(0, 0, 3.5, 0xa9e6ff, 0.95);
+        butterflyBob = this.add.container(0, 0, [leftWing, rightWing, glow]);
+        butterfly = this.add.container(spawn.x - 18, spawn.y - 10, [butterflyBob]).setDepth(9);
+
+        this.tweens.add({
+          targets: [leftWing, rightWing],
+          angle: { from: -26, to: 26 },
+          yoyo: true,
+          repeat: -1,
+          duration: 170,
+          ease: "Sine.easeInOut"
+        });
+
+        this.tweens.add({
+          targets: butterflyBob,
+          y: -6,
+          yoyo: true,
+          repeat: -1,
+          duration: 900,
+          ease: "Sine.easeInOut"
+        });
+
+        this.cameras.main.scrollY = Math.max(0, spawn.y - 620);
+
+        this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+          targetX = Phaser.Math.Clamp(pointer.x, 180, width - 180);
+          targetY = Phaser.Math.Clamp(pointer.worldY - logicalYOffset, 80, height - 60);
+        });
+      }
+
+      update(_time: number, delta: number) {
+        if (!player) {
+          return;
+        }
+
+        const currentX = player.container.x;
+        const currentY = player.container.y - logicalYOffset;
+
+        if (!callbacksRef.current.treeEncounterComplete && treeTrigger.contains(currentX, currentY)) {
+          callbacksRef.current.onTriggerTreeEncounter();
+          return;
+        }
+
+        if (callbacksRef.current.treeEncounterComplete && !callbacksRef.current.drunkEncounterComplete && drunkTrigger.contains(currentX, currentY)) {
+          callbacksRef.current.onTriggerDrunkEncounter();
+          return;
+        }
+
+        if (targetX == null || targetY == null) {
+          updateAvatarRender(player, customization, player.facing, false);
+          if (butterfly) {
+            const idleOffsets = {
+              front: { x: -16, y: -8 },
+              back: { x: 16, y: 12 },
+              left: { x: 18, y: 2 },
+              right: { x: -18, y: 2 }
+            } as const;
+            const offset = idleOffsets[player.facing];
+            butterfly.setPosition(player.container.x + offset.x, player.container.y - logicalYOffset + offset.y);
+          }
+          return;
+        }
+
+        const dx = targetX - currentX;
+        const dy = targetY - currentY;
+        const distance = Math.hypot(dx, dy);
+
+        if (distance < arrivalThreshold) {
+          player.container.setPosition(targetX, targetY + logicalYOffset);
+          updateAvatarRender(player, customization, "front", false);
+          targetX = null;
+          targetY = null;
+          return;
+        }
+
+        const step = (walkSpeed * delta) / 1000;
+        const moveDistance = Math.min(step, distance);
+        const nextX = Phaser.Math.Clamp(currentX + (dx / distance) * moveDistance, 180, width - 180);
+        const nextY = Phaser.Math.Clamp(currentY + (dy / distance) * moveDistance, 80, height - 60);
+        const resolvedStep = resolveBlockedStep(currentX, currentY, nextX, nextY);
+
+        if (resolvedStep.blocked) {
+          targetX = null;
+          targetY = null;
+          updateAvatarRender(player, customization, player.facing, false);
+          callbacksRef.current.onStatusChange("The trees choke off that route.");
+          return;
+        }
+
+        player.container.setPosition(resolvedStep.x, resolvedStep.y + logicalYOffset);
+
+        const facing =
+          Math.abs(dx) > Math.abs(dy)
+            ? dx < 0
+              ? "left"
+              : "right"
+            : dy < 0
+              ? "back"
+              : "front";
+
+        updateAvatarRender(player, customization, facing, true);
+        this.cameras.main.scrollY = Phaser.Math.Clamp(player.container.y - 560, 0, height - 1024);
+
+        if (butterfly) {
+          const offsets = {
+            front: { x: -16, y: -8 },
+            back: { x: 16, y: 12 },
+            left: { x: 18, y: 2 },
+            right: { x: -18, y: 2 }
+          } as const;
+          const offset = offsets[facing];
+          butterfly.setPosition(player.container.x + offset.x, player.container.y - logicalYOffset + offset.y);
+        }
+      }
+    }
+
+    gameRef.current = new Phaser.Game({
+      type: Phaser.AUTO,
+      width,
+      height: 1024,
+      parent: containerRef.current,
+      backgroundColor: "#0d1225",
+      scene: FlutterForestScene,
+      scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+      }
+    });
+
+    return () => {
+      if (gameRef.current) {
+        gameRef.current.destroy(true);
+        gameRef.current = null;
+      }
+    };
+  }, [assetBase, customization, drunkEncounterComplete, onStatusChange, onTriggerDrunkEncounter, onTriggerTreeEncounter, treeEncounterComplete]);
+
+  return <div ref={containerRef} className="flutter-phaser-camp" />;
+};
+
+type EncounterBattleProps = {
+  config: EncounterConfig;
   onComplete: () => void;
 };
 
-const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComplete }) => {
-  const [soul, setSoul] = useState({ x: 92, y: 78 });
+const EncounterBattle: React.FC<EncounterBattleProps> = ({ config, onComplete }) => {
+  const [soul, setSoul] = useState({ x: ENCOUNTER_BOX_WIDTH / 2, y: ENCOUNTER_BOX_HEIGHT / 2 });
   const [elapsed, setElapsed] = useState(0);
   const [flash, setFlash] = useState(false);
   const keysRef = useRef<Record<string, boolean>>({});
   const lastHitRef = useRef(0);
-  const enemyLines = useMemo(
-    () => [
-      "Polar Bear: 'Take this!'",
-      "Polar Bear stomps the ice and growls.",
-      "Polar Bear: 'You picked the wrong igloo.'",
-      "Polar Bear snorts a frosty warning."
-    ],
-    []
-  );
 
   useEffect(() => {
-    if (completed) {
-      return;
-    }
-
     const onKeyDown = (event: KeyboardEvent) => {
       if (["w", "a", "s", "d", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
         keysRef.current[event.key] = true;
@@ -1113,9 +1522,9 @@ const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComp
 
       setElapsed((current) => {
         const next = current + delta;
-        if (next >= 6000) {
+        if (next >= config.durationMs) {
           onComplete();
-          return 6000;
+          return config.durationMs;
         }
         return next;
       });
@@ -1130,22 +1539,35 @@ const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComp
       window.removeEventListener("keyup", onKeyUp);
       window.cancelAnimationFrame(frameId);
     };
-  }, [completed, onComplete]);
+  }, [config.durationMs, onComplete]);
 
   const pelletPositions = useMemo(() => {
     const t = elapsed / 1000;
+    if (config.key === "snowtree") {
+      const columns = [80, 170, 265, 360, 445];
+      return columns.map((x, index) => ({
+        x,
+        y: ((t * 240 + index * 58) % (ENCOUNTER_BOX_HEIGHT + 60)) - 30
+      }));
+    }
+
+    if (config.key === "homelessdrunk") {
+      return [
+        { x: 36 + ((t * 110) % (ENCOUNTER_BOX_WIDTH - 72)), y: 44 + Math.sin(t * 2.0) * 24 },
+        { x: ENCOUNTER_BOX_WIDTH - 44 - ((t * 132) % (ENCOUNTER_BOX_WIDTH - 80)), y: 92 + Math.sin(t * 1.25 + 1.4) * 30 },
+        { x: 48 + ((t * 96) % (ENCOUNTER_BOX_WIDTH - 96)), y: 144 + Math.cos(t * 1.65) * 20 },
+        { x: ENCOUNTER_BOX_WIDTH / 2 + Math.sin(t * 2.3) * 150, y: 28 + ((t * 68) % 120) }
+      ];
+    }
+
     return [
       { x: 36 + ((t * 132) % (ENCOUNTER_BOX_WIDTH - 72)), y: 34 + Math.sin(t * 1.5) * 18 },
       { x: ENCOUNTER_BOX_WIDTH - 36 - ((t * 148) % (ENCOUNTER_BOX_WIDTH - 72)), y: 86 + Math.cos(t * 1.7) * 28 },
       { x: 42 + ((t * 116) % (ENCOUNTER_BOX_WIDTH - 84)), y: 138 + Math.sin(t * 2.1) * 16 }
     ];
-  }, [elapsed]);
+  }, [config.key, elapsed]);
 
   useEffect(() => {
-    if (completed) {
-      return;
-    }
-
     const hit = pelletPositions.some((pellet) => Math.hypot(pellet.x - soul.x, pellet.y - soul.y) < 11);
     const now = performance.now();
     if (hit && now - lastHitRef.current > 600) {
@@ -1154,28 +1576,28 @@ const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComp
       setFlash(true);
       window.setTimeout(() => setFlash(false), 180);
     }
-  }, [completed, pelletPositions, soul.x, soul.y]);
+  }, [pelletPositions, soul.x, soul.y]);
 
   return (
     <div className={`story-battle-shell ${flash ? "story-battle-shell--flash" : ""}`}>
       <div className="story-battle-field">
         <div className="story-battle-field__enemy-wrap">
           <img
-            className={`story-battle-field__enemy ${completed ? "story-battle-field__enemy--defeated" : ""}`}
-            src={`${import.meta.env.BASE_URL}assets/story/polarbear.png`}
-            alt="Polar Bear"
+            className="story-battle-field__enemy"
+            src={`${import.meta.env.BASE_URL}assets/story/${config.enemyAsset}`}
+            alt={config.enemyName}
           />
           <div className="story-battle-field__speech">
-            {completed
-              ? "Polar Bear: 'My den-mates are going to hear about this...'"
-              : enemyLines[Math.min(enemyLines.length - 1, Math.floor(elapsed / 1500))]}
+            {elapsed >= config.durationMs
+              ? config.winLine
+              : config.introLines[Math.min(config.introLines.length - 1, Math.floor(elapsed / 3000))]}
           </div>
         </div>
 
         <div className="story-battle-ui">
           <div className="story-battle-ui__head">
-            <strong>{completed ? "Practice complete" : "Polar Bear blocks the igloo."}</strong>
-            <span>{completed ? "Flutter seems pleased." : `Survive ${Math.ceil((6000 - elapsed) / 1000)}s`}</span>
+            <strong>{config.enemyName} blocks the way.</strong>
+            <span>{`Survive ${Math.max(0, Math.ceil((config.durationMs - elapsed) / 1000))}s`}</span>
           </div>
           <div className="story-encounter__box">
             <div className="story-encounter__grid" />
@@ -1193,7 +1615,7 @@ const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComp
           </div>
           <div className="story-battle-ui__foot">
             <span>WASD / Arrow keys to move</span>
-            <span>{completed ? "The way is clear." : "Stay calm and dodge."}</span>
+            <span>{config.footRight}</span>
           </div>
         </div>
       </div>
