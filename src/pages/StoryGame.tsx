@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
 import {
   DEFAULT_STORY_PROGRESS,
@@ -29,7 +29,7 @@ type StoryScene = {
   body: string;
   note?: string;
   location: string;
-  mood: "meadow" | "path" | "gate" | "camp";
+  mood: "snowcamp" | "tutorial" | "trail";
   choices: Choice[];
 };
 
@@ -39,24 +39,24 @@ const SCENES: Record<string, StoryScene> = {
   wake: {
     id: "wake",
     chapterId: "chapter-1",
-    title: "Waking Meadow",
+    title: "Snowbound Clearing",
     speaker: "Butterfly",
-    location: "North meadow",
-    mood: "meadow",
+    location: "Forest edge camp",
+    mood: "snowcamp",
     body:
-      "You wake in wet grass with no memory of the night before. A pale butterfly circles your shoulder, voice soft as dust. It says it found you first. It says the town ahead can help, if you stay calm and keep moving.",
+      "You wake beside a campfire that has burned itself down to red coals. Snow drifts over a small cabin, an igloo, and a pond gone mostly still with ice. A pale butterfly circles your shoulder, voice soft as dust. It introduces itself as Flutter and says it found you here before dawn.",
     choices: [
       {
         id: "follow-gently",
-        label: "Follow the butterfly toward town.",
-        consequence: "You follow the butterfly toward town.",
+        label: "Sit up and ask Flutter where you are.",
+        consequence: "Flutter calmly explains where you woke up.",
         nextSceneId: "path",
         companionTrustDelta: 1
       },
       {
         id: "question-first",
-        label: "Ask who it is before moving.",
-        consequence: "The butterfly answers, and you keep moving.",
+        label: "Stand first and inspect the camp before answering.",
+        consequence: "You take the camp in before listening.",
         nextSceneId: "path",
         setFlags: { questioned_companion_early: true },
         defianceDelta: 1
@@ -66,28 +66,26 @@ const SCENES: Record<string, StoryScene> = {
   path: {
     id: "path",
     chapterId: "chapter-1",
-    title: "The Narrow Path",
+    title: "Flutter's Rules",
     speaker: "Butterfly",
-    location: "Broken footpath",
-    mood: "path",
+    location: "Campfire ring",
+    mood: "snowcamp",
     body:
-      "The butterfly buzzes ahead of you along a cracked path. It points out the church steeple in the distance and tells you the town is tense lately, so it might help if you stay close. When you ask why it sounds so certain, it only laughs and says it has always been good at first impressions.",
-    note: "This first chapter only autosaves when you pass into the town proper.",
+      "Flutter drifts in slow circles over the firepit and explains the one thing it wants you to understand early: choices matter here. People remember what you say. Some moments will echo later, and the game will not warn you what any choice leads to before you make it. 'Just choose what feels true,' it says. 'The rest follows after.'",
+    note: "Manual save works whenever you want. Autosave happens only when you clear a chapter.",
     choices: [
       {
         id: "believe-warning",
-        label: "Trust it and keep walking toward the town gate.",
-        consequence: "You keep moving toward town.",
-        nextChapterId: "chapter-2",
+        label: "Tell Flutter you understand and ask what comes next.",
+        consequence: "Flutter moves on to the next lesson.",
         nextSceneId: "gate",
         setFlags: { accepted_gate_warning: true },
         companionTrustDelta: 1
       },
       {
         id: "doubt-warning",
-        label: "Ignore the advice and decide to judge the town for yourself.",
-        consequence: "You decide to make up your own mind.",
-        nextChapterId: "chapter-2",
+        label: "Say that sounds stressful and ask if there is a safer way to play.",
+        consequence: "Flutter reassures you and keeps going.",
         nextSceneId: "gate",
         setFlags: { doubted_gate_warning: true },
         defianceDelta: 1
@@ -96,41 +94,42 @@ const SCENES: Record<string, StoryScene> = {
   },
   gate: {
     id: "gate",
-    chapterId: "chapter-2",
-    title: "Town Gate",
-    speaker: "Scavenger Girl",
-    location: "Town perimeter",
-    mood: "gate",
+    chapterId: "chapter-1",
+    title: "Practice Encounter",
+    speaker: "Butterfly",
+    location: "Frozen pond path",
+    mood: "tutorial",
     body:
-      "Wooden barricades lean under strips of cloth and warning bells. A scavenger girl grips a rusted spear and gives you the kind of guarded look any stranger would get this close to town. After a beat, her posture eases just enough to ask your name and where you came from.",
+      "Flutter leads you toward the pond and asks you not to panic when the world changes shape for a second. In danger, your soul condenses into a small square inside a fight box. Move it with WASD or the arrow keys. Avoid the practice motes until the lesson is over, and then the road to town opens.",
+    note: "This is only a tutorial encounter. Survive the box once to continue.",
     choices: [
       {
         id: "defend-butterfly",
-        label: "Answer simply and ask if the gate is still open.",
-        consequence: "She steps aside and lets you through.",
+        label: "Tell Flutter you are ready to leave the camp behind.",
+        consequence: "The road toward town finally opens.",
         nextSceneId: "camp",
-        setFlags: { defended_companion_at_gate: true },
+        setFlags: { defended_companion_at_gate: true, tutorial_completed: true },
         companionTrustDelta: 1
       },
       {
         id: "hear-her-out",
-        label: "Make small talk and ask what the town is like before going in.",
-        consequence: "She relaxes a little and answers.",
+        label: "Take one more breath, then agree to head for town.",
+        consequence: "Flutter waits until you are steady, then leads on.",
         nextSceneId: "camp",
-        setFlags: { listened_to_gate_warning: true },
+        setFlags: { listened_to_gate_warning: true, tutorial_completed: true },
         defianceDelta: 1
       }
     ]
   },
   camp: {
     id: "camp",
-    chapterId: "chapter-2",
-    title: "Campfire Ledger",
-    speaker: "Narration",
-    location: "Outskirts camp",
-    mood: "camp",
+    chapterId: "chapter-1",
+    title: "First Road South",
+    speaker: "Butterfly",
+    location: "South trail",
+    mood: "trail",
     body:
-      "The path forward opens into a quiet camp just outside the main square, with a ledger, a kettle, and a few supplies left out for whoever arrives after dark. The butterfly keeps drifting ahead like it already knows where everything is. This is where chapter two would open into the full town hub, side routes, and your first real encounter.",
+      "With the lesson behind you, the snow path bends south toward the town lights. Flutter keeps just ahead of you, bright against the dark pines, already talking about warm food, real beds, and people who can help you understand where you came from. This is still the opening stretch of chapter one, right before the first real town section begins.",
     choices: [
       {
         id: "hold-here",
@@ -143,15 +142,15 @@ const SCENES: Record<string, StoryScene> = {
 };
 
 const CHAPTER_TITLES: Record<string, string> = {
-  "chapter-1": "Chapter 1: Waking Meadow",
-  "chapter-2": "Chapter 2: Town Gate"
+  "chapter-1": "Chapter 1: Snowbound Clearing",
+  "chapter-2": "Chapter 2: Toward Town"
 };
 
-const SPEAKER_SPRITES: Record<string, string | null> = {
-  Butterfly: null,
-  "Scavenger Girl": `${import.meta.env.BASE_URL}assets/story/pixel-crawler/orc_shaman_idle.png`,
-  Narration: `${import.meta.env.BASE_URL}assets/story/pixel-crawler/skeleton_mage_idle.png`
-};
+const STORY_MUSIC = {
+  title: `${import.meta.env.BASE_URL}audio/story/private-temp/flutter-title.mp3`,
+  overworld: `${import.meta.env.BASE_URL}audio/story/private-temp/flutter-overworld.mp3`,
+  tense: `${import.meta.env.BASE_URL}audio/story/private-temp/flutter-tense.mp3`
+} as const;
 
 const StoryGame: React.FC = () => {
   const [mode, setMode] = useState<ViewMode>("title");
@@ -161,6 +160,9 @@ const StoryGame: React.FC = () => {
   const [settings, setSettings] = useState<StorySettings>(loadStorySettings());
   const [loadingSave, setLoadingSave] = useState(true);
   const [selectedConsequence, setSelectedConsequence] = useState<string | null>(null);
+  const [tutorialCleared, setTutorialCleared] = useState(Boolean(DEFAULT_STORY_PROGRESS.flags.tutorial_completed));
+  const musicRef = useRef<HTMLAudioElement | null>(null);
+  const activeMusicRef = useRef<string | null>(null);
 
   const currentScene = useMemo(() => SCENES[progress.sceneId] ?? SCENES.wake, [progress.sceneId]);
 
@@ -197,6 +199,58 @@ const StoryGame: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    setTutorialCleared(Boolean(progress.flags.tutorial_completed));
+  }, [progress.flags, progress.sceneId]);
+
+  useEffect(() => {
+    if (!settings.ambientAudio) {
+      if (musicRef.current) {
+        musicRef.current.pause();
+      }
+      activeMusicRef.current = null;
+      return;
+    }
+
+    const nextTrack =
+      mode === "playing"
+        ? currentScene.chapterId === "chapter-1"
+          ? STORY_MUSIC.overworld
+          : STORY_MUSIC.tense
+        : STORY_MUSIC.title;
+
+    if (!musicRef.current) {
+      const audio = new Audio(nextTrack);
+      audio.loop = true;
+      audio.volume = 0.34;
+      musicRef.current = audio;
+      activeMusicRef.current = nextTrack;
+      void audio.play().catch(() => {});
+      return;
+    }
+
+    const audio = musicRef.current;
+    audio.volume = mode === "playing" && currentScene.chapterId !== "chapter-1" ? 0.28 : 0.34;
+
+    if (activeMusicRef.current !== nextTrack) {
+      audio.pause();
+      audio.src = nextTrack;
+      audio.currentTime = 0;
+      activeMusicRef.current = nextTrack;
+    }
+
+    void audio.play().catch(() => {});
+  }, [currentScene.chapterId, mode, settings.ambientAudio]);
+
+  useEffect(() => {
+    return () => {
+      if (musicRef.current) {
+        musicRef.current.pause();
+        musicRef.current = null;
+      }
+    };
+  }, []);
+
   const handleSettingChange = (nextSettings: StorySettings) => {
     setSettings(nextSettings);
     persistStorySettings(nextSettings);
@@ -205,6 +259,7 @@ const StoryGame: React.FC = () => {
   const startNewGame = () => {
     setProgress(DEFAULT_STORY_PROGRESS);
     setSelectedConsequence(null);
+    setTutorialCleared(false);
     setMode("playing");
     setSaveStatus("New file started. Manual save available from the story screen.");
   };
@@ -227,6 +282,11 @@ const StoryGame: React.FC = () => {
   };
 
   const applyChoice = async (choice: Choice) => {
+    if (currentScene.id === "gate" && !tutorialCleared) {
+      setSaveStatus("Finish Flutter's practice encounter first.");
+      return;
+    }
+
     const nextChapterId = choice.nextChapterId ?? progress.chapterId;
     const nextProgress: StoryProgress = {
       ...progress,
@@ -280,24 +340,32 @@ const StoryGame: React.FC = () => {
             </div>
 
             <div className="story-title-stage story-title-stage--meadow">
-              <div className="story-title-stage__sky" />
-              <div className="story-title-stage__ground" />
-              <div className="story-title-stage__path" />
-              <img
-                className="story-title-stage__tree story-title-stage__tree--left"
-                src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/tree_model_01_size_03.png`}
-                alt=""
-              />
-              <img
-                className="story-title-stage__tree story-title-stage__tree--right"
-                src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/tree_model_02_size_03.png`}
-                alt=""
-              />
-              <img
-                className="story-title-stage__player"
-                src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/character_idle_down.png`}
-                alt="Player sprite"
-              />
+              <div className="story-map story-map--title" aria-hidden="true">
+                <div className="story-map__cliff" />
+                <div className="story-map__snow" />
+                <div className="story-map__pond" />
+                <div className="story-map__dock" />
+                <div className="story-map__cabin" />
+                <div className="story-map__igloo" />
+                <div className="story-map__campfire" />
+                <div className="story-map__crate" />
+                <div className="story-map__mailbox" />
+                <div className="story-map__sign story-map__sign--north" />
+                <div className="story-map__sign story-map__sign--south" />
+                <div className="story-map__stump story-map__stump--left" />
+                <div className="story-map__stump story-map__stump--right" />
+                <div className="story-map__bush story-map__bush--one" />
+                <div className="story-map__bush story-map__bush--two" />
+                <div className="story-map__bush story-map__bush--three" />
+                <div className="story-map__bush story-map__bush--four" />
+                <div className="story-map__player-wrap story-map__player-wrap--title">
+                  <img
+                    className="story-map__player"
+                    src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/character_idle_down.png`}
+                    alt="Player sprite"
+                  />
+                </div>
+              </div>
               <div className="story-title-stage__butterfly" aria-hidden="true">
                 <span />
                 <span />
@@ -416,67 +484,76 @@ const StoryGame: React.FC = () => {
 
             <div className="story-stage">
               <div className={`story-stage__world story-stage__world--${currentScene.mood}`}>
-                <div className="story-stage__sky" />
-                <div className="story-stage__ground" />
-                <div className="story-stage__path" />
-                <img
-                  className="story-stage__tree story-stage__tree--left"
-                  src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/tree_model_01_size_03.png`}
-                  alt=""
-                />
-                <img
-                  className="story-stage__tree story-stage__tree--right"
-                  src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/tree_model_02_size_03.png`}
-                  alt=""
-                />
-                <div className="story-stage__setpiece" aria-hidden="true" />
-                <img
-                  className="story-stage__player"
-                  src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/character_idle_down.png`}
-                  alt="Player sprite"
-                />
-                {currentScene.speaker !== "Butterfly" ? (
-                  <img
-                    className="story-stage__npc"
-                    src={SPEAKER_SPRITES[currentScene.speaker] ?? ""}
-                    alt=""
-                  />
-                ) : null}
-                <div className="story-stage__butterfly" aria-hidden="true">
-                  <span />
-                  <span />
+                <div className={`story-map story-map--${currentScene.mood}`} aria-hidden="true">
+                  <div className="story-map__cliff" />
+                  <div className="story-map__snow" />
+                  <div className="story-map__pond" />
+                  <div className="story-map__dock" />
+                  <div className="story-map__cabin" />
+                  <div className="story-map__igloo" />
+                  <div className="story-map__campfire" />
+                  <div className="story-map__crate" />
+                  <div className="story-map__mailbox" />
+                  <div className="story-map__sign story-map__sign--north" />
+                  <div className="story-map__sign story-map__sign--south" />
+                  <div className="story-map__stump story-map__stump--left" />
+                  <div className="story-map__stump story-map__stump--right" />
+                  <div className="story-map__bush story-map__bush--one" />
+                  <div className="story-map__bush story-map__bush--two" />
+                  <div className="story-map__bush story-map__bush--three" />
+                  <div className="story-map__bush story-map__bush--four" />
+                  <div className="story-map__player-wrap">
+                    <img
+                      className="story-map__player"
+                      src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/character_idle_down.png`}
+                      alt="Player sprite"
+                    />
+                  </div>
+                  <div className="story-stage__butterfly" aria-hidden="true">
+                    <span />
+                    <span />
+                  </div>
                 </div>
                 <div className="story-stage__hint">
-                  {currentScene.mood === "meadow"
-                    ? "You wake beneath cold moonlight while the butterfly waits for you to stand."
-                    : currentScene.mood === "path"
-                      ? "The road narrows ahead. The butterfly keeps steering the pace."
-                      : currentScene.mood === "gate"
-                        ? "The town gate is close enough to touch, but the first warning arrives before safety does."
-                        : "The road opens into a small camp where names have been crossed out one by one."}
+                  {currentScene.id === "wake"
+                    ? "A warm fire, a cabin, and a guide you have no reason to distrust yet."
+                    : currentScene.id === "path"
+                      ? "Flutter teaches the rules before the road opens up."
+                      : currentScene.id === "gate"
+                        ? "Use WASD or the arrow keys inside the box and dodge until the lesson ends."
+                        : "The path south is the start of the real town chapter."}
                 </div>
-              </div>
+                {currentScene.id === "gate" ? (
+                  <EncounterTutorial
+                    completed={tutorialCleared}
+                    onComplete={() => {
+                      if (tutorialCleared) {
+                        return;
+                      }
 
-              <div className="story-dialogue-shell">
-                <div className="story-dialogue-shell__portrait">
-                  {SPEAKER_SPRITES[currentScene.speaker] ? (
-                    <img src={SPEAKER_SPRITES[currentScene.speaker] ?? ""} alt="" />
-                  ) : (
-                    <div className="story-dialogue-shell__butterfly" aria-hidden="true">
-                      <span />
-                      <span />
-                    </div>
-                  )}
-                </div>
-                <div
-                  className={`story-dialogue ${currentScene.chapterId === "chapter-2" ? "story-dialogue--tense" : ""}`}
-                >
-                  <div className="story-dialogue__speaker">{currentScene.speaker}</div>
-                  <p>{currentScene.body}</p>
-                  {currentScene.note ? <p className="story-subtle">{currentScene.note}</p> : null}
-                  {selectedConsequence ? <p className="warning">{selectedConsequence}</p> : null}
-                </div>
+                      setTutorialCleared(true);
+                      setProgress((current) => ({
+                        ...current,
+                        flags: {
+                          ...current.flags,
+                          tutorial_completed: true
+                        },
+                        updatedAt: new Date().toISOString()
+                      }));
+                      setSaveStatus("Practice complete. You can move on now.");
+                    }}
+                  />
+                ) : null}
               </div>
+            </div>
+
+            <div
+              className={`story-dialogue ${currentScene.chapterId === "chapter-2" ? "story-dialogue--tense" : ""}`}
+            >
+              <div className="story-dialogue__speaker">{currentScene.speaker}</div>
+              <p>{currentScene.body}</p>
+              {currentScene.note ? <p className="story-subtle">{currentScene.note}</p> : null}
+              {selectedConsequence ? <p className="warning">{selectedConsequence}</p> : null}
             </div>
 
             <div className="story-choice-grid">
@@ -486,6 +563,7 @@ const StoryGame: React.FC = () => {
                   type="button"
                   className="story-choice-card"
                   onClick={() => void applyChoice(choice)}
+                  disabled={currentScene.id === "gate" && !tutorialCleared}
                 >
                   <strong>{choice.label}</strong>
                 </button>
@@ -501,3 +579,131 @@ const StoryGame: React.FC = () => {
 };
 
 export default StoryGame;
+
+type EncounterTutorialProps = {
+  completed: boolean;
+  onComplete: () => void;
+};
+
+const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComplete }) => {
+  const [soul, setSoul] = useState({ x: 92, y: 78 });
+  const [elapsed, setElapsed] = useState(0);
+  const [flash, setFlash] = useState(false);
+  const keysRef = useRef<Record<string, boolean>>({});
+  const lastHitRef = useRef(0);
+
+  useEffect(() => {
+    if (completed) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (["w", "a", "s", "d", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+        keysRef.current[event.key] = true;
+        event.preventDefault();
+      }
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      delete keysRef.current[event.key];
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+
+    let frameId = 0;
+    let lastTime = performance.now();
+
+    const tick = (time: number) => {
+      const delta = Math.min(32, time - lastTime);
+      lastTime = time;
+
+      setSoul((current) => {
+        const speed = 0.17 * delta;
+        let nextX = current.x;
+        let nextY = current.y;
+
+        if (keysRef.current.a || keysRef.current.ArrowLeft) nextX -= speed;
+        if (keysRef.current.d || keysRef.current.ArrowRight) nextX += speed;
+        if (keysRef.current.w || keysRef.current.ArrowUp) nextY -= speed;
+        if (keysRef.current.s || keysRef.current.ArrowDown) nextY += speed;
+
+        return {
+          x: Math.max(12, Math.min(172, nextX)),
+          y: Math.max(12, Math.min(144, nextY))
+        };
+      });
+
+      setElapsed((current) => {
+        const next = current + delta;
+        if (next >= 6000) {
+          onComplete();
+          return 6000;
+        }
+        return next;
+      });
+
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [completed, onComplete]);
+
+  const pelletPositions = useMemo(() => {
+    const t = elapsed / 1000;
+    return [
+      { x: 24 + ((t * 48) % 152), y: 30 + Math.sin(t * 1.5) * 18 },
+      { x: 176 - ((t * 54) % 152), y: 78 + Math.cos(t * 1.7) * 24 },
+      { x: 32 + ((t * 38) % 148), y: 126 + Math.sin(t * 2.1) * 14 }
+    ];
+  }, [elapsed]);
+
+  useEffect(() => {
+    if (completed) {
+      return;
+    }
+
+    const hit = pelletPositions.some((pellet) => Math.hypot(pellet.x - soul.x, pellet.y - soul.y) < 11);
+    const now = performance.now();
+
+    if (hit && now - lastHitRef.current > 600) {
+      lastHitRef.current = now;
+      setElapsed(0);
+      setFlash(true);
+      window.setTimeout(() => setFlash(false), 180);
+    }
+  }, [completed, pelletPositions, soul.x, soul.y]);
+
+  return (
+    <div className={`story-encounter ${flash ? "story-encounter--flash" : ""}`}>
+      <div className="story-encounter__head">
+        <strong>{completed ? "Practice complete" : "Practice encounter"}</strong>
+        <span>{completed ? "Ready to continue" : "Survive 6 seconds"}</span>
+      </div>
+      <div className="story-encounter__box">
+        <div className="story-encounter__grid" />
+        {pelletPositions.map((pellet, index) => (
+          <span
+            key={index}
+            className="story-encounter__pellet"
+            style={{ left: `${pellet.x}px`, top: `${pellet.y}px` }}
+          />
+        ))}
+        <span
+          className="story-encounter__soul"
+          style={{ left: `${soul.x}px`, top: `${soul.y}px` }}
+        />
+      </div>
+      <div className="story-encounter__foot">
+        <span>WASD / Arrow keys to move</span>
+        <span>{completed ? "Lesson cleared" : `Timer ${Math.ceil((6000 - elapsed) / 1000)}s`}</span>
+      </div>
+    </div>
+  );
+};
