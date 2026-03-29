@@ -35,7 +35,8 @@ type SceneId =
   | "sleep-transition"
   | "forest-free"
   | "forest-tree-encounter"
-  | "forest-drunk-encounter";
+  | "forest-drunk-encounter"
+  | "forest-after-drunk";
 
 type DialogueChoice = {
   id: string;
@@ -152,6 +153,7 @@ function mapLegacySceneId(sceneId: string): SceneId {
     case "forest-free":
     case "forest-tree-encounter":
     case "forest-drunk-encounter":
+    case "forest-after-drunk":
       return sceneId;
     default:
       return "wake-intro";
@@ -162,7 +164,9 @@ function normalizeLoadedProgress(progress: StoryProgress): StoryProgress {
   return {
     ...progress,
     chapterId: "chapter-1",
-    sceneId: mapLegacySceneId(progress.sceneId)
+    sceneId: mapLegacySceneId(progress.sceneId),
+    playerHp: typeof progress.playerHp === "number" ? progress.playerHp : 20,
+    bagPotions: typeof progress.bagPotions === "number" ? progress.bagPotions : 1
   };
 }
 
@@ -227,7 +231,8 @@ const IGLOO_BRIEF_SCENE: DialogueScene = {
   ]
 };
 
-function getOldManScene(tutorialCompleted: boolean): DialogueScene {
+function getOldManScene(tutorialCompleted: boolean, playerHp: number): DialogueScene {
+  const canOfferSleep = tutorialCompleted;
   return {
     id: "cabin-oldman",
     title: "The Cabin Lamp",
@@ -235,17 +240,22 @@ function getOldManScene(tutorialCompleted: boolean): DialogueScene {
     location: "Inside the cabin",
     body:
       "The cabin smells like cedar smoke and old paper. An old man looks up from the stove, studies you for a moment, and then talks as if you arrived in the middle of a story he has already told a hundred times. " +
-      "The name you need to know is Velmora. Villages whisper it every winter now. Gangs gather under that banner, roads go dark, and people disappear between one town and the next.",
+      "The name you need to know is Velmora. Villages whisper it every winter now. Gangs gather under that banner, roads go dark, and people disappear between one town and the next. " +
+      (playerHp < 20
+        ? "His eyes drop to your bruises. \"If that polar bear clipped you,\" he adds, \"sleeping by my fire will put you back together by morning.\""
+        : ""),
     choices: [
       {
         id: "ask-velmora",
         label: "Ask what Velmora actually wants.",
         nextSceneId: "cabin-oldman-more"
       },
-      ...(tutorialCompleted
+      ...(canOfferSleep
         ? [{
             id: "ask-to-rest",
-            label: "Ask if you can stay here until morning.",
+            label: playerHp < 20
+              ? "Ask if sleeping here will patch you up."
+              : "Ask if you can stay here until morning.",
             nextSceneId: "sleep-transition" as const
           }]
         : []),
@@ -258,7 +268,7 @@ function getOldManScene(tutorialCompleted: boolean): DialogueScene {
   };
 }
 
-function getOldManMoreScene(tutorialCompleted: boolean): DialogueScene {
+function getOldManMoreScene(tutorialCompleted: boolean, playerHp: number): DialogueScene {
   return {
     id: "cabin-oldman-more",
     title: "Velmora",
@@ -266,15 +276,22 @@ function getOldManMoreScene(tutorialCompleted: boolean): DialogueScene {
     location: "Inside the cabin",
     body:
       "The old man shakes his head. Nobody agrees on what Velmora wants, only on what follows behind the name: burned storehouses, frightened caravans, and gangs bold enough to move openly through the back roads. " +
-      "He tells you the villages are holding together for now, but only barely. If someone does not push back, spring will never feel safe again.",
+      "He tells you the villages are holding together for now, but only barely. If someone does not push back, spring will never feel safe again. " +
+      (playerHp < 20
+        ? "\"And don't be proud about those cuts,\" he says. \"A proper night's sleep here will bring your strength right back.\""
+        : ""),
     note: tutorialCompleted
-      ? "You've seen enough of the camp to ask for a place to rest."
+      ? (playerHp < 20
+          ? "The old man notices your bruises. He says a real night's sleep by the fire will get you back to full strength."
+          : "You've seen enough of the camp to ask for a place to rest.")
       : "This conversation is worldbuilding only. Check the igloo before you ask to stay the night.",
     choices: [
       ...(tutorialCompleted
         ? [{
             id: "rest-after-lore",
-            label: "Ask if you can sleep here until morning.",
+            label: playerHp < 20
+              ? "Ask if resting here will restore your strength."
+              : "Ask if you can sleep here until morning.",
             nextSceneId: "sleep-transition" as const
           }]
         : []),
@@ -301,6 +318,33 @@ const SLEEP_TRANSITION_SCENE: DialogueScene = {
       id: "wake-up",
       label: "Step outside.",
       nextSceneId: "camp-free"
+    }
+  ]
+};
+
+const FOREST_AFTER_DRUNK_SCENE: DialogueScene = {
+  id: "forest-after-drunk",
+  title: "After The Bottle",
+  speaker: "Flutter",
+  location: "Forest path",
+  body:
+    "Flutter flits down beside your shoulder and stays there instead of drifting ahead. \"Hey. Hey, look at me for a second,\" it says. \"That one was ugly. Are you still with me? If you need a breath, take one. I just want to know you're okay.\"",
+  note: "Flutter sounds more worried than usual, and it does not rush you this time.",
+  choices: [
+    {
+      id: "flutter-im-fine",
+      label: "Tell Flutter you're fine and ask it to stay close.",
+      nextSceneId: "forest-free"
+    },
+    {
+      id: "flutter-that-hurt",
+      label: "Admit that fight actually hurt and ask for a second.",
+      nextSceneId: "forest-free"
+    },
+    {
+      id: "flutter-ask-why",
+      label: "Ask Flutter if every road out here is going to feel like this.",
+      nextSceneId: "forest-free"
     }
   ]
 };
@@ -345,15 +389,17 @@ const StoryGame: React.FC = () => {
       case "igloo-brief":
         return IGLOO_BRIEF_SCENE;
       case "cabin-oldman":
-        return getOldManScene(tutorialCompleted);
+        return getOldManScene(tutorialCompleted, progress.playerHp);
       case "cabin-oldman-more":
-        return getOldManMoreScene(tutorialCompleted);
+        return getOldManMoreScene(tutorialCompleted, progress.playerHp);
       case "sleep-transition":
         return SLEEP_TRANSITION_SCENE;
+      case "forest-after-drunk":
+        return FOREST_AFTER_DRUNK_SCENE;
       default:
         return null;
     }
-  }, [currentSceneId, playerName, tutorialCompleted]);
+  }, [currentSceneId, playerName, progress.playerHp, tutorialCompleted]);
 
   useEffect(() => {
     let cancelled = false;
@@ -396,7 +442,7 @@ const StoryGame: React.FC = () => {
           const normalized = normalizeLoadedProgress(savedProgress);
           setProgress(normalized);
           setHasExistingSave(true);
-          setSaveStatus(`Save loaded. Last checkpoint: ${normalized.title ?? CHAPTER_LABEL}.`);
+          setSaveStatus(`Save loaded. Last checkpoint: ${CHAPTER_LABEL}.`);
         } else {
           setSaveStatus("No story save yet. Starting fresh is safe.");
         }
@@ -477,7 +523,9 @@ const StoryGame: React.FC = () => {
       ...DEFAULT_STORY_PROGRESS,
       chapterId: "chapter-1",
       sceneId: "wake-intro",
-      flags: {}
+      flags: {},
+      playerHp: 20,
+      bagPotions: 1
     });
     setMode("playing");
     setSaveStatus("New file started. Manual save is available from the story screen.");
@@ -502,6 +550,18 @@ const StoryGame: React.FC = () => {
     }
   };
 
+  const handleDialogueChoice = (choice: DialogueChoice) => {
+    if (choice.id === "flutter-im-fine") {
+      setSaveStatus("Flutter settles in behind your shoulder and keeps pace with you.");
+    } else if (choice.id === "flutter-that-hurt") {
+      setSaveStatus("Flutter waits a beat with you, then gently nudges the two of you onward.");
+    } else if (choice.id === "flutter-ask-why") {
+      setSaveStatus("Flutter admits the roads are getting worse, then urges you to keep moving.");
+    }
+
+    goToScene(choice.nextSceneId);
+  };
+
   const goToScene = (nextSceneId: SceneId) => {
     setProgress((current) => {
       const nextFlags = { ...current.flags };
@@ -514,6 +574,9 @@ const StoryGame: React.FC = () => {
       return {
         ...current,
         sceneId: nextSceneId,
+        playerHp: nextSceneId === "camp-free" && current.sceneId === "sleep-transition"
+          ? 20
+          : current.playerHp,
         flags: nextFlags,
         updatedAt: new Date().toISOString()
       };
@@ -780,6 +843,14 @@ const StoryGame: React.FC = () => {
                       }));
                       setSaveStatus("The polar bear knocks you back into the snow.");
                     }}
+                    playerHp={progress.playerHp}
+                    bagPotions={progress.bagPotions}
+                    onPlayerHpChange={(value) => {
+                      setProgress((current) => ({ ...current, playerHp: value }));
+                    }}
+                    onBagPotionsChange={(value) => {
+                      setProgress((current) => ({ ...current, bagPotions: value }));
+                    }}
                   />
                 ) : currentSceneId === "forest-tree-encounter" ? (
                   <EncounterBattle
@@ -804,6 +875,14 @@ const StoryGame: React.FC = () => {
                       }));
                       setSaveStatus("The snow tree drives you back down the trail.");
                     }}
+                    playerHp={progress.playerHp}
+                    bagPotions={progress.bagPotions}
+                    onPlayerHpChange={(value) => {
+                      setProgress((current) => ({ ...current, playerHp: value }));
+                    }}
+                    onBagPotionsChange={(value) => {
+                      setProgress((current) => ({ ...current, bagPotions: value }));
+                    }}
                   />
                 ) : currentSceneId === "forest-drunk-encounter" ? (
                   <EncounterBattle
@@ -811,10 +890,10 @@ const StoryGame: React.FC = () => {
                     onComplete={() => {
                       setProgress((current) => ({
                         ...current,
-                        sceneId: "forest-free",
-                        flags: {
-                          ...current.flags,
-                          forest_drunk_done: true
+                          sceneId: "forest-after-drunk",
+                          flags: {
+                            ...current.flags,
+                            forest_drunk_done: true
                         },
                         updatedAt: new Date().toISOString()
                       }));
@@ -827,6 +906,14 @@ const StoryGame: React.FC = () => {
                         updatedAt: new Date().toISOString()
                       }));
                       setSaveStatus("The drunk cracks you with a bottle and you stumble back.");
+                    }}
+                    playerHp={progress.playerHp}
+                    bagPotions={progress.bagPotions}
+                    onPlayerHpChange={(value) => {
+                      setProgress((current) => ({ ...current, playerHp: value }));
+                    }}
+                    onBagPotionsChange={(value) => {
+                      setProgress((current) => ({ ...current, bagPotions: value }));
                     }}
                   />
                 ) : null}
@@ -844,13 +931,17 @@ const StoryGame: React.FC = () => {
                     <div className="story-dialogue__speaker">Flutter</div>
                     <p>
                       {forestMovementUnlocked
-                        ? "The trees crowd in on both sides of the path. Whatever is out here does not wait politely."
+                        ? (forestDrunkDone
+                            ? "Flutter keeps checking in now. Every so often it asks if you're steady, if you want it closer, or if you need a second before the two of you keep walking."
+                            : forestTreeDone
+                              ? "Flutter stays a little nearer after the tree fight and fills the quiet with small comments about the snow, the path, and whether you're still doing alright."
+                              : "The trees crowd in on both sides of the path. Flutter chatters lightly while you move, pointing out the trail and asking now and then if you're holding up.")
                         : campIsMorning
-                        ? "The camp is brighter now. The cabin still has a lamp in the window, and the igloo is the only other place here that looks in use."
-                        : "The camp is quiet for now. The cabin still has a lamp in the window, and the igloo is the only other place here that looks in use."}
+                        ? "The camp is brighter now. Flutter sounds relieved to have daylight back and keeps your spirits up with little observations about the snow and the road ahead."
+                        : "The camp is quiet for now. Flutter keeps close, talking just enough to keep the silence from settling too hard around you."}
                     </p>
                     <p className="story-subtle">
-                      Velmora explained: {houseVisited ? "yes" : "not yet"} | Fight tutorial complete: {tutorialCompleted ? "yes" : "not yet"} | Morning: {campIsMorning ? "yes" : "not yet"} | Forest fights: {Number(forestTreeDone) + Number(forestDrunkDone)}/2
+                      Velmora explained: {houseVisited ? "yes" : "not yet"} | Fight tutorial complete: {tutorialCompleted ? "yes" : "not yet"} | Morning: {campIsMorning ? "yes" : "not yet"} | Forest fights: {Number(forestTreeDone) + Number(forestDrunkDone)}/2 | HP: {progress.playerHp}/20 | Potions: {progress.bagPotions}
                     </p>
                   </>
                 )}
@@ -864,7 +955,7 @@ const StoryGame: React.FC = () => {
                     key={choice.id}
                     type="button"
                     className="story-choice-card"
-                    onClick={() => goToScene(choice.nextSceneId)}
+                    onClick={() => handleDialogueChoice(choice)}
                   >
                     <strong>{choice.label}</strong>
                   </button>
@@ -1496,16 +1587,26 @@ type EncounterBattleProps = {
   config: EncounterConfig;
   onComplete: () => void;
   onLose: () => void;
+  playerHp: number;
+  bagPotions: number;
+  onPlayerHpChange: (value: number) => void;
+  onBagPotionsChange: (value: number) => void;
 };
 
-const EncounterBattle: React.FC<EncounterBattleProps> = ({ config, onComplete, onLose }) => {
+const EncounterBattle: React.FC<EncounterBattleProps> = ({
+  config,
+  onComplete,
+  onLose,
+  playerHp,
+  bagPotions,
+  onPlayerHpChange,
+  onBagPotionsChange
+}) => {
   const [soul, setSoul] = useState({ x: ENCOUNTER_BOX_WIDTH / 2, y: ENCOUNTER_BOX_HEIGHT / 2 });
   const [elapsed, setElapsed] = useState(0);
   const [flash, setFlash] = useState(false);
   const [enemyHp, setEnemyHp] = useState(config.maxHp);
   const [phase, setPhase] = useState<"command" | "dodging" | "won">("command");
-  const [bagUses, setBagUses] = useState(1);
-  const [playerHp, setPlayerHp] = useState(20);
   const [statusLine, setStatusLine] = useState(`${config.enemyName} steps into your way.`);
   const keysRef = useRef<Record<string, boolean>>({});
   const lastHitRef = useRef(0);
@@ -1620,21 +1721,19 @@ const EncounterBattle: React.FC<EncounterBattleProps> = ({ config, onComplete, o
     if (hit && now - lastHitRef.current > 600) {
       lastHitRef.current = now;
       setFlash(true);
-      setPlayerHp((current) => {
-        const next = Math.max(0, current - hitDamage);
-        if (next <= 0) {
-          setStatusLine(`${config.enemyName} drops you. Flutter pulls you back.`);
-          finishTimeoutRef.current = window.setTimeout(() => {
-            onLose();
-          }, 900);
-          return 0;
-        }
+      const nextHp = Math.max(0, playerHp - hitDamage);
+      onPlayerHpChange(nextHp);
+      if (nextHp <= 0) {
+        setStatusLine(`${config.enemyName} drops you. Flutter pulls you back.`);
+        finishTimeoutRef.current = window.setTimeout(() => {
+          onLose();
+        }, 900);
+      } else {
         setStatusLine(`${config.enemyName} hits you for ${hitDamage}.`);
-        return next;
-      });
+      }
       window.setTimeout(() => setFlash(false), 180);
     }
-  }, [config.enemyName, hitDamage, onLose, pelletPositions, phase, soul.x, soul.y]);
+  }, [config.enemyName, hitDamage, onLose, onPlayerHpChange, pelletPositions, phase, playerHp, soul.x, soul.y]);
 
   const startDodgePhase = () => {
     setSoul({ x: ENCOUNTER_BOX_WIDTH / 2, y: ENCOUNTER_BOX_HEIGHT / 2 });
@@ -1660,12 +1759,12 @@ const EncounterBattle: React.FC<EncounterBattleProps> = ({ config, onComplete, o
   };
 
   const handleBag = () => {
-    if (bagUses <= 0) {
+    if (bagPotions <= 0) {
       setStatusLine("Your bag is empty.");
       return;
     }
-    setBagUses((current) => current - 1);
-    setPlayerHp((current) => Math.min(20, current + 6));
+    onBagPotionsChange(bagPotions - 1);
+    onPlayerHpChange(Math.min(20, playerHp + 6));
     setStatusLine("You steady yourself with a quick snack.");
     startDodgePhase();
   };
@@ -1728,7 +1827,7 @@ const EncounterBattle: React.FC<EncounterBattleProps> = ({ config, onComplete, o
               Attack
             </button>
             <button type="button" className="story-battle-action" onClick={handleBag} disabled={phase !== "command"}>
-              Bag{bagUses > 0 ? ` (${bagUses})` : ""}
+              Bag{bagPotions > 0 ? ` (${bagPotions})` : ""}
             </button>
             <button type="button" className="story-battle-action" onClick={handleRun} disabled={phase !== "command"}>
               Run
