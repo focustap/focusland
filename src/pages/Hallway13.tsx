@@ -637,25 +637,55 @@ const Hallway13: React.FC = () => {
         const plaqueHeight = doorHeight * 0.12;
         const plaqueX = doorRect.centerX - plaqueWidth / 2;
         const plaqueY = doorY - plaqueHeight - 12;
-        this.graphics.fillStyle(0x18181b, 0.9);
-        this.graphics.fillRoundedRect(plaqueX, plaqueY, plaqueWidth, plaqueHeight, 4);
-        this.graphics.lineStyle(2, 0xcbd5e1, 0.38);
-        this.graphics.strokeRoundedRect(plaqueX, plaqueY, plaqueWidth, plaqueHeight, 4);
-        this.plaqueShadowText
-          .setText(this.currentAnomaly === "door-number" ? "14" : "13")
-          .setPosition(doorRect.centerX + 1, plaqueY + plaqueHeight / 2 + 1)
-          .setFontSize(`${Math.max(10, Math.round(16 + (CAMERA_FOCAL / (doorDistance + CAMERA_FOCAL)) * 18))}px`)
-          .setVisible(true);
-        this.plaqueText
-          .setText(this.currentAnomaly === "door-number" ? "14" : "13")
-          .setPosition(doorRect.centerX, plaqueY + plaqueHeight / 2)
-          .setFontSize(`${Math.max(10, Math.round(16 + (CAMERA_FOCAL / (doorDistance + CAMERA_FOCAL)) * 18))}px`)
-          .setVisible(true);
+        if (this.currentAnomaly !== "missing-plaque") {
+          if (this.currentAnomaly === "tilted-plaque") {
+            this.graphics.fillStyle(0x18181b, 0.92);
+            this.graphics.beginPath();
+            this.graphics.moveTo(plaqueX, plaqueY + 2);
+            this.graphics.lineTo(plaqueX + plaqueWidth, plaqueY - 2);
+            this.graphics.lineTo(plaqueX + plaqueWidth, plaqueY + plaqueHeight - 4);
+            this.graphics.lineTo(plaqueX, plaqueY + plaqueHeight + 4);
+            this.graphics.closePath();
+            this.graphics.fillPath();
+            this.graphics.lineStyle(2, 0xcbd5e1, 0.38);
+            this.graphics.beginPath();
+            this.graphics.moveTo(plaqueX, plaqueY + 2);
+            this.graphics.lineTo(plaqueX + plaqueWidth, plaqueY - 2);
+            this.graphics.lineTo(plaqueX + plaqueWidth, plaqueY + plaqueHeight - 4);
+            this.graphics.lineTo(plaqueX, plaqueY + plaqueHeight + 4);
+            this.graphics.closePath();
+            this.graphics.strokePath();
+          } else {
+            this.graphics.fillStyle(0x18181b, 0.9);
+            this.graphics.fillRoundedRect(plaqueX, plaqueY, plaqueWidth, plaqueHeight, 4);
+            this.graphics.lineStyle(2, 0xcbd5e1, 0.38);
+            this.graphics.strokeRoundedRect(plaqueX, plaqueY, plaqueWidth, plaqueHeight, 4);
+          }
+          this.plaqueShadowText
+            .setText(this.currentAnomaly === "door-number" ? "14" : "13")
+            .setPosition(doorRect.centerX + 1, plaqueY + plaqueHeight / 2 + 1)
+            .setFontSize(`${Math.max(10, Math.round(16 + (CAMERA_FOCAL / (doorDistance + CAMERA_FOCAL)) * 18))}px`)
+            .setVisible(true);
+          this.plaqueText
+            .setText(this.currentAnomaly === "door-number" ? "14" : "13")
+            .setPosition(doorRect.centerX, plaqueY + plaqueHeight / 2)
+            .setFontSize(`${Math.max(10, Math.round(16 + (CAMERA_FOCAL / (doorDistance + CAMERA_FOCAL)) * 18))}px`)
+            .setVisible(true);
+        }
 
-        const knobX = doorX + doorWidth - 18;
+        const knobX = this.currentAnomaly === "knob-left" ? doorX + 18 : doorX + doorWidth - 18;
         const knobY = doorY + doorHeight / 2;
-        this.graphics.fillStyle(0x7c5f35, 1);
-        this.graphics.fillCircle(knobX, knobY, 4 + doorRect.width * 0.008);
+        if (this.currentAnomaly !== "missing-knob") {
+          this.graphics.fillStyle(0x7c5f35, 1);
+          this.graphics.fillCircle(knobX, knobY, 4 + doorRect.width * 0.008);
+        }
+
+        if (this.currentAnomaly === "door-scratches") {
+          this.graphics.lineStyle(Math.max(1, 2 * doorRect.width / 180), 0x4a1d1d, 0.78);
+          this.graphics.strokeLineShape(new Phaser.Geom.Line(doorX + doorWidth * 0.58, doorY + doorHeight * 0.24, doorX + doorWidth * 0.46, doorY + doorHeight * 0.58));
+          this.graphics.strokeLineShape(new Phaser.Geom.Line(doorX + doorWidth * 0.64, doorY + doorHeight * 0.26, doorX + doorWidth * 0.52, doorY + doorHeight * 0.62));
+          this.graphics.strokeLineShape(new Phaser.Geom.Line(doorX + doorWidth * 0.7, doorY + doorHeight * 0.22, doorX + doorWidth * 0.58, doorY + doorHeight * 0.56));
+        }
 
         if (this.currentAnomaly === "door-eye") {
           const eyeY = doorY + doorHeight * 0.34;
@@ -674,19 +704,16 @@ const Hallway13: React.FC = () => {
       }
 
       drawLights() {
-        LIGHT_WORLD_DISTANCES.forEach((worldDistance, index) => {
-          const distance = worldDistance - this.getPlayerDepth();
-          if (distance <= 6 || distance >= this.getDoorDistance() - 34) {
-            return;
-          }
-          if (this.currentAnomaly === "missing-light" && index === 2) {
+        const drawFixture = (distance: number, index: number, options: { lowered?: boolean } = {}) => {
+          if (distance <= 20 || distance >= this.getDoorDistance() - 72) {
             return;
           }
 
-          const nearRect = this.projectRectFromDistance(Math.max(18, distance - 20));
+          const nearRect = this.projectRectFromDistance(Math.max(22, distance - 20));
           const farRect = this.projectRectFromDistance(distance + 20);
-          const nearY = nearRect.top + nearRect.height * 0.08;
-          const farY = farRect.top + farRect.height * 0.08;
+          const dropRatio = options.lowered ? 0.18 : 0.08;
+          const nearY = nearRect.top + nearRect.height * dropRatio;
+          const farY = farRect.top + farRect.height * dropRatio;
           const nearHalfWidth = Math.max(12, nearRect.width * 0.07);
           const farHalfWidth = Math.max(7, farRect.width * 0.07);
           const isRed = this.currentAnomaly === "red-light" && index === 2;
@@ -722,9 +749,29 @@ const Hallway13: React.FC = () => {
           this.graphics.closePath();
           this.graphics.strokePath();
 
+          const stemHeight = options.lowered ? 18 : 12;
           this.graphics.fillStyle(0x3f3f46, 0.38);
-          this.graphics.fillRect(nearRect.centerX - 5, nearY - 12 * nearRect.width / (HALL_HALF_WIDTH * 2), 10, 7);
+          this.graphics.fillRect(
+            nearRect.centerX - 5,
+            nearY - stemHeight * nearRect.width / (HALL_HALF_WIDTH * 2),
+            10,
+            7
+          );
+        };
+
+        LIGHT_WORLD_DISTANCES.forEach((worldDistance, index) => {
+          if (this.currentAnomaly === "missing-light" && index === 2) {
+            return;
+          }
+
+          drawFixture(worldDistance - this.getPlayerDepth(), index, {
+            lowered: this.currentAnomaly === "low-light" && index === 3
+          });
         });
+
+        if (this.currentAnomaly === "extra-light") {
+          drawFixture(486 - this.getPlayerDepth(), 99);
+        }
       }
 
       drawFrame(
@@ -732,21 +779,25 @@ const Hallway13: React.FC = () => {
         side: "left" | "right",
         hasPortrait: boolean,
         palette: { head: number; body: number } = { head: 0x7f1d1d, body: 0xe2e8f0 },
-        options: { upsideDown?: boolean; crookedOffset?: number } = {}
+        options: { upsideDown?: boolean; crookedOffset?: number; eye?: boolean; bleed?: boolean } = {}
       ) {
         const nearRect = this.projectRectFromDistance(Math.max(18, distance - 22));
         const farRect = this.projectRectFromDistance(distance + 22);
         const nearInset = Math.max(6, nearRect.width * 0.022);
         const farInset = Math.max(4, farRect.width * 0.022);
-        const crookedOffset = options.crookedOffset ?? 0;
-        const nearXBase = side === "left" ? nearRect.left + nearInset : nearRect.right - nearInset;
-        const farXBase = side === "left" ? farRect.left + farInset : farRect.right - farInset;
-        const nearX = nearXBase + crookedOffset;
-        const farX = farXBase + crookedOffset * 0.42;
-        const nearTop = nearRect.centerY - nearRect.height * 0.13;
-        const nearBottom = nearRect.centerY + nearRect.height * 0.19;
-        const farTop = farRect.centerY - farRect.height * 0.13;
-        const farBottom = farRect.centerY + farRect.height * 0.19;
+        const tilt = options.crookedOffset ?? 0;
+        const nearX = side === "left" ? nearRect.left + nearInset : nearRect.right - nearInset;
+        const farX = side === "left" ? farRect.left + farInset : farRect.right - farInset;
+        const nearTop = nearRect.centerY - nearRect.height * 0.13 + tilt;
+        const nearBottom = nearRect.centerY + nearRect.height * 0.19 + tilt * 0.28;
+        const farTop = farRect.centerY - farRect.height * 0.13 + tilt * 0.42;
+        const farBottom = farRect.centerY + farRect.height * 0.19 + tilt * 0.18;
+        const innerNearX = nearX + (side === "left" ? 10 : -10);
+        const innerFarX = farX + (side === "left" ? 7 : -7);
+        const innerNearTop = nearTop + 10;
+        const innerNearBottom = nearBottom - 10;
+        const innerFarTop = farTop + 8;
+        const innerFarBottom = farBottom - 8;
 
         this.graphics.fillStyle(0x1c1917, 0.95);
         this.graphics.beginPath();
@@ -767,14 +818,42 @@ const Hallway13: React.FC = () => {
         this.graphics.strokePath();
 
         if (hasPortrait) {
-          const centerX = (nearX + farX) / 2;
-          const centerY = (nearTop + nearBottom + farTop + farBottom) / 4;
+          this.graphics.fillStyle(0x2f2a22, 0.98);
+          this.graphics.beginPath();
+          this.graphics.moveTo(innerNearX, innerNearTop);
+          this.graphics.lineTo(innerFarX, innerFarTop);
+          this.graphics.lineTo(innerFarX, innerFarBottom);
+          this.graphics.lineTo(innerNearX, innerNearBottom);
+          this.graphics.closePath();
+          this.graphics.fillPath();
+
+          const centerX = (innerNearX + innerFarX) / 2;
+          const centerY = (innerNearTop + innerNearBottom + innerFarTop + innerFarBottom) / 4;
           const scale = nearRect.width / (HALL_HALF_WIDTH * 2);
-          const xInset = Math.abs(nearX - farX) * 0.18 + 3;
-          const portraitWidth = Math.max(6, Math.abs(nearX - farX) * 0.32);
-          const portraitHeight = Math.max(8, (nearBottom - nearTop) * 0.18);
+          const xInset = Math.abs(innerNearX - innerFarX) * 0.18 + 3;
+          const portraitWidth = Math.max(6, Math.abs(innerNearX - innerFarX) * 0.32);
+          const portraitHeight = Math.max(8, (innerNearBottom - innerNearTop) * 0.18);
           const headY = options.upsideDown ? centerY + 10 * scale : centerY - 8 * scale;
           const bodyY = options.upsideDown ? centerY - 10 * scale : centerY + 6 * scale;
+          const horizonY = centerY + 2 * scale;
+
+          this.graphics.fillStyle(0x334155, 0.82);
+          this.graphics.beginPath();
+          this.graphics.moveTo(innerNearX, innerNearTop);
+          this.graphics.lineTo(innerFarX, innerFarTop);
+          this.graphics.lineTo(innerFarX, horizonY - 8 * scale);
+          this.graphics.lineTo(innerNearX, horizonY);
+          this.graphics.closePath();
+          this.graphics.fillPath();
+          this.graphics.fillStyle(0x4b3a2b, 0.92);
+          this.graphics.beginPath();
+          this.graphics.moveTo(innerNearX, horizonY);
+          this.graphics.lineTo(innerFarX, horizonY - 8 * scale);
+          this.graphics.lineTo(innerFarX, innerFarBottom);
+          this.graphics.lineTo(innerNearX, innerNearBottom);
+          this.graphics.closePath();
+          this.graphics.fillPath();
+
           this.graphics.fillStyle(palette.head, 0.78);
           this.graphics.fillCircle(centerX + (side === "left" ? xInset : -xInset), headY, Math.max(3, 6 * scale));
           this.graphics.fillStyle(palette.body, 0.84);
@@ -784,6 +863,71 @@ const Hallway13: React.FC = () => {
             portraitWidth,
             portraitHeight
           );
+          this.graphics.fillStyle(0xe7d8a2, 0.34);
+          this.graphics.fillCircle(centerX - xInset * 0.4, innerNearTop + 12 * scale, Math.max(2, 4 * scale));
+
+          if (options.eye) {
+            const eyeX = centerX - xInset * 0.4;
+            const eyeY = innerNearTop + 14 * scale;
+            this.graphics.fillStyle(0x09090b, 0.92);
+            this.graphics.fillEllipse(eyeX, eyeY, 16 * scale, 9 * scale);
+            this.graphics.fillStyle(0xf8fafc, 0.95);
+            this.graphics.fillCircle(eyeX, eyeY, Math.max(2, 3 * scale));
+            this.graphics.fillStyle(0x0f172a, 0.95);
+            this.graphics.fillCircle(eyeX, eyeY, Math.max(1, 1.5 * scale));
+          }
+
+          if (options.bleed) {
+            this.graphics.lineStyle(Math.max(1, 1.5 * scale), 0x991b1b, 0.75);
+            this.graphics.strokeLineShape(
+              new Phaser.Geom.Line(
+                centerX + (side === "left" ? xInset * 0.45 : -xInset * 0.45),
+                bodyY + portraitHeight,
+                centerX + (side === "left" ? xInset * 0.25 : -xInset * 0.25),
+                innerNearBottom
+              )
+            );
+          }
+        }
+      }
+
+      drawVent(distance: number, side: "left" | "right", open = false) {
+        const nearRect = this.projectRectFromDistance(Math.max(18, distance - 18));
+        const farRect = this.projectRectFromDistance(distance + 18);
+        const nearX = side === "left" ? nearRect.left + nearRect.width * 0.08 : nearRect.right - nearRect.width * 0.08;
+        const farX = side === "left" ? farRect.left + farRect.width * 0.08 : farRect.right - farRect.width * 0.08;
+        const nearTop = nearRect.centerY + nearRect.height * 0.04;
+        const nearBottom = nearRect.centerY + nearRect.height * 0.14;
+        const farTop = farRect.centerY + farRect.height * 0.04;
+        const farBottom = farRect.centerY + farRect.height * 0.14;
+
+        this.graphics.fillStyle(open ? 0x09090b : 0x4b5563, 0.92);
+        this.graphics.beginPath();
+        this.graphics.moveTo(nearX, nearTop);
+        this.graphics.lineTo(farX, farTop);
+        this.graphics.lineTo(farX, farBottom);
+        this.graphics.lineTo(nearX, nearBottom);
+        this.graphics.closePath();
+        this.graphics.fillPath();
+
+        this.graphics.lineStyle(2, 0x94a3b8, 0.3);
+        this.graphics.beginPath();
+        this.graphics.moveTo(nearX, nearTop);
+        this.graphics.lineTo(farX, farTop);
+        this.graphics.lineTo(farX, farBottom);
+        this.graphics.lineTo(nearX, nearBottom);
+        this.graphics.closePath();
+        this.graphics.strokePath();
+
+        if (!open) {
+          const slatCount = 3;
+          for (let index = 1; index <= slatCount; index += 1) {
+            const t = index / (slatCount + 1);
+            const y1 = Phaser.Math.Linear(nearTop, nearBottom, t);
+            const y2 = Phaser.Math.Linear(farTop, farBottom, t);
+            this.graphics.lineStyle(1, 0x1f2937, 0.55);
+            this.graphics.strokeLineShape(new Phaser.Geom.Line(nearX, y1, farX, y2));
+          }
         }
       }
 
@@ -805,8 +949,11 @@ const Hallway13: React.FC = () => {
             upsideDown: this.currentAnomaly === "upside-down-left" && index === 2,
             crookedOffset:
               this.currentAnomaly === "crooked-frame-left" && index === 1
-                ? 18 * Math.max(0.52, distance / HALL_LENGTH)
+                ? 10 * Math.max(0.5, distance / HALL_LENGTH)
                 : 0
+            ,
+            eye: this.currentAnomaly === "eye-in-painting" && index === 0,
+            bleed: this.currentAnomaly === "portrait-bleed" && index === 1
           });
         });
         RIGHT_FRAME_WORLD_DISTANCES.forEach((worldDistance, index) => {
@@ -821,6 +968,25 @@ const Hallway13: React.FC = () => {
           this.drawFrame(distance, "right", true, palette, {
             upsideDown: this.currentAnomaly === "upside-down-right" && index === 0
           });
+        });
+
+        LEFT_VENT_WORLD_DISTANCES.forEach((worldDistance, index) => {
+          const distance = worldDistance - this.getPlayerDepth();
+          if (distance <= 12 || distance >= this.getDoorDistance() - 54) {
+            return;
+          }
+          if (this.currentAnomaly === "vent-missing-left" && index === 0) {
+            return;
+          }
+          this.drawVent(distance, "left");
+        });
+
+        RIGHT_VENT_WORLD_DISTANCES.forEach((worldDistance, index) => {
+          const distance = worldDistance - this.getPlayerDepth();
+          if (distance <= 12 || distance >= this.getDoorDistance() - 54) {
+            return;
+          }
+          this.drawVent(distance, "right", this.currentAnomaly === "vent-open-right" && index === 1);
         });
 
         if (this.currentAnomaly === "extra-frame-left") {
@@ -863,6 +1029,54 @@ const Hallway13: React.FC = () => {
             this.graphics.fillEllipse(point.x, point.y, 108 * point.scale, 56 * point.scale);
             this.graphics.fillStyle(0x7f1d1d, 0.45);
             this.graphics.fillEllipse(point.x + 10 * point.scale, point.y - 4 * point.scale, 82 * point.scale, 38 * point.scale);
+          }
+        }
+
+        if (this.currentAnomaly === "wall-crack-left" || this.currentAnomaly === "wall-crack-right") {
+          const crackDistance = 418 - this.getPlayerDepth();
+          if (crackDistance > 20 && crackDistance < this.getDoorDistance() - 80) {
+            const side = this.currentAnomaly === "wall-crack-left" ? "left" : "right";
+            const anchor = this.projectPointAtDistance(
+              crackDistance,
+              side === "left" ? -0.9 : 0.9,
+              0.04
+            );
+            const direction = side === "left" ? 1 : -1;
+            const scale = Math.max(0.45, anchor.scale);
+            const startX = anchor.x;
+            const startY = anchor.y;
+            const crackPoints = [
+              [startX, startY],
+              [startX + direction * 12 * scale, startY + 10 * scale],
+              [startX + direction * 4 * scale, startY + 22 * scale],
+              [startX + direction * 16 * scale, startY + 34 * scale],
+              [startX + direction * 7 * scale, startY + 48 * scale]
+            ];
+
+            this.graphics.lineStyle(Math.max(1, 2 * scale), 0x09090b, 0.9);
+            for (let index = 0; index < crackPoints.length - 1; index += 1) {
+              const [x1, y1] = crackPoints[index];
+              const [x2, y2] = crackPoints[index + 1];
+              this.graphics.strokeLineShape(new Phaser.Geom.Line(x1, y1, x2, y2));
+            }
+
+            this.graphics.lineStyle(Math.max(1, 1.2 * scale), 0x3f1d1d, 0.45);
+            this.graphics.strokeLineShape(
+              new Phaser.Geom.Line(
+                startX + direction * 8 * scale,
+                startY + 20 * scale,
+                startX + direction * 22 * scale,
+                startY + 16 * scale
+              )
+            );
+            this.graphics.strokeLineShape(
+              new Phaser.Geom.Line(
+                startX + direction * 10 * scale,
+                startY + 38 * scale,
+                startX + direction * 24 * scale,
+                startY + 46 * scale
+              )
+            );
           }
         }
 
