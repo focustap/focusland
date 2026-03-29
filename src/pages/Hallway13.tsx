@@ -828,10 +828,11 @@ const Hallway13: React.FC = () => {
 
           const scale = nearRect.width / (HALL_HALF_WIDTH * 2);
           const portraitCenterX = Phaser.Math.Linear(innerNearX, innerFarX, 0.5);
-          const portraitTop = Phaser.Math.Linear(innerNearTop, innerFarTop, 0.22);
-          const portraitBottom = Phaser.Math.Linear(innerNearBottom, innerFarBottom, 0.82);
-          const portraitWidth = Math.max(10, Math.abs(innerNearX - innerFarX) * 0.42);
-          const portraitHeight = Math.max(14, (portraitBottom - portraitTop) * 0.68);
+          const portraitTop = Phaser.Math.Linear(innerNearTop, innerFarTop, 0.34);
+          const portraitBottom = Phaser.Math.Linear(innerNearBottom, innerFarBottom, 0.72);
+          const frameSpan = Math.abs(innerNearX - innerFarX);
+          const portraitWidth = Math.max(7, frameSpan * 0.2);
+          const portraitHeight = Math.max(10, (portraitBottom - portraitTop) * 0.46);
           const portraitX = portraitCenterX - portraitWidth / 2;
           const portraitY = options.upsideDown ? portraitBottom - portraitHeight : portraitTop;
           const headX = portraitCenterX;
@@ -845,15 +846,15 @@ const Hallway13: React.FC = () => {
           this.graphics.fillStyle(0x4a4234, 0.92);
           this.graphics.fillRect(portraitX, portraitY, portraitWidth, portraitHeight);
           this.graphics.fillStyle(0x6f6654, 0.35);
-          this.graphics.fillRect(portraitX + 1, portraitY + 1, portraitWidth * 0.3, portraitHeight - 2);
+          this.graphics.fillRect(portraitX + 1, portraitY + 1, Math.max(2, portraitWidth * 0.28), Math.max(4, portraitHeight - 2));
           this.graphics.fillStyle(palette.head, 0.88);
-          this.graphics.fillCircle(headX, headY, Math.max(3, 5.5 * scale));
+          this.graphics.fillCircle(headX, headY, Math.max(2, 3.1 * scale));
           this.graphics.fillStyle(palette.body, 0.9);
           this.graphics.fillRect(
-            portraitCenterX - portraitWidth * 0.18,
+            portraitCenterX - portraitWidth * 0.14,
             bodyY,
-            portraitWidth * 0.36,
-            portraitHeight * 0.26
+            portraitWidth * 0.28,
+            portraitHeight * 0.22
           );
 
           if (options.eye) {
@@ -883,10 +884,10 @@ const Hallway13: React.FC = () => {
         const farRect = this.projectRectFromDistance(distance + 18);
         const nearX = side === "left" ? nearRect.left + nearRect.width * 0.08 : nearRect.right - nearRect.width * 0.08;
         const farX = side === "left" ? farRect.left + farRect.width * 0.08 : farRect.right - farRect.width * 0.08;
-        const nearTop = nearRect.centerY - nearRect.height * 0.2;
-        const nearBottom = nearRect.centerY - nearRect.height * 0.08;
-        const farTop = farRect.centerY - farRect.height * 0.2;
-        const farBottom = farRect.centerY - farRect.height * 0.08;
+        const nearTop = nearRect.top + nearRect.height * 0.14;
+        const nearBottom = nearRect.top + nearRect.height * 0.24;
+        const farTop = farRect.top + farRect.height * 0.14;
+        const farBottom = farRect.top + farRect.height * 0.24;
 
         this.graphics.fillStyle(open ? 0x09090b : 0x4b5563, 0.92);
         this.graphics.beginPath();
