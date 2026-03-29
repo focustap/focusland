@@ -3909,7 +3909,6 @@ body[data-theme="dark"] .card-battle-card--hidden {
 }
 
 .story-map__player-avatar {
-  background: transparent !important;
   filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.3));
   border-radius: 0 !important;
 }
