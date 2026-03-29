@@ -710,25 +710,41 @@ const StoryGame: React.FC = () => {
 
 type FlutterCampExplorationProps = {
   customization: AvatarCustomization;
+  variant: "night" | "day";
+  playSunriseTransition: boolean;
   onEnterCabin: () => void;
   onEnterIgloo: () => void;
+  onSunriseTransitionComplete: () => void;
   onStatusChange: (message: string) => void;
 };
 
 const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
   customization,
+  variant,
+  playSunriseTransition,
   onEnterCabin,
   onEnterIgloo,
+  onSunriseTransitionComplete,
   onStatusChange
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
-  const callbacksRef = useRef({ onEnterCabin, onEnterIgloo, onStatusChange });
+  const callbacksRef = useRef({
+    onEnterCabin,
+    onEnterIgloo,
+    onSunriseTransitionComplete,
+    onStatusChange
+  });
   const assetBase = import.meta.env.BASE_URL;
 
   useEffect(() => {
-    callbacksRef.current = { onEnterCabin, onEnterIgloo, onStatusChange };
-  }, [onEnterCabin, onEnterIgloo, onStatusChange]);
+    callbacksRef.current = {
+      onEnterCabin,
+      onEnterIgloo,
+      onSunriseTransitionComplete,
+      onStatusChange
+    };
+  }, [onEnterCabin, onEnterIgloo, onSunriseTransitionComplete, onStatusChange]);
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) {
@@ -805,13 +821,36 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
     class FlutterCampScene extends Phaser.Scene {
       preload() {
         loadAvatarSpriteSheet(this, assetBase);
-        this.load.image("flutter-camp", `${assetBase}assets/story/spawncamp.png`);
+        this.load.image("flutter-camp-day", `${assetBase}assets/story/spawncamp.png`);
+        this.load.image("flutter-camp-night", `${assetBase}assets/story/spawncampnight.png`);
       }
 
       create() {
-        const bg = this.add.image(width / 2, height / 2, "flutter-camp");
-        bg.setDisplaySize(width, height);
-        bg.setDepth(0);
+        const dayBg = this.add.image(width / 2, height / 2, "flutter-camp-day");
+        dayBg.setDisplaySize(width, height);
+        dayBg.setDepth(0);
+        const nightBg = this.add.image(width / 2, height / 2, "flutter-camp-night");
+        nightBg.setDisplaySize(width, height);
+        nightBg.setDepth(1);
+
+        const activeBg = variant === "day" ? dayBg : nightBg;
+        const inactiveBg = variant === "day" ? nightBg : dayBg;
+        activeBg.setAlpha(1);
+        inactiveBg.setAlpha(variant === "day" ? 0 : 1);
+
+        if (playSunriseTransition) {
+          dayBg.setAlpha(1);
+          nightBg.setAlpha(1);
+          this.tweens.add({
+            targets: nightBg,
+            alpha: 0,
+            duration: 1800,
+            ease: "Sine.easeInOut",
+            onComplete: () => {
+              callbacksRef.current.onSunriseTransitionComplete();
+            }
+          });
+        }
 
         player = createAvatarRender(
           this,
@@ -1004,7 +1043,7 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
         gameRef.current = null;
       }
     };
-  }, [assetBase, customization]);
+  }, [assetBase, customization, playSunriseTransition, variant]);
 
   return <div ref={containerRef} className="flutter-phaser-camp" />;
 };

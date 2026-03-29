@@ -3882,6 +3882,30 @@ body[data-theme="dark"] .card-battle-card--hidden {
   background-color: #1b2034;
 }
 
+.story-map--snowcamp-night {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(8, 11, 18, 0.08), rgba(8, 11, 18, 0.24)),
+    url("/assets/story/spawncampnight.png");
+  background-position: center;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-color: #0d1225;
+}
+
+.story-map--cabininside {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(22, 11, 6, 0.06), rgba(22, 11, 6, 0.18)),
+    url("/assets/story/cabininside.png");
+  background-position: center;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-color: #18100d;
+}
+
 .story-map--camp-free {
   filter: saturate(1.02);
 }
@@ -3891,9 +3915,11 @@ body[data-theme="dark"] .card-battle-card--hidden {
 }
 
 .story-map--title::after,
+.story-map--snowcamp-night::after,
 .story-map--snowcamp::after,
 .story-map--camp-free::after,
-.story-map--tutorial::after {
+.story-map--tutorial::after,
+.story-map--cabininside::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -3911,6 +3937,7 @@ body[data-theme="dark"] .card-battle-card--hidden {
 }
 
 .story-map--snowcamp .story-stage__butterfly,
+.story-map--snowcamp-night .story-stage__butterfly,
 .story-map--camp-free .story-stage__butterfly,
 .story-map--tutorial .story-stage__butterfly {
   position: absolute;
