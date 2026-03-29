@@ -612,35 +612,26 @@ const StoryGame: React.FC = () => {
   };
 
   const goToScene = (nextSceneId: SceneId) => {
-    let autoSaveTarget: StoryProgress | null = null;
+    const isWakeFromSleep = currentSceneId === "sleep-transition" && nextSceneId === "camp-free";
+    const nextFlags = { ...progress.flags };
 
-    setProgress((current) => {
-      const nextFlags = { ...current.flags };
+    if (isWakeFromSleep) {
+      nextFlags.morning_arrived = true;
+      nextFlags.pending_sunrise_transition = true;
+    }
 
-      if (nextSceneId === "camp-free" && current.sceneId === "sleep-transition") {
-        nextFlags.morning_arrived = true;
-        nextFlags.pending_sunrise_transition = true;
-      }
+    const nextProgress: StoryProgress = {
+      ...progress,
+      sceneId: nextSceneId,
+      playerHp: isWakeFromSleep ? 20 : progress.playerHp,
+      flags: nextFlags,
+      updatedAt: new Date().toISOString()
+    };
 
-      const nextProgress = {
-        ...current,
-        sceneId: nextSceneId,
-        playerHp: nextSceneId === "camp-free" && current.sceneId === "sleep-transition"
-          ? 20
-          : current.playerHp,
-        flags: nextFlags,
-        updatedAt: new Date().toISOString()
-      };
-
-      if (nextSceneId === "camp-free" && current.sceneId === "sleep-transition") {
-        autoSaveTarget = nextProgress;
-      }
-
-      return nextProgress;
-    });
+    setProgress(nextProgress);
 
     if (nextSceneId === "camp-free") {
-      setSaveStatus(currentSceneId === "sleep-transition"
+      setSaveStatus(isWakeFromSleep
         ? "Morning breaks over the camp. Saving..."
         : "Movement unlocked. Explore the camp.");
     }
@@ -649,8 +640,8 @@ const StoryGame: React.FC = () => {
       setSaveStatus("You settle in by the fire and wait for morning.");
     }
 
-    if (autoSaveTarget) {
-      void autoSaveCheckpoint(autoSaveTarget, "Morning breaks over the camp. Auto-save complete.");
+    if (isWakeFromSleep) {
+      void autoSaveCheckpoint(nextProgress, "Morning breaks over the camp. Auto-save complete.");
     }
   };
 
