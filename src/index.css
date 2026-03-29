@@ -2653,13 +2653,15 @@ body[data-theme="dark"] .card-battle-card--hidden {
 }
 
 .story-shell {
-  max-width: 980px;
+  max-width: 1320px;
+  width: min(1320px, calc(100vw - 2rem));
   background:
     radial-gradient(circle at top, rgba(125, 211, 252, 0.14), transparent 34%),
     linear-gradient(180deg, rgba(8, 13, 28, 0.98), rgba(4, 6, 16, 0.99));
   color: #f8fafc;
   border: 1px solid rgba(148, 163, 184, 0.16);
   box-shadow: 0 24px 56px rgba(2, 6, 23, 0.42);
+  padding: 1.8rem;
 }
 
 .story-kicker,
@@ -2672,19 +2674,145 @@ body[data-theme="dark"] .card-battle-card--hidden {
 .story-settings-panel,
 .story-play-shell {
   display: grid;
-  gap: 1rem;
+  gap: 1.25rem;
 }
 
 .story-title-screen__hero h2,
 .story-settings-panel h2,
 .story-play-shell h2 {
   margin: 0;
-  font-size: clamp(2rem, 4vw, 3rem);
+  font-size: clamp(2.2rem, 4vw, 3.8rem);
 }
 
 .story-title-screen__hero p,
 .story-subtle {
   color: rgba(226, 232, 240, 0.78);
+}
+
+.story-title-stage {
+  position: relative;
+  min-height: 360px;
+  border-radius: 1.6rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.1), transparent 38%),
+    linear-gradient(180deg, #091022, #16344f 56%, #1a4035 56%, #10251f 100%);
+}
+
+.story-title-stage__sky,
+.story-title-stage__ground,
+.story-title-stage__path {
+  position: absolute;
+}
+
+.story-title-stage__sky {
+  inset: 0 0 50% 0;
+}
+
+.story-title-stage__ground {
+  inset: 56% 0 0 0;
+  background:
+    linear-gradient(180deg, rgba(48, 113, 83, 0.88), rgba(16, 38, 28, 0.98)),
+    url("/assets/story/pixel-crawler/floors_tiles.png");
+  background-size: cover, 160px 160px;
+}
+
+.story-title-stage__path {
+  left: 48%;
+  bottom: -4%;
+  width: 22%;
+  height: 70%;
+  transform: translateX(-50%);
+  clip-path: polygon(38% 0%, 62% 0%, 100% 100%, 0% 100%);
+  background: linear-gradient(180deg, #d8c7a3, #8b6c45);
+  box-shadow: inset 0 0 0 1px rgba(61, 42, 18, 0.18);
+}
+
+.story-title-stage__tree,
+.story-stage__tree {
+  position: absolute;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 10px 10px rgba(0, 0, 0, 0.24));
+}
+
+.story-title-stage__tree--left {
+  left: 4%;
+  bottom: 15%;
+  width: 170px;
+}
+
+.story-title-stage__tree--right {
+  right: 6%;
+  bottom: 18%;
+  width: 140px;
+}
+
+.story-title-stage__player,
+.story-stage__player,
+.story-stage__npc,
+.story-dialogue-shell__portrait img {
+  image-rendering: pixelated;
+}
+
+.story-title-stage__player {
+  position: absolute;
+  left: 47%;
+  bottom: 18%;
+  width: 96px;
+  transform: translateX(-50%);
+}
+
+.story-title-stage__butterfly,
+.story-stage__butterfly,
+.story-dialogue-shell__butterfly {
+  position: absolute;
+  width: 38px;
+  height: 26px;
+  filter: drop-shadow(0 0 10px rgba(147, 197, 253, 0.42));
+  animation: story-butterfly-hover 2.8s ease-in-out infinite;
+}
+
+.story-title-stage__butterfly {
+  left: 54%;
+  bottom: 33%;
+}
+
+.story-title-stage__butterfly span,
+.story-stage__butterfly span,
+.story-dialogue-shell__butterfly span {
+  position: absolute;
+  top: 5px;
+  width: 16px;
+  height: 14px;
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.95), rgba(96, 165, 250, 0.42));
+  opacity: 0.95;
+}
+
+.story-title-stage__butterfly span:first-child,
+.story-stage__butterfly span:first-child,
+.story-dialogue-shell__butterfly span:first-child {
+  left: 0;
+  border-radius: 90% 25% 70% 30%;
+}
+
+.story-title-stage__butterfly span:last-child,
+.story-stage__butterfly span:last-child,
+.story-dialogue-shell__butterfly span:last-child {
+  right: 0;
+  border-radius: 25% 90% 30% 70%;
+}
+
+.story-title-stage__caption {
+  position: absolute;
+  left: 1.1rem;
+  right: 1.1rem;
+  bottom: 1.1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  background: rgba(7, 12, 24, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(226, 232, 240, 0.82);
 }
 
 .story-title-screen__actions,
@@ -2734,18 +2862,21 @@ body[data-theme="dark"] .card-battle-card--hidden {
 
 .story-stage {
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.9fr);
+  gap: 1.2rem;
   align-items: stretch;
 }
 
 .story-stage__world {
   position: relative;
-  min-height: 360px;
+  min-height: 560px;
   border-radius: 1.4rem;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: linear-gradient(180deg, #081124 0%, #10263b 52%, #25433b 52%, #1a2f23 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 26px 50px rgba(2, 6, 23, 0.32);
 }
 
 .story-stage__sky,
@@ -2761,58 +2892,38 @@ body[data-theme="dark"] .card-battle-card--hidden {
 
 .story-stage__ground {
   inset: 52% 0 0 0;
-  background: linear-gradient(180deg, rgba(34, 84, 64, 0.9), rgba(19, 46, 34, 0.98));
+  background:
+    linear-gradient(180deg, rgba(34, 84, 64, 0.9), rgba(19, 46, 34, 0.98)),
+    url("/assets/story/pixel-crawler/floors_tiles.png");
+  background-size: cover, 180px 180px;
 }
 
 .story-stage__path {
   left: 50%;
   bottom: -4%;
-  width: 26%;
+  width: 22%;
   height: 64%;
   transform: translateX(-50%);
   clip-path: polygon(26% 0%, 74% 0%, 100% 100%, 0% 100%);
   background: linear-gradient(180deg, #d6c2a0, #9e7f56);
   opacity: 0.95;
+  box-shadow: inset 0 0 0 1px rgba(61, 42, 18, 0.16);
 }
 
 .story-stage__player {
   position: absolute;
   left: 49%;
-  bottom: 22%;
-  width: 20px;
-  height: 28px;
+  bottom: 21%;
+  width: 104px;
   transform: translateX(-50%);
-  border-radius: 0.45rem;
-  background: linear-gradient(180deg, #f8fafc, #60a5fa);
-  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.34);
+  z-index: 4;
 }
 
 .story-stage__butterfly {
   position: absolute;
-  left: 55%;
-  bottom: 31%;
-  width: 28px;
-  height: 18px;
-  animation: story-butterfly-hover 2.8s ease-in-out infinite;
-}
-
-.story-stage__butterfly span {
-  position: absolute;
-  top: 3px;
-  width: 13px;
-  height: 12px;
-  background: radial-gradient(circle at center, rgba(191, 219, 254, 0.92), rgba(56, 189, 248, 0.36));
-  opacity: 0.9;
-}
-
-.story-stage__butterfly span:first-child {
-  left: 0;
-  border-radius: 90% 25% 70% 30%;
-}
-
-.story-stage__butterfly span:last-child {
-  right: 0;
-  border-radius: 25% 90% 30% 70%;
+  left: 56%;
+  bottom: 32%;
+  z-index: 5;
 }
 
 .story-stage__hint {
@@ -2827,55 +2938,373 @@ body[data-theme="dark"] .card-battle-card--hidden {
   font-size: 0.88rem;
 }
 
-.story-dialogue {
-  background-image: url("/assets/story/ui/dialogue-blue-light.png");
-  background-size: cover;
-  background-position: center;
-  display: grid;
-  align-content: start;
-  gap: 0.6rem;
-  min-height: 360px;
+.story-stage__tree--left {
+  left: 7%;
+  bottom: 17%;
+  width: 150px;
+  z-index: 2;
 }
 
-.story-dialogue--tense {
+.story-stage__tree--right {
+  right: 7%;
+  bottom: 19%;
+  width: 132px;
+  z-index: 2;
+}
+
+.story-stage__setpiece {
+  position: absolute;
+  left: 50%;
+  bottom: 44%;
+  width: 250px;
+  height: 210px;
+  transform: translateX(-50%);
+  z-index: 1;
+}
+
+.story-stage__world--meadow .story-stage__setpiece {
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255,255,255,0.16), transparent 28%),
+    linear-gradient(180deg, rgba(12, 24, 33, 0), rgba(12, 24, 33, 0));
+}
+
+.story-stage__world--path .story-stage__setpiece {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0), rgba(255,255,255,0)),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255,255,255,0),
+      rgba(255,255,255,0) 24px,
+      rgba(255,255,255,0.06) 24px,
+      rgba(255,255,255,0.06) 26px
+    );
+  opacity: 0.5;
+}
+
+.story-stage__world--gate .story-stage__setpiece {
+  bottom: 39%;
+  width: 310px;
+  height: 210px;
+  background:
+    linear-gradient(180deg, rgba(51, 31, 18, 0.15), rgba(51, 31, 18, 0.15)),
+    linear-gradient(180deg, #6b4b2d 0 24px, transparent 24px),
+    linear-gradient(90deg, #4f3422 0 22px, transparent 22px calc(100% - 22px), #4f3422 calc(100% - 22px)),
+    linear-gradient(180deg, transparent 0 40px, #725233 40px 74%, #5c3c22 74% 100%);
+  clip-path: polygon(8% 100%, 8% 18%, 28% 18%, 28% 0, 72% 0, 72% 18%, 92% 18%, 92% 100%);
+  box-shadow: 0 8px 0 rgba(15, 23, 42, 0.15);
+}
+
+.story-stage__world--camp .story-stage__setpiece {
+  bottom: 24%;
+  width: 220px;
+  height: 160px;
+  background:
+    radial-gradient(circle at 50% 74%, rgba(251, 191, 36, 0.9), rgba(249, 115, 22, 0.05) 26%),
+    linear-gradient(60deg, transparent 0 44%, #8b5e34 44% 48%, transparent 48%),
+    linear-gradient(-60deg, transparent 0 44%, #8b5e34 44% 48%, transparent 48%);
+}
+
+.story-stage__npc {
+  position: absolute;
+  right: 17%;
+  bottom: 20%;
+  width: 110px;
+  z-index: 4;
+}
+
+.story-stage__world--meadow .story-stage__npc,
+.story-stage__world--path .story-stage__npc {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.story-dialogue-shell {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.story-dialogue-shell__portrait {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(circle at top, rgba(96, 165, 250, 0.16), transparent 36%),
+    linear-gradient(180deg, rgba(14, 20, 36, 0.96), rgba(9, 14, 24, 0.98));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.story-dialogue-shell__portrait img {
+  width: 112px;
+}
+
+.story-dialogue-shell__butterfly {
+  position: relative;
+}
+
+.story-dialogue {
+  position: relative;
+  min-height: 240px;
+  padding: 1.45rem 1.55rem 1.25rem;
+  background: linear-gradient(180deg, rgba(11, 17, 33, 0.96), rgba(7, 11, 21, 0.98));
+  overflow: hidden;
+}
+
+.story-dialogue::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("/assets/story/ui/dialogue-blue-light.png");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  opacity: 0.98;
+  pointer-events: none;
+}
+
+.story-dialogue--tense::before {
   background-image: url("/assets/story/ui/dialogue-horror-1.png");
 }
 
+.story-dialogue > * {
+  position: relative;
+  z-index: 1;
+}
+
 .story-dialogue__speaker {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: #bfdbfe;
+  margin-bottom: 0.5rem;
 }
 
 .story-dialogue p {
   margin: 0;
-  line-height: 1.7;
+  line-height: 1.75;
+  max-width: 92%;
+  font-size: 1.06rem;
+}
+
+.story-dialogue .story-subtle {
+  margin-top: 0.8rem;
+}
+
+.story-dialogue .warning {
+  margin-top: 0.85rem;
+}
+
+.story-choice-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .story-choice-card {
   color: #f8fafc;
   text-align: left;
   cursor: pointer;
+  min-height: 92px;
 }
 
 .story-choice-card strong {
   display: block;
-  margin-bottom: 0.4rem;
-  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 1.02rem;
+  line-height: 1.45;
 }
 
 .story-choice-card span {
   color: #93c5fd;
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.story-dialogue,
+.story-choice-card,
+.story-title-card {
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.52);
+  padding: 1rem;
+}
+
+.story-stage__world--gate .story-stage__path,
+.story-stage__world--camp .story-stage__path {
+  width: 18%;
+}
+
+.story-stage__world--camp .story-stage__ground {
+  background:
+    linear-gradient(180deg, rgba(43, 52, 39, 0.94), rgba(20, 25, 19, 0.98)),
+    url("/assets/story/pixel-crawler/floors_tiles.png");
+  background-size: cover, 180px 180px;
+}
+
+.story-stage__world--gate .story-stage__ground {
+  background:
+    linear-gradient(180deg, rgba(70, 56, 45, 0.92), rgba(30, 24, 20, 0.98)),
+    url("/assets/story/pixel-crawler/floors_tiles.png");
+  background-size: cover, 180px 180px;
+}
+
+.story-stage__world--path .story-stage__tree--right {
+  right: 4%;
+}
+
+.story-stage__world--camp .story-stage__tree--left,
+.story-stage__world--camp .story-stage__tree--right {
+  opacity: 0.55;
+}
+
+.story-title-card,
+.story-choice-card,
+.story-dialogue {
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.story-title-card {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.story-settings-grid {
+  align-items: start;
+}
+
+.story-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.52);
 }
 
 .story-choice-card:hover {
   transform: translateY(-1px);
   border-color: rgba(125, 211, 252, 0.55);
   box-shadow: 0 12px 30px rgba(8, 13, 28, 0.35);
+}
+
+.story-dialogue .info,
+.story-dialogue .warning,
+.story-dialogue .error {
+  display: inline-block;
+}
+
+.story-dialogue .story-subtle {
+  max-width: 90%;
+}
+
+.story-dialogue__speaker,
+.story-choice-card span {
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.story-dialogue--tense .story-dialogue__speaker {
+  color: #fca5a5;
+}
+
+.story-dialogue--tense {
+  background: linear-gradient(180deg, rgba(22, 11, 18, 0.96), rgba(12, 7, 13, 0.98));
+}
+
+.story-dialogue--tense .warning {
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.72);
+}
+
+.story-dialogue--tense .story-subtle {
+  color: rgba(254, 226, 226, 0.78);
+}
+
+.story-dialogue--tense::before {
+  background-image: url("/assets/story/ui/dialogue-horror-1.png");
+}
+
+.story-dialogue-shell__portrait,
+.story-dialogue,
+.story-stage__world,
+.story-title-stage {
+  backdrop-filter: blur(2px);
+}
+
+.story-dialogue--tense .story-dialogue__speaker,
+.story-dialogue--tense p {
+  text-shadow: 0 0 16px rgba(248, 113, 113, 0.06);
+}
+
+.story-dialogue--tense .story-dialogue__speaker,
+.story-dialogue--tense .story-subtle {
+  position: relative;
+}
+
+.story-dialogue--tense .story-dialogue__speaker::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.35rem;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.45), rgba(248, 113, 113, 0));
+}
+
+.story-stage__world--gate .story-stage__npc {
+  right: 16%;
+  bottom: 18%;
+}
+
+.story-stage__world--camp .story-stage__npc {
+  right: 18%;
+  bottom: 18%;
+  opacity: 0.72;
+}
+
+.story-stage__world--camp .story-stage__butterfly {
+  left: 53%;
+  bottom: 33%;
+}
+
+.story-stage__world--gate .story-stage__butterfly {
+  left: 54%;
+  bottom: 35%;
+}
+
+.story-stage__world--path .story-stage__butterfly {
+  left: 57%;
+  bottom: 36%;
+}
+
+.story-stage__world--meadow .story-stage__hint,
+.story-stage__world--path .story-stage__hint {
+  background: rgba(9, 15, 28, 0.58);
+}
+
+.story-stage__world--gate .story-stage__hint,
+.story-stage__world--camp .story-stage__hint {
+  background: rgba(20, 13, 10, 0.52);
+}
+
+.story-choice-card {
+  border-radius: 1.2rem;
+}
+
+.story-dialogue p + p {
+  margin-top: 0.7rem;
+}
+
+.story-play-shell__top .button-row {
+  margin-top: 0;
+}
+
+.story-dialogue {
+  display: grid;
+  align-content: start;
+  gap: 0.7rem;
 }
 
 @keyframes story-butterfly-hover {
@@ -2889,6 +3318,27 @@ body[data-theme="dark"] .card-battle-card--hidden {
 @media (max-width: 760px) {
   .story-stage {
     grid-template-columns: 1fr;
+  }
+
+  .story-dialogue-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .story-dialogue-shell__portrait {
+    min-height: 140px;
+  }
+
+  .story-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .story-shell {
+    width: min(100vw - 1rem, 1320px);
+    padding: 1rem;
+  }
+
+  .story-stage__world {
+    min-height: 420px;
   }
 }
 

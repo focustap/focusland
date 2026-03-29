@@ -28,6 +28,8 @@ type StoryScene = {
   speaker: string;
   body: string;
   note?: string;
+  location: string;
+  mood: "meadow" | "path" | "gate" | "camp";
   choices: Choice[];
 };
 
@@ -39,20 +41,22 @@ const SCENES: Record<string, StoryScene> = {
     chapterId: "chapter-1",
     title: "Waking Meadow",
     speaker: "Butterfly",
+    location: "North meadow",
+    mood: "meadow",
     body:
-      "You wake in wet grass with no memory of the night before. A pale butterfly circles your shoulder, voice soft as dust. It says it found you first. It says the town ahead can help, if you listen carefully.",
+      "You wake in wet grass with no memory of the night before. A pale butterfly circles your shoulder, voice soft as dust. It says it found you first. It says the town ahead can help, if you stay calm and keep moving.",
     choices: [
       {
         id: "follow-gently",
         label: "Follow the butterfly toward town.",
-        consequence: "Companion feels trusted.",
+        consequence: "You follow the butterfly toward town.",
         nextSceneId: "path",
         companionTrustDelta: 1
       },
       {
         id: "question-first",
         label: "Ask who it is before moving.",
-        consequence: "Companion notices your hesitation.",
+        consequence: "The butterfly answers, and you keep moving.",
         nextSceneId: "path",
         setFlags: { questioned_companion_early: true },
         defianceDelta: 1
@@ -64,14 +68,16 @@ const SCENES: Record<string, StoryScene> = {
     chapterId: "chapter-1",
     title: "The Narrow Path",
     speaker: "Butterfly",
+    location: "Broken footpath",
+    mood: "path",
     body:
-      "The butterfly buzzes ahead of you along a cracked path. It points out the church steeple in the distance and warns you not to trust the masked scavengers near the gate. 'They serve him,' it says, though it never explains who 'him' is.",
+      "The butterfly buzzes ahead of you along a cracked path. It points out the church steeple in the distance and tells you the town is tense lately, so it might help if you stay close. When you ask why it sounds so certain, it only laughs and says it has always been good at first impressions.",
     note: "This first chapter only autosaves when you pass into the town proper.",
     choices: [
       {
         id: "believe-warning",
-        label: "Accept the warning and head to the town gate.",
-        consequence: "These actions will have consequences.",
+        label: "Trust it and keep walking toward the town gate.",
+        consequence: "You keep moving toward town.",
         nextChapterId: "chapter-2",
         nextSceneId: "gate",
         setFlags: { accepted_gate_warning: true },
@@ -79,8 +85,8 @@ const SCENES: Record<string, StoryScene> = {
       },
       {
         id: "doubt-warning",
-        label: "Decide to hear the scavengers out anyway.",
-        consequence: "Companion will remember that.",
+        label: "Ignore the advice and decide to judge the town for yourself.",
+        consequence: "You decide to make up your own mind.",
         nextChapterId: "chapter-2",
         nextSceneId: "gate",
         setFlags: { doubted_gate_warning: true },
@@ -93,21 +99,23 @@ const SCENES: Record<string, StoryScene> = {
     chapterId: "chapter-2",
     title: "Town Gate",
     speaker: "Scavenger Girl",
+    location: "Town perimeter",
+    mood: "gate",
     body:
-      "Wooden barricades lean under strips of cloth and warning bells. A scavenger girl grips a rusted spear and stares past you, not at you, but at the butterfly hovering beside your ear. 'If it's with you,' she says, 'then you're already late.'",
+      "Wooden barricades lean under strips of cloth and warning bells. A scavenger girl grips a rusted spear and gives you the kind of guarded look any stranger would get this close to town. After a beat, her posture eases just enough to ask your name and where you came from.",
     choices: [
       {
         id: "defend-butterfly",
-        label: "Defend the butterfly and demand answers from her.",
-        consequence: "She will remember your tone.",
+        label: "Answer simply and ask if the gate is still open.",
+        consequence: "She steps aside and lets you through.",
         nextSceneId: "camp",
         setFlags: { defended_companion_at_gate: true },
         companionTrustDelta: 1
       },
       {
         id: "hear-her-out",
-        label: "Ask what she means by 'already late.'",
-        consequence: "Companion did not like that.",
+        label: "Make small talk and ask what the town is like before going in.",
+        consequence: "She relaxes a little and answers.",
         nextSceneId: "camp",
         setFlags: { listened_to_gate_warning: true },
         defianceDelta: 1
@@ -119,13 +127,15 @@ const SCENES: Record<string, StoryScene> = {
     chapterId: "chapter-2",
     title: "Campfire Ledger",
     speaker: "Narration",
+    location: "Outskirts camp",
+    mood: "camp",
     body:
-      "The path forward opens into a lonely campfire and a ledger full of names scratched out one by one. This is where chapter two would open into the full town hub, side routes, and your first real encounter.",
+      "The path forward opens into a quiet camp just outside the main square, with a ledger, a kettle, and a few supplies left out for whoever arrives after dark. The butterfly keeps drifting ahead like it already knows where everything is. This is where chapter two would open into the full town hub, side routes, and your first real encounter.",
     choices: [
       {
         id: "hold-here",
         label: "Hold the line here for now.",
-        consequence: "Manual saves remain available.",
+        consequence: "You stop here for now.",
         nextSceneId: "camp"
       }
     ]
@@ -135,6 +145,12 @@ const SCENES: Record<string, StoryScene> = {
 const CHAPTER_TITLES: Record<string, string> = {
   "chapter-1": "Chapter 1: Waking Meadow",
   "chapter-2": "Chapter 2: Town Gate"
+};
+
+const SPEAKER_SPRITES: Record<string, string | null> = {
+  Butterfly: null,
+  "Scavenger Girl": `${import.meta.env.BASE_URL}assets/story/pixel-crawler/orc_shaman_idle.png`,
+  Narration: `${import.meta.env.BASE_URL}assets/story/pixel-crawler/skeleton_mage_idle.png`
 };
 
 const StoryGame: React.FC = () => {
@@ -263,6 +279,34 @@ const StoryGame: React.FC = () => {
               </p>
             </div>
 
+            <div className="story-title-stage story-title-stage--meadow">
+              <div className="story-title-stage__sky" />
+              <div className="story-title-stage__ground" />
+              <div className="story-title-stage__path" />
+              <img
+                className="story-title-stage__tree story-title-stage__tree--left"
+                src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/tree_model_01_size_03.png`}
+                alt=""
+              />
+              <img
+                className="story-title-stage__tree story-title-stage__tree--right"
+                src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/tree_model_02_size_03.png`}
+                alt=""
+              />
+              <img
+                className="story-title-stage__player"
+                src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/character_idle_down.png`}
+                alt="Player sprite"
+              />
+              <div className="story-title-stage__butterfly" aria-hidden="true">
+                <span />
+                <span />
+              </div>
+              <div className="story-title-stage__caption">
+                A quiet beginning. A guide that feels harmless. A town that already knows something you do not.
+              </div>
+            </div>
+
             <div className="story-title-screen__actions">
               <button type="button" className="primary-button" onClick={startNewGame}>
                 New Game
@@ -357,7 +401,7 @@ const StoryGame: React.FC = () => {
                 <span className="story-kicker">{CHAPTER_TITLES[currentScene.chapterId]}</span>
                 <h2>{currentScene.title}</h2>
                 <p className="story-subtle">
-                  {currentScene.speaker} speaking. Companion Trust: {progress.companionTrust} | Defiance: {progress.defiance}
+                  {currentScene.location} | {currentScene.speaker} speaking | Companion Trust: {progress.companionTrust} | Defiance: {progress.defiance}
                 </p>
               </div>
               <div className="button-row">
@@ -371,27 +415,67 @@ const StoryGame: React.FC = () => {
             </div>
 
             <div className="story-stage">
-              <div className="story-stage__world">
+              <div className={`story-stage__world story-stage__world--${currentScene.mood}`}>
                 <div className="story-stage__sky" />
                 <div className="story-stage__ground" />
                 <div className="story-stage__path" />
-                <div className="story-stage__player" />
-                <div className="story-stage__butterfly">
+                <img
+                  className="story-stage__tree story-stage__tree--left"
+                  src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/tree_model_01_size_03.png`}
+                  alt=""
+                />
+                <img
+                  className="story-stage__tree story-stage__tree--right"
+                  src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/tree_model_02_size_03.png`}
+                  alt=""
+                />
+                <div className="story-stage__setpiece" aria-hidden="true" />
+                <img
+                  className="story-stage__player"
+                  src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/character_idle_down.png`}
+                  alt="Player sprite"
+                />
+                {currentScene.speaker !== "Butterfly" ? (
+                  <img
+                    className="story-stage__npc"
+                    src={SPEAKER_SPRITES[currentScene.speaker] ?? ""}
+                    alt=""
+                  />
+                ) : null}
+                <div className="story-stage__butterfly" aria-hidden="true">
                   <span />
                   <span />
                 </div>
                 <div className="story-stage__hint">
-                  Top-down overworld shell. We&apos;ll swap this for the real map scene next.
+                  {currentScene.mood === "meadow"
+                    ? "You wake beneath cold moonlight while the butterfly waits for you to stand."
+                    : currentScene.mood === "path"
+                      ? "The road narrows ahead. The butterfly keeps steering the pace."
+                      : currentScene.mood === "gate"
+                        ? "The town gate is close enough to touch, but the first warning arrives before safety does."
+                        : "The road opens into a small camp where names have been crossed out one by one."}
                 </div>
               </div>
 
-              <div
-                className={`story-dialogue ${currentScene.chapterId === "chapter-2" ? "story-dialogue--tense" : ""}`}
-              >
-                <div className="story-dialogue__speaker">{currentScene.speaker}</div>
-                <p>{currentScene.body}</p>
-                {currentScene.note ? <p className="story-subtle">{currentScene.note}</p> : null}
-                {selectedConsequence ? <p className="warning">{selectedConsequence}</p> : null}
+              <div className="story-dialogue-shell">
+                <div className="story-dialogue-shell__portrait">
+                  {SPEAKER_SPRITES[currentScene.speaker] ? (
+                    <img src={SPEAKER_SPRITES[currentScene.speaker] ?? ""} alt="" />
+                  ) : (
+                    <div className="story-dialogue-shell__butterfly" aria-hidden="true">
+                      <span />
+                      <span />
+                    </div>
+                  )}
+                </div>
+                <div
+                  className={`story-dialogue ${currentScene.chapterId === "chapter-2" ? "story-dialogue--tense" : ""}`}
+                >
+                  <div className="story-dialogue__speaker">{currentScene.speaker}</div>
+                  <p>{currentScene.body}</p>
+                  {currentScene.note ? <p className="story-subtle">{currentScene.note}</p> : null}
+                  {selectedConsequence ? <p className="warning">{selectedConsequence}</p> : null}
+                </div>
               </div>
             </div>
 
@@ -404,7 +488,6 @@ const StoryGame: React.FC = () => {
                   onClick={() => void applyChoice(choice)}
                 >
                   <strong>{choice.label}</strong>
-                  <span>{choice.consequence}</span>
                 </button>
               ))}
             </div>
