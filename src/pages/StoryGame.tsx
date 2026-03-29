@@ -1,12 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import AvatarSprite from "../components/AvatarSprite";
+import Phaser from "phaser";
 import NavBar from "../components/NavBar";
 import {
   DEFAULT_AVATAR_CUSTOMIZATION,
+  createAvatarRender,
   getStoredAvatarCustomization,
+  loadAvatarSpriteSheet,
   normalizeAvatarCustomization,
-  type AvatarCustomization,
-  type AvatarFacing
+  updateAvatarRender,
+  TOWN_AVATAR_SCALE,
+  type AvatarCustomization
 } from "../lib/avatarSprites";
 import {
   DEFAULT_STORY_PROGRESS,
@@ -60,21 +63,6 @@ const STORY_MUSIC = {
 } as const;
 
 const CHAPTER_LABEL = "Chapter 1: Snowbound Clearing";
-const CAMP_START: PlayerPosition = { x: 48, y: 71 };
-const CAMP_MIN_X = 8;
-const CAMP_MAX_X = 88;
-const CAMP_MIN_Y = 28;
-const CAMP_MAX_Y = 88;
-
-const BLOCKERS = [
-  { x: 11, y: 22, w: 25, h: 24 },
-  { x: 68, y: 32, w: 19, h: 18 },
-  { x: 58, y: 70, w: 31, h: 19 },
-  { x: 39, y: 52, w: 16, h: 13 },
-  { x: 0, y: 0, w: 100, h: 19 },
-  { x: 0, y: 0, w: 7, h: 100 },
-  { x: 92, y: 0, w: 8, h: 100 }
-];
 
 function mapLegacySceneId(sceneId: string): SceneId {
   switch (sceneId) {
@@ -105,15 +93,6 @@ function normalizeLoadedProgress(progress: StoryProgress): StoryProgress {
     chapterId: "chapter-1",
     sceneId: mapLegacySceneId(progress.sceneId)
   };
-}
-
-function isBlocked(x: number, y: number) {
-  return BLOCKERS.some((blocker) => (
-    x >= blocker.x &&
-    x <= blocker.x + blocker.w &&
-    y >= blocker.y &&
-    y <= blocker.y + blocker.h
-  ));
 }
 
 function getWakeIntroScene(playerName: string): DialogueScene {
@@ -229,13 +208,8 @@ const StoryGame: React.FC = () => {
   const [saveStatus, setSaveStatus] = useState("Checking save data...");
   const [settings, setSettings] = useState<StorySettings>(loadStorySettings());
   const [loadingSave, setLoadingSave] = useState(true);
-  const [playerPos, setPlayerPos] = useState<PlayerPosition>(CAMP_START);
-  const [playerFacing, setPlayerFacing] = useState<AvatarFacing>("front");
-  const [playerMoving, setPlayerMoving] = useState(false);
-  const [walkFrameTick, setWalkFrameTick] = useState(0);
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const activeMusicRef = useRef<string | null>(null);
-  const movementKeysRef = useRef<Record<string, boolean>>({});
 
   const currentSceneId = mapLegacySceneId(progress.sceneId);
   const movementUnlocked = currentSceneId === "camp-free";
@@ -258,39 +232,6 @@ const StoryGame: React.FC = () => {
         return null;
     }
   }, [currentSceneId, playerName]);
-
-  const activeHotspot = useMemo<CampHotspot>(() => {
-    if (!movementUnlocked) {
-      return null;
-    }
-
-    const nearCabin = playerPos.x >= 18 && playerPos.x <= 35 && playerPos.y >= 42 && playerPos.y <= 56;
-    if (nearCabin) {
-      return "cabin";
-    }
-
-    const nearIgloo = playerPos.x >= 67 && playerPos.x <= 82 && playerPos.y >= 47 && playerPos.y <= 61;
-    if (nearIgloo) {
-      return "igloo";
-    }
-
-    return null;
-  }, [movementUnlocked, playerPos.x, playerPos.y]);
-
-  const butterflyPosition = useMemo(() => {
-    const offsets: Record<AvatarFacing, { x: number; y: number }> = {
-      front: { x: -3.5, y: -6.5 },
-      back: { x: 3.5, y: 8 },
-      left: { x: 6.5, y: -2.5 },
-      right: { x: -6.5, y: -2.5 }
-    };
-
-    const offset = offsets[playerFacing];
-    return {
-      left: `${playerPos.x + offset.x}%`,
-      top: `${playerPos.y + offset.y}%`
-    };
-  }, [playerFacing, playerPos.x, playerPos.y]);
 
   useEffect(() => {
     let cancelled = false;
@@ -400,112 +341,6 @@ const StoryGame: React.FC = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!movementUnlocked || mode !== "playing") {
-      return;
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (["w", "a", "s", "d", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
-        movementKeysRef.current[event.key] = true;
-        event.preventDefault();
-      }
-
-      if ((event.key === "e" || event.key === "Enter") && activeHotspot) {
-        event.preventDefault();
-        if (activeHotspot === "cabin") {
-          setProgress((current) => ({
-            ...current,
-            sceneId: "cabin-oldman",
-            updatedAt: new Date().toISOString(),
-            flags: {
-              ...current.flags,
-              house_visited: true
-            }
-          }));
-          setSaveStatus("You step inside the cabin.");
-        } else if (activeHotspot === "igloo") {
-          setProgress((current) => ({
-            ...current,
-            sceneId: tutorialCompleted ? "camp-free" : "igloo-brief",
-            updatedAt: new Date().toISOString()
-          }));
-          setSaveStatus(tutorialCompleted ? "The igloo is quiet now." : "Flutter has something to show you.");
-        }
-      }
-    };
-
-    const onKeyUp = (event: KeyboardEvent) => {
-      delete movementKeysRef.current[event.key];
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
-
-    let frameId = 0;
-    let lastTime = performance.now();
-
-    const tick = (time: number) => {
-      const delta = Math.min(32, time - lastTime);
-      lastTime = time;
-      const step = delta * 0.018;
-
-      let moving = false;
-      let nextFacing: AvatarFacing = playerFacing;
-
-      setPlayerPos((current) => {
-        let nextX = current.x;
-        let nextY = current.y;
-
-        if (movementKeysRef.current.a || movementKeysRef.current.ArrowLeft) {
-          nextX -= step;
-          moving = true;
-          nextFacing = "left";
-        }
-        if (movementKeysRef.current.d || movementKeysRef.current.ArrowRight) {
-          nextX += step;
-          moving = true;
-          nextFacing = "right";
-        }
-        if (movementKeysRef.current.w || movementKeysRef.current.ArrowUp) {
-          nextY -= step;
-          moving = true;
-          nextFacing = "back";
-        }
-        if (movementKeysRef.current.s || movementKeysRef.current.ArrowDown) {
-          nextY += step;
-          moving = true;
-          nextFacing = "front";
-        }
-
-        nextX = Math.max(CAMP_MIN_X, Math.min(CAMP_MAX_X, nextX));
-        nextY = Math.max(CAMP_MIN_Y, Math.min(CAMP_MAX_Y, nextY));
-
-        if (isBlocked(nextX, nextY)) {
-          return current;
-        }
-
-        return { x: nextX, y: nextY };
-      });
-
-      setPlayerFacing(nextFacing);
-      setPlayerMoving(moving);
-      if (moving) {
-        setWalkFrameTick((current) => (current + 1) % 4);
-      }
-
-      frameId = window.requestAnimationFrame(tick);
-    };
-
-    frameId = window.requestAnimationFrame(tick);
-
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [activeHotspot, movementUnlocked, mode, playerFacing, tutorialCompleted]);
-
   const handleSettingChange = (nextSettings: StorySettings) => {
     setSettings(nextSettings);
     persistStorySettings(nextSettings);
@@ -518,10 +353,6 @@ const StoryGame: React.FC = () => {
       sceneId: "wake-intro",
       flags: {}
     });
-    setPlayerPos(CAMP_START);
-    setPlayerFacing("front");
-    setPlayerMoving(false);
-    setWalkFrameTick(0);
     setMode("playing");
     setSaveStatus("New file started. Manual save is available from the story screen.");
   };
@@ -688,63 +519,44 @@ const StoryGame: React.FC = () => {
 
             <div className="flutter-play-grid">
               <div className="flutter-map-shell">
-                <div className={`story-map ${movementUnlocked ? "story-map--camp-free" : "story-map--snowcamp"}`}>
-                  <div className="flutter-player" style={{ left: `${playerPos.x}%`, top: `${playerPos.y}%` }}>
-                    <AvatarSprite
-                      customization={avatarCustomization}
-                      size={104}
-                      className="story-map__player-avatar"
-                      facing={playerFacing}
-                      moving={playerMoving}
-                      animationTick={walkFrameTick}
-                    />
-                  </div>
-                  <div
-                    className="story-stage__butterfly"
-                    aria-hidden="true"
-                    style={movementUnlocked ? butterflyPosition : undefined}
-                  >
-                    <span />
-                    <span />
-                  </div>
-                </div>
-
                 {movementUnlocked ? (
                   <>
-                    <div className="story-stage__hint">
-                      Walk with WASD or the arrow keys. Try the cabin and the igloo.
-                    </div>
-                    {activeHotspot ? (
-                      <button
-                        type="button"
-                        className="flutter-interact"
-                        onClick={() => {
-                          if (activeHotspot === "cabin") {
-                            setProgress((current) => ({
-                              ...current,
-                              sceneId: "cabin-oldman",
-                              updatedAt: new Date().toISOString(),
-                              flags: {
-                                ...current.flags,
-                                house_visited: true
-                              }
-                            }));
-                            setSaveStatus("You step inside the cabin.");
-                          } else if (!tutorialCompleted) {
-                            goToScene("igloo-brief");
-                            setSaveStatus("Flutter has something to show you.");
+                    <FlutterCampExploration
+                      customization={avatarCustomization}
+                      onEnterCabin={() => {
+                        setProgress((current) => ({
+                          ...current,
+                          sceneId: "cabin-oldman",
+                          updatedAt: new Date().toISOString(),
+                          flags: {
+                            ...current.flags,
+                            house_visited: true
                           }
-                        }}
-                      >
-                        {activeHotspot === "cabin"
-                          ? "Press E or Enter to enter the cabin"
-                          : tutorialCompleted
-                            ? "The igloo is quiet now."
-                            : "Press E or Enter to inspect the igloo"}
-                      </button>
-                    ) : null}
+                        }));
+                        setSaveStatus("You step inside the cabin.");
+                      }}
+                      onEnterIgloo={() => {
+                        if (!tutorialCompleted) {
+                          goToScene("igloo-brief");
+                          setSaveStatus("Flutter has something to show you.");
+                        } else {
+                          setSaveStatus("The igloo is quiet now.");
+                        }
+                      }}
+                      onStatusChange={setSaveStatus}
+                    />
+                    <div className="story-stage__hint">
+                      Click the snow to move. Click the cabin or igloo to enter.
+                    </div>
                   </>
-                ) : null}
+                ) : (
+                  <div className="story-map story-map--snowcamp">
+                    <div className="story-stage__butterfly" aria-hidden="true">
+                      <span />
+                      <span />
+                    </div>
+                  </div>
+                )}
 
                 {currentSceneId === "igloo-encounter" ? (
                   <EncounterTutorial
@@ -808,6 +620,258 @@ const StoryGame: React.FC = () => {
       </div>
     </div>
   );
+};
+
+type FlutterCampExplorationProps = {
+  customization: AvatarCustomization;
+  onEnterCabin: () => void;
+  onEnterIgloo: () => void;
+  onStatusChange: (message: string) => void;
+};
+
+const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
+  customization,
+  onEnterCabin,
+  onEnterIgloo,
+  onStatusChange
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const gameRef = useRef<Phaser.Game | null>(null);
+  const callbacksRef = useRef({ onEnterCabin, onEnterIgloo, onStatusChange });
+  const assetBase = import.meta.env.BASE_URL;
+
+  useEffect(() => {
+    callbacksRef.current = { onEnterCabin, onEnterIgloo, onStatusChange };
+  }, [onEnterCabin, onEnterIgloo, onStatusChange]);
+
+  useEffect(() => {
+    if (!containerRef.current || gameRef.current) {
+      return;
+    }
+
+    const width = 768;
+    const height = 560;
+    const logicalYOffset = 18;
+    const walkSpeed = 165;
+    const arrivalThreshold = 10;
+    const collisionRadius = 14;
+    const spawn = { x: 376, y: 398 };
+    const blockers = [
+      new Phaser.Geom.Rectangle(0, 0, width, 136),
+      new Phaser.Geom.Rectangle(0, 0, 96, height),
+      new Phaser.Geom.Rectangle(678, 0, 90, height),
+      new Phaser.Geom.Rectangle(76, 128, 212, 154),
+      new Phaser.Geom.Rectangle(540, 184, 148, 118),
+      new Phaser.Geom.Rectangle(470, 366, 232, 150),
+      new Phaser.Geom.Rectangle(315, 258, 118, 88),
+      new Phaser.Geom.Rectangle(98, 370, 112, 80)
+    ];
+    const buildings = [
+      {
+        name: "cabin",
+        bounds: new Phaser.Geom.Rectangle(102, 124, 180, 124),
+        entranceX: 222,
+        entranceY: 264
+      },
+      {
+        name: "igloo",
+        bounds: new Phaser.Geom.Rectangle(542, 184, 130, 118),
+        entranceX: 575,
+        entranceY: 314
+      }
+    ] as const;
+
+    let player: ReturnType<typeof createAvatarRender> | null = null;
+    let targetX: number | null = null;
+    let targetY: number | null = null;
+    let pendingAction: "cabin" | "igloo" | null = null;
+    let butterfly: Phaser.GameObjects.Container | null = null;
+
+    const isBlocked = (x: number, y: number) => {
+      const footprint = new Phaser.Geom.Circle(x, y, collisionRadius);
+      return blockers.some((blocker) => Phaser.Geom.Intersects.CircleToRectangle(footprint, blocker));
+    };
+
+    const resolveBlockedStep = (
+      currentX: number,
+      currentY: number,
+      nextX: number,
+      nextY: number
+    ) => {
+      if (!isBlocked(nextX, nextY)) {
+        return { x: nextX, y: nextY, blocked: false };
+      }
+
+      if (!isBlocked(nextX, currentY)) {
+        return { x: nextX, y: currentY, blocked: false };
+      }
+
+      if (!isBlocked(currentX, nextY)) {
+        return { x: currentX, y: nextY, blocked: false };
+      }
+
+      return { x: currentX, y: currentY, blocked: true };
+    };
+
+    class FlutterCampScene extends Phaser.Scene {
+      preload() {
+        loadAvatarSpriteSheet(this, assetBase);
+        this.load.image("flutter-camp", `${assetBase}assets/story/spawncamp.png`);
+      }
+
+      create() {
+        const bg = this.add.image(width / 2, height / 2, "flutter-camp");
+        bg.setDisplaySize(width, height);
+        bg.setDepth(0);
+
+        player = createAvatarRender(this, spawn.x, spawn.y + logicalYOffset, customization, 8, TOWN_AVATAR_SCALE);
+        updateAvatarRender(player, customization, "front", false);
+
+        const leftWing = this.add.ellipse(-7, 0, 12, 10, 0xe7f6ff, 0.85).setAngle(-18);
+        const rightWing = this.add.ellipse(7, 0, 12, 10, 0xe7f6ff, 0.85).setAngle(18);
+        const glow = this.add.circle(0, 0, 3.5, 0xa9e6ff, 0.95);
+        butterfly = this.add.container(spawn.x - 18, spawn.y - 10, [leftWing, rightWing, glow]).setDepth(9);
+
+        this.tweens.add({
+          targets: [leftWing, rightWing],
+          angle: { from: -26, to: 26 },
+          yoyo: true,
+          repeat: -1,
+          duration: 170,
+          ease: "Sine.easeInOut"
+        });
+
+        this.tweens.add({
+          targets: butterfly,
+          y: butterfly.y - 6,
+          yoyo: true,
+          repeat: -1,
+          duration: 900,
+          ease: "Sine.easeInOut"
+        });
+
+        this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+          if (!player) {
+            return;
+          }
+
+          targetX = Phaser.Math.Clamp(pointer.x, 24, width - 24);
+          targetY = Phaser.Math.Clamp(pointer.y - logicalYOffset, 150, height - 34);
+          pendingAction = null;
+
+          for (const building of buildings) {
+            if (building.bounds.contains(pointer.x, pointer.y)) {
+              targetX = building.entranceX;
+              targetY = building.entranceY;
+              pendingAction = building.name;
+              callbacksRef.current.onStatusChange(
+                building.name === "cabin"
+                  ? "Walking to the cabin."
+                  : "Flutter guides you toward the igloo."
+              );
+              break;
+            }
+          }
+        });
+      }
+
+      update(_time: number, delta: number) {
+        if (!player) {
+          return;
+        }
+
+        if (targetX == null || targetY == null) {
+          updateAvatarRender(player, customization, player.facing, false);
+          return;
+        }
+
+        const currentX = player.container.x;
+        const currentY = player.container.y - logicalYOffset;
+        const dx = targetX - currentX;
+        const dy = targetY - currentY;
+        const distance = Math.hypot(dx, dy);
+
+        if (distance < arrivalThreshold) {
+          player.container.setPosition(targetX, targetY + logicalYOffset);
+          updateAvatarRender(player, customization, "front", false);
+
+          const completedAction = pendingAction;
+          targetX = null;
+          targetY = null;
+          pendingAction = null;
+
+          if (completedAction === "cabin") {
+            callbacksRef.current.onEnterCabin();
+          } else if (completedAction === "igloo") {
+            callbacksRef.current.onEnterIgloo();
+          }
+
+          return;
+        }
+
+        const step = (walkSpeed * delta) / 1000;
+        const moveDistance = Math.min(step, distance);
+        const nextX = Phaser.Math.Clamp(currentX + (dx / distance) * moveDistance, 20, width - 20);
+        const nextY = Phaser.Math.Clamp(currentY + (dy / distance) * moveDistance, 146, height - 26);
+        const resolvedStep = resolveBlockedStep(currentX, currentY, nextX, nextY);
+
+        if (resolvedStep.blocked) {
+          targetX = null;
+          targetY = null;
+          pendingAction = null;
+          updateAvatarRender(player, customization, player.facing, false);
+          callbacksRef.current.onStatusChange("That path is blocked.");
+          return;
+        }
+
+        player.container.setPosition(resolvedStep.x, resolvedStep.y + logicalYOffset);
+
+        const facing =
+          Math.abs(dx) > Math.abs(dy)
+            ? dx < 0
+              ? "left"
+              : "right"
+            : dy < 0
+              ? "back"
+              : "front";
+
+        updateAvatarRender(player, customization, facing, true);
+
+        if (butterfly) {
+          const offsets = {
+            front: { x: -16, y: -8 },
+            back: { x: 16, y: 12 },
+            left: { x: 18, y: 2 },
+            right: { x: -18, y: 2 }
+          } as const;
+          const offset = offsets[facing];
+          butterfly.setPosition(player.container.x + offset.x, player.container.y - logicalYOffset + offset.y);
+        }
+      }
+    }
+
+    gameRef.current = new Phaser.Game({
+      type: Phaser.AUTO,
+      width,
+      height,
+      parent: containerRef.current,
+      backgroundColor: "#111827",
+      scene: FlutterCampScene,
+      scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+      }
+    });
+
+    return () => {
+      if (gameRef.current) {
+        gameRef.current.destroy(true);
+        gameRef.current = null;
+      }
+    };
+  }, [assetBase, customization]);
+
+  return <div ref={containerRef} className="flutter-phaser-camp" />;
 };
 
 type EncounterTutorialProps = {
