@@ -33,8 +33,8 @@ const AvatarSprite: React.FC<Props> = ({
   const backgroundImage = moving
     ? `url(${assetBase}assets/avatar/skins/${skin.assetBaseName}-${facing}-strip.png)`
     : `url(${assetBase}assets/avatar/skins/${skin.assetBaseName}-${facing}.png)`;
-  const backgroundSize = moving ? `${size * 3}px ${size}px` : `${size}px ${size}px`;
-  const backgroundPosition = moving ? `${-frame * size}px 0px` : "0px 0px";
+  const backgroundSize = moving ? `300% 100%` : "100% 100%";
+  const backgroundPosition = moving ? `${frame === 0 ? 0 : frame === 1 ? 50 : 100}% 0%` : "0% 0%";
 
   return (
     <div

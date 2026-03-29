@@ -277,6 +277,21 @@ const StoryGame: React.FC = () => {
     return null;
   }, [movementUnlocked, playerPos.x, playerPos.y]);
 
+  const butterflyPosition = useMemo(() => {
+    const offsets: Record<AvatarFacing, { x: number; y: number }> = {
+      front: { x: -3.5, y: -6.5 },
+      back: { x: 3.5, y: 8 },
+      left: { x: 6.5, y: -2.5 },
+      right: { x: -6.5, y: -2.5 }
+    };
+
+    const offset = offsets[playerFacing];
+    return {
+      left: `${playerPos.x + offset.x}%`,
+      top: `${playerPos.y + offset.y}%`
+    };
+  }, [playerFacing, playerPos.x, playerPos.y]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -684,7 +699,11 @@ const StoryGame: React.FC = () => {
                       animationTick={walkFrameTick}
                     />
                   </div>
-                  <div className="story-stage__butterfly" aria-hidden="true">
+                  <div
+                    className="story-stage__butterfly"
+                    aria-hidden="true"
+                    style={movementUnlocked ? butterflyPosition : undefined}
+                  >
                     <span />
                     <span />
                   </div>

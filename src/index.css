@@ -3846,7 +3846,7 @@ body[data-theme="dark"] .card-battle-card--hidden {
     linear-gradient(180deg, rgba(8, 11, 18, 0.08), rgba(8, 11, 18, 0.22)),
     url("/assets/story/flutterstarterimage.png");
   background-position: center;
-  background-size: contain;
+  background-size: cover;
   background-repeat: no-repeat;
   background-color: #140f1d;
 }
