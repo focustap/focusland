@@ -27,6 +27,30 @@ export default defineConfig({
     outDir: "dist",
     rollupOptions: {
       output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) {
+            return undefined;
+          }
+
+          if (id.includes("node_modules/phaser/")) {
+            return "phaser";
+          }
+
+          if (
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom/") ||
+            id.includes("node_modules/react-router/") ||
+            id.includes("node_modules/react-router-dom/")
+          ) {
+            return "react-vendor";
+          }
+
+          if (id.includes("node_modules/@supabase/")) {
+            return "supabase";
+          }
+
+          return "vendor";
+        },
         entryFileNames: "assets/[name].js",
         chunkFileNames: "assets/[name].js",
         assetFileNames: "assets/[name][extname]"
