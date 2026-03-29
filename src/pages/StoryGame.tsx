@@ -1,5 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import AvatarSprite from "../components/AvatarSprite";
 import NavBar from "../components/NavBar";
+import {
+  DEFAULT_AVATAR_CUSTOMIZATION,
+  getStoredAvatarCustomization,
+  normalizeAvatarCustomization,
+  type AvatarCustomization
+} from "../lib/avatarSprites";
 import {
   DEFAULT_STORY_PROGRESS,
   fetchStoryProgress,
@@ -9,141 +16,40 @@ import {
   type StoryProgress,
   type StorySettings
 } from "../lib/storySave";
-
-type Choice = {
-  id: string;
-  label: string;
-  consequence: string;
-  nextChapterId?: string;
-  nextSceneId: string;
-  setFlags?: Record<string, boolean>;
-  companionTrustDelta?: number;
-  defianceDelta?: number;
-};
-
-type StoryScene = {
-  id: string;
-  chapterId: string;
-  title: string;
-  speaker: string;
-  body: string;
-  note?: string;
-  location: string;
-  mood: "snowcamp" | "tutorial" | "trail";
-  choices: Choice[];
-};
+import { supabase } from "../lib/supabase";
 
 type ViewMode = "title" | "settings" | "playing";
 
-const SCENES: Record<string, StoryScene> = {
-  wake: {
-    id: "wake",
-    chapterId: "chapter-1",
-    title: "Snowbound Clearing",
-    speaker: "Butterfly",
-    location: "Forest edge camp",
-    mood: "snowcamp",
-    body:
-      "You wake beside a campfire that has burned itself down to red coals. Snow drifts over a small cabin, an igloo, and a pond gone mostly still with ice. A pale butterfly circles your shoulder, voice soft as dust. It introduces itself as Flutter and says it found you here before dawn.",
-    choices: [
-      {
-        id: "follow-gently",
-        label: "Sit up and ask Flutter where you are.",
-        consequence: "Flutter calmly explains where you woke up.",
-        nextSceneId: "path",
-        companionTrustDelta: 1
-      },
-      {
-        id: "question-first",
-        label: "Stand first and inspect the camp before answering.",
-        consequence: "You take the camp in before listening.",
-        nextSceneId: "path",
-        setFlags: { questioned_companion_early: true },
-        defianceDelta: 1
-      }
-    ]
-  },
-  path: {
-    id: "path",
-    chapterId: "chapter-1",
-    title: "Flutter's Rules",
-    speaker: "Butterfly",
-    location: "Campfire ring",
-    mood: "snowcamp",
-    body:
-      "Flutter drifts in slow circles over the firepit and explains the one thing it wants you to understand early: choices matter here. People remember what you say. Some moments will echo later, and the game will not warn you what any choice leads to before you make it. 'Just choose what feels true,' it says. 'The rest follows after.'",
-    note: "Manual save works whenever you want. Autosave happens only when you clear a chapter.",
-    choices: [
-      {
-        id: "believe-warning",
-        label: "Tell Flutter you understand and ask what comes next.",
-        consequence: "Flutter moves on to the next lesson.",
-        nextSceneId: "gate",
-        setFlags: { accepted_gate_warning: true },
-        companionTrustDelta: 1
-      },
-      {
-        id: "doubt-warning",
-        label: "Say that sounds stressful and ask if there is a safer way to play.",
-        consequence: "Flutter reassures you and keeps going.",
-        nextSceneId: "gate",
-        setFlags: { doubted_gate_warning: true },
-        defianceDelta: 1
-      }
-    ]
-  },
-  gate: {
-    id: "gate",
-    chapterId: "chapter-1",
-    title: "Practice Encounter",
-    speaker: "Butterfly",
-    location: "Frozen pond path",
-    mood: "tutorial",
-    body:
-      "Flutter leads you toward the pond and asks you not to panic when the world changes shape for a second. In danger, your soul condenses into a small square inside a fight box. Move it with WASD or the arrow keys. Avoid the practice motes until the lesson is over, and then the road to town opens.",
-    note: "This is only a tutorial encounter. Survive the box once to continue.",
-    choices: [
-      {
-        id: "defend-butterfly",
-        label: "Tell Flutter you are ready to leave the camp behind.",
-        consequence: "The road toward town finally opens.",
-        nextSceneId: "camp",
-        setFlags: { defended_companion_at_gate: true, tutorial_completed: true },
-        companionTrustDelta: 1
-      },
-      {
-        id: "hear-her-out",
-        label: "Take one more breath, then agree to head for town.",
-        consequence: "Flutter waits until you are steady, then leads on.",
-        nextSceneId: "camp",
-        setFlags: { listened_to_gate_warning: true, tutorial_completed: true },
-        defianceDelta: 1
-      }
-    ]
-  },
-  camp: {
-    id: "camp",
-    chapterId: "chapter-1",
-    title: "First Road South",
-    speaker: "Butterfly",
-    location: "South trail",
-    mood: "trail",
-    body:
-      "With the lesson behind you, the snow path bends south toward the town lights. Flutter keeps just ahead of you, bright against the dark pines, already talking about warm food, real beds, and people who can help you understand where you came from. This is still the opening stretch of chapter one, right before the first real town section begins.",
-    choices: [
-      {
-        id: "hold-here",
-        label: "Hold the line here for now.",
-        consequence: "You stop here for now.",
-        nextSceneId: "camp"
-      }
-    ]
-  }
+type SceneId =
+  | "wake-intro"
+  | "wake-rules"
+  | "camp-free"
+  | "igloo-brief"
+  | "igloo-encounter"
+  | "cabin-oldman"
+  | "cabin-oldman-more";
+
+type DialogueChoice = {
+  id: string;
+  label: string;
+  nextSceneId: SceneId;
 };
 
-const CHAPTER_TITLES: Record<string, string> = {
-  "chapter-1": "Chapter 1: Snowbound Clearing",
-  "chapter-2": "Chapter 2: Toward Town"
+type DialogueScene = {
+  id: SceneId;
+  title: string;
+  speaker: string;
+  location: string;
+  body: string;
+  note?: string;
+  choices: DialogueChoice[];
+};
+
+type CampHotspot = "cabin" | "igloo" | null;
+
+type PlayerPosition = {
+  x: number;
+  y: number;
 };
 
 const STORY_MUSIC = {
@@ -152,40 +58,270 @@ const STORY_MUSIC = {
   tense: `${import.meta.env.BASE_URL}audio/story/private-temp/flutter-tense.mp3`
 } as const;
 
+const CHAPTER_LABEL = "Chapter 1: Snowbound Clearing";
+const CAMP_START: PlayerPosition = { x: 48, y: 71 };
+const CAMP_MIN_X = 8;
+const CAMP_MAX_X = 88;
+const CAMP_MIN_Y = 28;
+const CAMP_MAX_Y = 88;
+
+const BLOCKERS = [
+  { x: 11, y: 22, w: 25, h: 24 },
+  { x: 68, y: 32, w: 19, h: 18 },
+  { x: 58, y: 70, w: 31, h: 19 },
+  { x: 39, y: 52, w: 16, h: 13 },
+  { x: 0, y: 0, w: 100, h: 19 },
+  { x: 0, y: 0, w: 7, h: 100 },
+  { x: 92, y: 0, w: 8, h: 100 }
+];
+
+function mapLegacySceneId(sceneId: string): SceneId {
+  switch (sceneId) {
+    case "wake":
+      return "wake-intro";
+    case "path":
+      return "wake-rules";
+    case "gate":
+      return "igloo-brief";
+    case "camp":
+      return "camp-free";
+    case "wake-intro":
+    case "wake-rules":
+    case "camp-free":
+    case "igloo-brief":
+    case "igloo-encounter":
+    case "cabin-oldman":
+    case "cabin-oldman-more":
+      return sceneId;
+    default:
+      return "wake-intro";
+  }
+}
+
+function normalizeLoadedProgress(progress: StoryProgress): StoryProgress {
+  return {
+    ...progress,
+    chapterId: "chapter-1",
+    sceneId: mapLegacySceneId(progress.sceneId)
+  };
+}
+
+function isBlocked(x: number, y: number) {
+  return BLOCKERS.some((blocker) => (
+    x >= blocker.x &&
+    x <= blocker.x + blocker.w &&
+    y >= blocker.y &&
+    y <= blocker.y + blocker.h
+  ));
+}
+
+function getWakeIntroScene(playerName: string): DialogueScene {
+  return {
+    id: "wake-intro",
+    title: "Snowbound Clearing",
+    speaker: "Flutter",
+    location: "Forest edge camp",
+    body:
+      `${playerName}, you wake beside a campfire that has burned itself down to red coals. ` +
+      "Snow drifts over a quiet cabin, a little igloo, and a pond gone mostly still with ice. " +
+      "A pale butterfly circles your shoulder and introduces itself as Flutter. It says it found you here before dawn, and that it can help you get your bearings if you stay calm.",
+    choices: [
+      {
+        id: "wake-continue",
+        label: "Ask Flutter what is going on.",
+        nextSceneId: "wake-rules"
+      }
+    ]
+  };
+}
+
+function getWakeRulesScene(): DialogueScene {
+  return {
+    id: "wake-rules",
+    title: "Flutter's Rules",
+    speaker: "Flutter",
+    location: "Campfire ring",
+    body:
+      "Flutter keeps its voice light and simple. Choices matter here. People remember what you say. " +
+      "The game will not tell you what a decision leads to before you make it, so if you want something to turn out a certain way later, you have to think ahead now. " +
+      "For the moment, the camp is safe. Look around. If you want answers, start with the places that still feel lived in.",
+    note:
+      "Movement unlocks after this conversation. House and igloo are the first two interactable places.",
+    choices: [
+      {
+        id: "wake-rules-finish",
+        label: "Get up and look around the camp.",
+        nextSceneId: "camp-free"
+      }
+    ]
+  };
+}
+
+const IGLOO_BRIEF_SCENE: DialogueScene = {
+  id: "igloo-brief",
+  title: "Igloo Entrance",
+  speaker: "Flutter",
+  location: "Snow camp",
+  body:
+    "Flutter dips toward the igloo entrance and warns you not to panic if the world changes shape for a second. " +
+    "In danger, your soul condenses into a small square inside a fight box. Move it with WASD or the arrow keys. " +
+    "For this first practice, do not worry about attacking back. Just stay calm, move cleanly, and avoid the motes until the lesson ends.",
+  note: "You cannot leave this prompt until you start the practice encounter.",
+  choices: [
+    {
+      id: "start-practice",
+      label: "Start the practice encounter.",
+      nextSceneId: "igloo-encounter"
+    }
+  ]
+};
+
+const OLD_MAN_SCENE: DialogueScene = {
+  id: "cabin-oldman",
+  title: "The Cabin Lamp",
+  speaker: "Old Man",
+  location: "Inside the cabin",
+  body:
+    "The cabin smells like cedar smoke and old paper. An old man looks up from the stove, studies you for a moment, and then talks as if you arrived in the middle of a story he has already told a hundred times. " +
+    "The name you need to know is Velmora. Villages whisper it every winter now. Gangs gather under that banner, roads go dark, and people disappear between one town and the next.",
+  choices: [
+    {
+      id: "ask-velmora",
+      label: "Ask what Velmora actually wants.",
+      nextSceneId: "cabin-oldman-more"
+    },
+    {
+      id: "leave-cabin",
+      label: "Thank him and head back outside.",
+      nextSceneId: "camp-free"
+    }
+  ]
+};
+
+const OLD_MAN_MORE_SCENE: DialogueScene = {
+  id: "cabin-oldman-more",
+  title: "Velmora",
+  speaker: "Old Man",
+  location: "Inside the cabin",
+  body:
+    "The old man shakes his head. Nobody agrees on what Velmora wants, only on what follows behind the name: burned storehouses, frightened caravans, and gangs bold enough to move openly through the back roads. " +
+    "He tells you the villages are holding together for now, but only barely. If someone does not push back, spring will never feel safe again.",
+  note: "This conversation is worldbuilding only. Nothing you say here changes the route.",
+  choices: [
+    {
+      id: "leave-after-lore",
+      label: "Step back outside into the snow.",
+      nextSceneId: "camp-free"
+    }
+  ]
+};
+
 const StoryGame: React.FC = () => {
   const [mode, setMode] = useState<ViewMode>("title");
-  const [progress, setProgress] = useState<StoryProgress>(DEFAULT_STORY_PROGRESS);
+  const [progress, setProgress] = useState<StoryProgress>({
+    ...DEFAULT_STORY_PROGRESS,
+    sceneId: "wake-intro"
+  });
+  const [playerName, setPlayerName] = useState("Traveler");
+  const [avatarCustomization, setAvatarCustomization] = useState<AvatarCustomization>(DEFAULT_AVATAR_CUSTOMIZATION);
   const [hasExistingSave, setHasExistingSave] = useState(false);
   const [saveStatus, setSaveStatus] = useState("Checking save data...");
   const [settings, setSettings] = useState<StorySettings>(loadStorySettings());
   const [loadingSave, setLoadingSave] = useState(true);
-  const [selectedConsequence, setSelectedConsequence] = useState<string | null>(null);
-  const [tutorialCleared, setTutorialCleared] = useState(Boolean(DEFAULT_STORY_PROGRESS.flags.tutorial_completed));
+  const [playerPos, setPlayerPos] = useState<PlayerPosition>(CAMP_START);
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const activeMusicRef = useRef<string | null>(null);
+  const movementKeysRef = useRef<Record<string, boolean>>({});
 
-  const currentScene = useMemo(() => SCENES[progress.sceneId] ?? SCENES.wake, [progress.sceneId]);
+  const currentSceneId = mapLegacySceneId(progress.sceneId);
+  const movementUnlocked = currentSceneId === "camp-free";
+  const tutorialCompleted = Boolean(progress.flags.tutorial_completed);
+  const houseVisited = Boolean(progress.flags.house_visited);
+
+  const currentDialogueScene = useMemo<DialogueScene | null>(() => {
+    switch (currentSceneId) {
+      case "wake-intro":
+        return getWakeIntroScene(playerName);
+      case "wake-rules":
+        return getWakeRulesScene();
+      case "igloo-brief":
+        return IGLOO_BRIEF_SCENE;
+      case "cabin-oldman":
+        return OLD_MAN_SCENE;
+      case "cabin-oldman-more":
+        return OLD_MAN_MORE_SCENE;
+      default:
+        return null;
+    }
+  }, [currentSceneId, playerName]);
+
+  const activeHotspot = useMemo<CampHotspot>(() => {
+    if (!movementUnlocked) {
+      return null;
+    }
+
+    const nearCabin = playerPos.x >= 18 && playerPos.x <= 35 && playerPos.y >= 42 && playerPos.y <= 56;
+    if (nearCabin) {
+      return "cabin";
+    }
+
+    const nearIgloo = playerPos.x >= 67 && playerPos.x <= 82 && playerPos.y >= 47 && playerPos.y <= 61;
+    if (nearIgloo) {
+      return "igloo";
+    }
+
+    return null;
+  }, [movementUnlocked, playerPos.x, playerPos.y]);
 
   useEffect(() => {
     let cancelled = false;
 
     void (async () => {
       try {
+        const {
+          data: { session }
+        } = await supabase.auth.getSession();
+
+        if (session && !cancelled) {
+          const fallbackName = session.user.email?.split("@")[0] ?? "Traveler";
+          setPlayerName(fallbackName);
+
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("username, avatar_customization")
+            .eq("id", session.user.id)
+            .maybeSingle();
+
+          if (!cancelled) {
+            setPlayerName((profile?.username as string | null) ?? fallbackName);
+            setAvatarCustomization(
+              normalizeAvatarCustomization(
+                (profile as { avatar_customization?: Partial<AvatarCustomization> | null } | null)?.avatar_customization
+                ?? getStoredAvatarCustomization()
+              )
+            );
+          }
+        } else if (!cancelled) {
+          setAvatarCustomization(getStoredAvatarCustomization());
+        }
+
         const savedProgress = await fetchStoryProgress();
         if (cancelled) {
           return;
         }
 
         if (savedProgress) {
-          setProgress(savedProgress);
+          const normalized = normalizeLoadedProgress(savedProgress);
+          setProgress(normalized);
           setHasExistingSave(true);
-          setSaveStatus(`Save loaded. Last checkpoint: ${CHAPTER_TITLES[savedProgress.chapterId] ?? savedProgress.chapterId}.`);
+          setSaveStatus(`Save loaded. Last checkpoint: ${normalized.title ?? CHAPTER_LABEL}.`);
         } else {
           setSaveStatus("No story save yet. Starting fresh is safe.");
         }
       } catch {
         if (!cancelled) {
           setSaveStatus("Story save table not ready yet. Title screen still works, but Supabase saves need setup.");
+          setAvatarCustomization(getStoredAvatarCustomization());
         }
       } finally {
         if (!cancelled) {
@@ -200,10 +336,6 @@ const StoryGame: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    setTutorialCleared(Boolean(progress.flags.tutorial_completed));
-  }, [progress.flags, progress.sceneId]);
-
-  useEffect(() => {
     if (!settings.ambientAudio) {
       if (musicRef.current) {
         musicRef.current.pause();
@@ -213,16 +345,16 @@ const StoryGame: React.FC = () => {
     }
 
     const nextTrack =
-      mode === "playing"
-        ? currentScene.chapterId === "chapter-1"
-          ? STORY_MUSIC.overworld
-          : STORY_MUSIC.tense
-        : STORY_MUSIC.title;
+      mode === "title" || mode === "settings"
+        ? STORY_MUSIC.title
+        : currentSceneId === "igloo-encounter"
+          ? STORY_MUSIC.tense
+          : STORY_MUSIC.overworld;
 
     if (!musicRef.current) {
       const audio = new Audio(nextTrack);
       audio.loop = true;
-      audio.volume = 0.34;
+      audio.volume = nextTrack === STORY_MUSIC.tense ? 0.28 : 0.34;
       musicRef.current = audio;
       activeMusicRef.current = nextTrack;
       void audio.play().catch(() => {});
@@ -230,17 +362,15 @@ const StoryGame: React.FC = () => {
     }
 
     const audio = musicRef.current;
-    audio.volume = mode === "playing" && currentScene.chapterId !== "chapter-1" ? 0.28 : 0.34;
-
+    audio.volume = nextTrack === STORY_MUSIC.tense ? 0.28 : 0.34;
     if (activeMusicRef.current !== nextTrack) {
       audio.pause();
       audio.src = nextTrack;
       audio.currentTime = 0;
       activeMusicRef.current = nextTrack;
     }
-
     void audio.play().catch(() => {});
-  }, [currentScene.chapterId, mode, settings.ambientAudio]);
+  }, [currentSceneId, mode, settings.ambientAudio]);
 
   useEffect(() => {
     return () => {
@@ -251,76 +381,132 @@ const StoryGame: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (!movementUnlocked || mode !== "playing") {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (["w", "a", "s", "d", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+        movementKeysRef.current[event.key] = true;
+        event.preventDefault();
+      }
+
+      if ((event.key === "e" || event.key === "Enter") && activeHotspot) {
+        event.preventDefault();
+        if (activeHotspot === "cabin") {
+          setProgress((current) => ({
+            ...current,
+            sceneId: "cabin-oldman",
+            updatedAt: new Date().toISOString(),
+            flags: {
+              ...current.flags,
+              house_visited: true
+            }
+          }));
+          setSaveStatus("You step inside the cabin.");
+        } else if (activeHotspot === "igloo") {
+          setProgress((current) => ({
+            ...current,
+            sceneId: tutorialCompleted ? "camp-free" : "igloo-brief",
+            updatedAt: new Date().toISOString()
+          }));
+          setSaveStatus(tutorialCompleted ? "The igloo is quiet now." : "Flutter has something to show you.");
+        }
+      }
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      delete movementKeysRef.current[event.key];
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+
+    let frameId = 0;
+    let lastTime = performance.now();
+
+    const tick = (time: number) => {
+      const delta = Math.min(32, time - lastTime);
+      lastTime = time;
+      const step = delta * 0.018;
+
+      setPlayerPos((current) => {
+        let nextX = current.x;
+        let nextY = current.y;
+
+        if (movementKeysRef.current.a || movementKeysRef.current.ArrowLeft) nextX -= step;
+        if (movementKeysRef.current.d || movementKeysRef.current.ArrowRight) nextX += step;
+        if (movementKeysRef.current.w || movementKeysRef.current.ArrowUp) nextY -= step;
+        if (movementKeysRef.current.s || movementKeysRef.current.ArrowDown) nextY += step;
+
+        nextX = Math.max(CAMP_MIN_X, Math.min(CAMP_MAX_X, nextX));
+        nextY = Math.max(CAMP_MIN_Y, Math.min(CAMP_MAX_Y, nextY));
+
+        if (isBlocked(nextX, nextY)) {
+          return current;
+        }
+
+        return { x: nextX, y: nextY };
+      });
+
+      frameId = window.requestAnimationFrame(tick);
+    };
+
+    frameId = window.requestAnimationFrame(tick);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [activeHotspot, movementUnlocked, mode, tutorialCompleted]);
+
   const handleSettingChange = (nextSettings: StorySettings) => {
     setSettings(nextSettings);
     persistStorySettings(nextSettings);
   };
 
   const startNewGame = () => {
-    setProgress(DEFAULT_STORY_PROGRESS);
-    setSelectedConsequence(null);
-    setTutorialCleared(false);
+    setProgress({
+      ...DEFAULT_STORY_PROGRESS,
+      chapterId: "chapter-1",
+      sceneId: "wake-intro",
+      flags: {}
+    });
+    setPlayerPos(CAMP_START);
     setMode("playing");
-    setSaveStatus("New file started. Manual save available from the story screen.");
+    setSaveStatus("New file started. Manual save is available from the story screen.");
   };
 
   const continueGame = () => {
-    setSelectedConsequence(null);
     setMode("playing");
   };
 
   const saveManual = async () => {
     setSaveStatus("Saving story progress...");
     try {
-      const saved = await saveStoryProgress(progress);
+      const saved = await saveStoryProgress({
+        ...progress,
+        chapterId: "chapter-1"
+      });
       setProgress(saved);
       setHasExistingSave(true);
-      setSaveStatus(`Manual save complete at ${CHAPTER_TITLES[saved.chapterId] ?? saved.chapterId}.`);
+      setSaveStatus("Manual save complete.");
     } catch {
       setSaveStatus("Manual save failed. Supabase story_saves may still need to be created.");
     }
   };
 
-  const applyChoice = async (choice: Choice) => {
-    if (currentScene.id === "gate" && !tutorialCleared) {
-      setSaveStatus("Finish Flutter's practice encounter first.");
-      return;
-    }
-
-    const nextChapterId = choice.nextChapterId ?? progress.chapterId;
-    const nextProgress: StoryProgress = {
-      ...progress,
-      chapterId: nextChapterId,
-      sceneId: choice.nextSceneId,
-      lastChoiceId: choice.id,
-      flags: {
-        ...progress.flags,
-        ...(choice.setFlags ?? {})
-      },
-      companionTrust: progress.companionTrust + (choice.companionTrustDelta ?? 0),
-      defiance: progress.defiance + (choice.defianceDelta ?? 0),
-      chaptersCleared:
-        choice.nextChapterId && choice.nextChapterId !== progress.chapterId
-          ? Array.from(new Set([...progress.chaptersCleared, progress.chapterId]))
-          : progress.chaptersCleared,
+  const goToScene = (nextSceneId: SceneId) => {
+    setProgress((current) => ({
+      ...current,
+      sceneId: nextSceneId,
       updatedAt: new Date().toISOString()
-    };
+    }));
 
-    setSelectedConsequence(choice.consequence);
-    setProgress(nextProgress);
-
-    if (choice.nextChapterId && choice.nextChapterId !== progress.chapterId) {
-      setSaveStatus("Chapter cleared. Autosaving...");
-      try {
-        const saved = await saveStoryProgress(nextProgress);
-        setProgress(saved);
-        setHasExistingSave(true);
-        setSaveStatus(`Autosaved at ${CHAPTER_TITLES[saved.chapterId] ?? saved.chapterId}.`);
-      } catch {
-        setSaveStatus("Chapter autosave failed. Story save table may still need setup.");
-      }
-    } else {
-      setSaveStatus("Progress updated. Manual save recommended before leaving.");
+    if (nextSceneId === "camp-free") {
+      setSaveStatus("Movement unlocked. Explore the camp.");
     }
   };
 
@@ -334,44 +520,18 @@ const StoryGame: React.FC = () => {
               <span className="story-kicker">A narrative RPG experiment</span>
               <h2>Flutter</h2>
               <p>
-                Wake up in a town that already knows your name. Listen to the butterfly.
-                Or don&apos;t. The game will remember either way.
+                Wake up in a snow-buried camp with only a butterfly guide and a name the world already seems to know.
               </p>
             </div>
 
-            <div className="story-title-stage story-title-stage--meadow">
-              <div className="story-map story-map--title" aria-hidden="true">
-                <div className="story-map__cliff" />
-                <div className="story-map__snow" />
-                <div className="story-map__pond" />
-                <div className="story-map__dock" />
-                <div className="story-map__cabin" />
-                <div className="story-map__igloo" />
-                <div className="story-map__campfire" />
-                <div className="story-map__crate" />
-                <div className="story-map__mailbox" />
-                <div className="story-map__sign story-map__sign--north" />
-                <div className="story-map__sign story-map__sign--south" />
-                <div className="story-map__stump story-map__stump--left" />
-                <div className="story-map__stump story-map__stump--right" />
-                <div className="story-map__bush story-map__bush--one" />
-                <div className="story-map__bush story-map__bush--two" />
-                <div className="story-map__bush story-map__bush--three" />
-                <div className="story-map__bush story-map__bush--four" />
-                <div className="story-map__player-wrap story-map__player-wrap--title">
-                  <img
-                    className="story-map__player"
-                    src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/character_idle_down.png`}
-                    alt="Player sprite"
-                  />
-                </div>
-              </div>
+            <div className="story-title-stage">
+              <div className="story-map story-map--title" aria-hidden="true" />
               <div className="story-title-stage__butterfly" aria-hidden="true">
                 <span />
                 <span />
               </div>
               <div className="story-title-stage__caption">
-                A quiet beginning. A guide that feels harmless. A town that already knows something you do not.
+                {playerName} wakes in the cold. Flutter is already there.
               </div>
             </div>
 
@@ -397,11 +557,11 @@ const StoryGame: React.FC = () => {
               <div className="story-title-screen__cards">
                 <div className="story-title-card">
                   <strong>Save Model</strong>
-                  <span>Manual save from the pause panel, with autosave only when you clear a chapter.</span>
+                  <span>Manual saves only during the intro. Chapter autosaves come later, after real story progress.</span>
                 </div>
                 <div className="story-title-card">
                   <strong>Current Slice</strong>
-                  <span>Intro, first chapter, first town-gate choice, and the real save structure underneath it.</span>
+                  <span>Wake-up scene, choice tutorial, camp exploration, igloo fight tutorial, and the first Velmora lore conversation.</span>
                 </div>
               </div>
             </div>
@@ -416,12 +576,10 @@ const StoryGame: React.FC = () => {
                 <span>Text Speed</span>
                 <select
                   value={settings.textSpeed}
-                  onChange={(event) =>
-                    handleSettingChange({
-                      ...settings,
-                      textSpeed: event.target.value === "fast" ? "fast" : "normal"
-                    })
-                  }
+                  onChange={(event) => handleSettingChange({
+                    ...settings,
+                    textSpeed: event.target.value === "fast" ? "fast" : "normal"
+                  })}
                 >
                   <option value="normal">Normal</option>
                   <option value="fast">Fast</option>
@@ -431,12 +589,10 @@ const StoryGame: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={settings.screenshake}
-                  onChange={(event) =>
-                    handleSettingChange({
-                      ...settings,
-                      screenshake: event.target.checked
-                    })
-                  }
+                  onChange={(event) => handleSettingChange({
+                    ...settings,
+                    screenshake: event.target.checked
+                  })}
                 />
                 <span>Screenshake</span>
               </label>
@@ -444,12 +600,10 @@ const StoryGame: React.FC = () => {
                 <input
                   type="checkbox"
                   checked={settings.ambientAudio}
-                  onChange={(event) =>
-                    handleSettingChange({
-                      ...settings,
-                      ambientAudio: event.target.checked
-                    })
-                  }
+                  onChange={(event) => handleSettingChange({
+                    ...settings,
+                    ambientAudio: event.target.checked
+                  })}
                 />
                 <span>Ambient Audio</span>
               </label>
@@ -466,10 +620,13 @@ const StoryGame: React.FC = () => {
           <section className="story-play-shell">
             <div className="story-play-shell__top">
               <div>
-                <span className="story-kicker">{CHAPTER_TITLES[currentScene.chapterId]}</span>
-                <h2>{currentScene.title}</h2>
+                <span className="story-kicker">{CHAPTER_LABEL}</span>
+                <h2>
+                  {currentDialogueScene?.title
+                    ?? (currentSceneId === "camp-free" ? "Snowbound Clearing" : "Practice Encounter")}
+                </h2>
                 <p className="story-subtle">
-                  {currentScene.location} | {currentScene.speaker} speaking | Companion Trust: {progress.companionTrust} | Defiance: {progress.defiance}
+                  {currentDialogueScene?.location ?? "Forest edge camp"} | {movementUnlocked ? "Exploration" : "Conversation"}
                 </p>
               </div>
               <div className="button-row">
@@ -482,31 +639,14 @@ const StoryGame: React.FC = () => {
               </div>
             </div>
 
-            <div className="story-stage">
-              <div className={`story-stage__world story-stage__world--${currentScene.mood}`}>
-                <div className={`story-map story-map--${currentScene.mood}`} aria-hidden="true">
-                  <div className="story-map__cliff" />
-                  <div className="story-map__snow" />
-                  <div className="story-map__pond" />
-                  <div className="story-map__dock" />
-                  <div className="story-map__cabin" />
-                  <div className="story-map__igloo" />
-                  <div className="story-map__campfire" />
-                  <div className="story-map__crate" />
-                  <div className="story-map__mailbox" />
-                  <div className="story-map__sign story-map__sign--north" />
-                  <div className="story-map__sign story-map__sign--south" />
-                  <div className="story-map__stump story-map__stump--left" />
-                  <div className="story-map__stump story-map__stump--right" />
-                  <div className="story-map__bush story-map__bush--one" />
-                  <div className="story-map__bush story-map__bush--two" />
-                  <div className="story-map__bush story-map__bush--three" />
-                  <div className="story-map__bush story-map__bush--four" />
-                  <div className="story-map__player-wrap">
-                    <img
-                      className="story-map__player"
-                      src={`${import.meta.env.BASE_URL}assets/story/pixel-crawler/character_idle_down.png`}
-                      alt="Player sprite"
+            <div className="flutter-play-grid">
+              <div className="flutter-map-shell">
+                <div className={`story-map ${movementUnlocked ? "story-map--camp-free" : "story-map--snowcamp"}`}>
+                  <div className="flutter-player" style={{ left: `${playerPos.x}%`, top: `${playerPos.y}%` }}>
+                    <AvatarSprite
+                      customization={avatarCustomization}
+                      size={104}
+                      className="story-map__player-avatar"
                     />
                   </div>
                   <div className="story-stage__butterfly" aria-hidden="true">
@@ -514,61 +654,99 @@ const StoryGame: React.FC = () => {
                     <span />
                   </div>
                 </div>
-                <div className="story-stage__hint">
-                  {currentScene.id === "wake"
-                    ? "A warm fire, a cabin, and a guide you have no reason to distrust yet."
-                    : currentScene.id === "path"
-                      ? "Flutter teaches the rules before the road opens up."
-                      : currentScene.id === "gate"
-                        ? "Use WASD or the arrow keys inside the box and dodge until the lesson ends."
-                        : "The path south is the start of the real town chapter."}
-                </div>
-                {currentScene.id === "gate" ? (
-                  <EncounterTutorial
-                    completed={tutorialCleared}
-                    onComplete={() => {
-                      if (tutorialCleared) {
-                        return;
-                      }
 
-                      setTutorialCleared(true);
+                {movementUnlocked ? (
+                  <>
+                    <div className="story-stage__hint">
+                      Walk with WASD or the arrow keys. Try the cabin and the igloo.
+                    </div>
+                    {activeHotspot ? (
+                      <button
+                        type="button"
+                        className="flutter-interact"
+                        onClick={() => {
+                          if (activeHotspot === "cabin") {
+                            setProgress((current) => ({
+                              ...current,
+                              sceneId: "cabin-oldman",
+                              updatedAt: new Date().toISOString(),
+                              flags: {
+                                ...current.flags,
+                                house_visited: true
+                              }
+                            }));
+                            setSaveStatus("You step inside the cabin.");
+                          } else if (!tutorialCompleted) {
+                            goToScene("igloo-brief");
+                            setSaveStatus("Flutter has something to show you.");
+                          }
+                        }}
+                      >
+                        {activeHotspot === "cabin"
+                          ? "Press E or Enter to enter the cabin"
+                          : tutorialCompleted
+                            ? "The igloo is quiet now."
+                            : "Press E or Enter to inspect the igloo"}
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {currentSceneId === "igloo-encounter" ? (
+                  <EncounterTutorial
+                    completed={tutorialCompleted}
+                    onComplete={() => {
                       setProgress((current) => ({
                         ...current,
+                        sceneId: "camp-free",
                         flags: {
                           ...current.flags,
                           tutorial_completed: true
                         },
                         updatedAt: new Date().toISOString()
                       }));
-                      setSaveStatus("Practice complete. You can move on now.");
+                      setSaveStatus("Practice complete. Explore the camp again.");
                     }}
                   />
                 ) : null}
               </div>
+
+              <div className="story-dialogue">
+                {currentDialogueScene ? (
+                  <>
+                    <div className="story-dialogue__speaker">{currentDialogueScene.speaker}</div>
+                    <p>{currentDialogueScene.body}</p>
+                    {currentDialogueScene.note ? <p className="story-subtle">{currentDialogueScene.note}</p> : null}
+                  </>
+                ) : (
+                  <>
+                    <div className="story-dialogue__speaker">Flutter</div>
+                    <p>
+                      The camp is quiet for now. The cabin still has a lamp in the window,
+                      and the igloo is the only other place here that looks in use.
+                    </p>
+                    <p className="story-subtle">
+                      Velmora explained: {houseVisited ? "yes" : "not yet"} | Fight tutorial complete: {tutorialCompleted ? "yes" : "not yet"}
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
 
-            <div
-              className={`story-dialogue ${currentScene.chapterId === "chapter-2" ? "story-dialogue--tense" : ""}`}
-            >
-              <div className="story-dialogue__speaker">{currentScene.speaker}</div>
-              <p>{currentScene.body}</p>
-              {currentScene.note ? <p className="story-subtle">{currentScene.note}</p> : null}
-              {selectedConsequence ? <p className="warning">{selectedConsequence}</p> : null}
-            </div>
-
-            <div className="story-choice-grid">
-              {currentScene.choices.map((choice) => (
-                <button
-                  key={choice.id}
-                  type="button"
-                  className="story-choice-card"
-                  onClick={() => void applyChoice(choice)}
-                  disabled={currentScene.id === "gate" && !tutorialCleared}
-                >
-                  <strong>{choice.label}</strong>
-                </button>
-              ))}
-            </div>
+            {currentDialogueScene ? (
+              <div className="story-choice-grid">
+                {currentDialogueScene.choices.map((choice) => (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    className="story-choice-card"
+                    onClick={() => goToScene(choice.nextSceneId)}
+                  >
+                    <strong>{choice.label}</strong>
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
             <p className="info">{saveStatus}</p>
           </section>
@@ -577,8 +755,6 @@ const StoryGame: React.FC = () => {
     </div>
   );
 };
-
-export default StoryGame;
 
 type EncounterTutorialProps = {
   completed: boolean;
@@ -671,7 +847,6 @@ const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComp
 
     const hit = pelletPositions.some((pellet) => Math.hypot(pellet.x - soul.x, pellet.y - soul.y) < 11);
     const now = performance.now();
-
     if (hit && now - lastHitRef.current > 600) {
       lastHitRef.current = now;
       setElapsed(0);
@@ -707,3 +882,5 @@ const EncounterTutorial: React.FC<EncounterTutorialProps> = ({ completed, onComp
     </div>
   );
 };
+
+export default StoryGame;
