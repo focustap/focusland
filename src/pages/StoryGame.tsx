@@ -657,35 +657,37 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
     const collisionRadius = 14;
     const spawn = { x: 376, y: 398 };
     const blockers = [
-      new Phaser.Geom.Rectangle(0, 0, width, 136),
-      new Phaser.Geom.Rectangle(0, 0, 96, height),
-      new Phaser.Geom.Rectangle(678, 0, 90, height),
-      new Phaser.Geom.Rectangle(76, 128, 212, 154),
-      new Phaser.Geom.Rectangle(540, 184, 148, 118),
-      new Phaser.Geom.Rectangle(470, 366, 232, 150),
-      new Phaser.Geom.Rectangle(315, 258, 118, 88),
-      new Phaser.Geom.Rectangle(98, 370, 112, 80)
+      new Phaser.Geom.Rectangle(0, 0, width, 92),
+      new Phaser.Geom.Rectangle(0, 0, 44, height),
+      new Phaser.Geom.Rectangle(724, 0, 44, height),
+      new Phaser.Geom.Rectangle(76, 104, 170, 118),
+      new Phaser.Geom.Rectangle(556, 186, 116, 94),
+      new Phaser.Geom.Rectangle(505, 382, 208, 128),
+      new Phaser.Geom.Rectangle(326, 278, 86, 66)
     ];
     const buildings = [
       {
         name: "cabin",
         bounds: new Phaser.Geom.Rectangle(102, 124, 180, 124),
-        entranceX: 222,
-        entranceY: 264
+        entranceX: 188,
+        entranceY: 244,
+        interactBounds: new Phaser.Geom.Rectangle(154, 226, 58, 42)
       },
       {
         name: "igloo",
         bounds: new Phaser.Geom.Rectangle(542, 184, 130, 118),
-        entranceX: 575,
-        entranceY: 314
+        entranceX: 587,
+        entranceY: 301,
+        interactBounds: new Phaser.Geom.Rectangle(560, 280, 58, 40)
       }
     ] as const;
 
     let player: ReturnType<typeof createAvatarRender> | null = null;
     let targetX: number | null = null;
     let targetY: number | null = null;
-    let pendingAction: "cabin" | "igloo" | null = null;
     let butterfly: Phaser.GameObjects.Container | null = null;
+    let currentHotspot: "cabin" | "igloo" | null = null;
+    let hotspotHint: Phaser.GameObjects.Text | null = null;
 
     const isBlocked = (x: number, y: number) => {
       const footprint = new Phaser.Geom.Circle(x, y, collisionRadius);
@@ -757,13 +759,11 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
 
           targetX = Phaser.Math.Clamp(pointer.x, 24, width - 24);
           targetY = Phaser.Math.Clamp(pointer.y - logicalYOffset, 150, height - 34);
-          pendingAction = null;
 
           for (const building of buildings) {
             if (building.bounds.contains(pointer.x, pointer.y)) {
               targetX = building.entranceX;
               targetY = building.entranceY;
-              pendingAction = building.name;
               callbacksRef.current.onStatusChange(
                 building.name === "cabin"
                   ? "Walking to the cabin."
@@ -773,6 +773,33 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
             }
           }
         });
+
+        hotspotHint = this.add.text(width / 2, height - 30, "", {
+          fontFamily: "\"Trebuchet MS\", system-ui, sans-serif",
+          fontSize: "14px",
+          color: "#e5eefc",
+          backgroundColor: "rgba(8, 12, 20, 0.72)",
+          padding: { x: 12, y: 8 }
+        })
+          .setOrigin(0.5)
+          .setDepth(20)
+          .setVisible(false);
+
+        this.input.keyboard?.on("keydown-E", () => {
+          if (currentHotspot === "cabin") {
+            callbacksRef.current.onEnterCabin();
+          } else if (currentHotspot === "igloo") {
+            callbacksRef.current.onEnterIgloo();
+          }
+        });
+
+        this.input.keyboard?.on("keydown-ENTER", () => {
+          if (currentHotspot === "cabin") {
+            callbacksRef.current.onEnterCabin();
+          } else if (currentHotspot === "igloo") {
+            callbacksRef.current.onEnterIgloo();
+          }
+        });
       }
 
       update(_time: number, delta: number) {
@@ -780,13 +807,26 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
           return;
         }
 
+        const currentX = player.container.x;
+        const currentY = player.container.y - logicalYOffset;
+        const matchingHotspot = buildings.find((building) => building.interactBounds.contains(currentX, currentY));
+        currentHotspot = matchingHotspot?.name ?? null;
+
+        if (hotspotHint) {
+          if (currentHotspot === "cabin") {
+            hotspotHint.setText("Press E to enter the cabin").setVisible(true);
+          } else if (currentHotspot === "igloo") {
+            hotspotHint.setText("Press E to inspect the igloo").setVisible(true);
+          } else {
+            hotspotHint.setVisible(false);
+          }
+        }
+
         if (targetX == null || targetY == null) {
           updateAvatarRender(player, customization, player.facing, false);
           return;
         }
 
-        const currentX = player.container.x;
-        const currentY = player.container.y - logicalYOffset;
         const dx = targetX - currentX;
         const dy = targetY - currentY;
         const distance = Math.hypot(dx, dy);
@@ -794,17 +834,8 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
         if (distance < arrivalThreshold) {
           player.container.setPosition(targetX, targetY + logicalYOffset);
           updateAvatarRender(player, customization, "front", false);
-
-          const completedAction = pendingAction;
           targetX = null;
           targetY = null;
-          pendingAction = null;
-
-          if (completedAction === "cabin") {
-            callbacksRef.current.onEnterCabin();
-          } else if (completedAction === "igloo") {
-            callbacksRef.current.onEnterIgloo();
-          }
 
           return;
         }
@@ -818,7 +849,6 @@ const FlutterCampExploration: React.FC<FlutterCampExplorationProps> = ({
         if (resolvedStep.blocked) {
           targetX = null;
           targetY = null;
-          pendingAction = null;
           updateAvatarRender(player, customization, player.facing, false);
           callbacksRef.current.onStatusChange("That path is blocked.");
           return;
