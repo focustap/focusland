@@ -177,6 +177,7 @@ const Hallway13: React.FC = () => {
       ambientSound?: Phaser.Sound.BaseSound;
       creepySound?: Phaser.Sound.BaseSound;
       jumpscareSound?: Phaser.Sound.BaseSound;
+      loseJumpscareSound?: Phaser.Sound.BaseSound;
       keys!: {
         forward: Phaser.Input.Keyboard.Key;
         backward: Phaser.Input.Keyboard.Key;
@@ -191,6 +192,7 @@ const Hallway13: React.FC = () => {
         this.load.audio("hallway-ambience", `${assetBase}audio/hallway/ambient_horror_0.ogg`);
         this.load.audio("hallway-creepy", `${assetBase}audio/hallway/creepy-hit.mp3`);
         this.load.audio("hallway-jumpscare", `${assetBase}audio/hallway/jumpscare.mp3`);
+        this.load.audio("hallway-lose-jumpscare", `${assetBase}audio/hallway/hallway-lose-jumpscare.mp3`);
         this.load.image("hallway-rush-face", `${assetBase}assets/hallway/scaryface.png`);
         this.load.image("hallway-lose-face", `${assetBase}assets/hallway/scaryfacefull.jpg`);
       }
@@ -311,6 +313,7 @@ const Hallway13: React.FC = () => {
         }
         this.creepySound ??= this.sound.add("hallway-creepy", { volume: 0.35 });
         this.jumpscareSound ??= this.sound.add("hallway-jumpscare", { volume: 0.85 });
+        this.loseJumpscareSound ??= this.sound.add("hallway-lose-jumpscare", { volume: 1.15 });
       }
 
       pickLoopAnomaly(isFirstLoop: boolean) {
@@ -1175,7 +1178,7 @@ const Hallway13: React.FC = () => {
 
         if (this.mistakes >= MAX_MISTAKES) {
           this.phase = "dead";
-          this.jumpscareSound?.play();
+          this.loseJumpscareSound?.play();
           this.cameras.main.flash(220, 255, 255, 255);
           this.triggerLoseFace();
           handleRunOver(Math.max(0, this.currentLoop - 1), updatedMistakeLog);
