@@ -11,9 +11,15 @@ type AnomalyId =
   | "missing-light"
   | "cold-light"
   | "flicker-light"
+  | "extra-light"
+  | "low-light"
   | "door-number"
   | "door-glow"
-  | "trim-break"
+  | "missing-plaque"
+  | "tilted-plaque"
+  | "missing-knob"
+  | "knob-left"
+  | "door-scratches"
   | "left-portrait"
   | "extra-frame-left"
   | "extra-frame-right"
@@ -21,6 +27,14 @@ type AnomalyId =
   | "upside-down-left"
   | "upside-down-right"
   | "crooked-frame-left"
+  | "eye-in-painting"
+  | "portrait-bleed"
+  | "runner-symbol"
+  | "runner-stripe-missing"
+  | "vent-missing-left"
+  | "vent-open-right"
+  | "wall-crack-left"
+  | "wall-crack-right"
   | "blood-text"
   | "door-eye"
   | "floor-stain"
@@ -49,14 +63,23 @@ const LIGHT_WORLD_DISTANCES = [132, 272, 430, 596, 760, 908];
 const LEFT_FRAME_WORLD_DISTANCES = [220, 460, 708];
 const RIGHT_FRAME_WORLD_DISTANCES = [332, 612];
 const PANEL_WORLD_DISTANCES = [166, 270, 386, 508, 630, 752, 874];
+const RUNNER_STRIPE_DISTANCES = [156, 224, 292, 360, 428, 496, 564, 632, 700, 768, 836];
+const LEFT_VENT_WORLD_DISTANCES = [294, 642];
+const RIGHT_VENT_WORLD_DISTANCES = [212, 538];
 const ANOMALIES: AnomalyId[] = [
   "door-number",
   "door-glow",
-  "trim-break",
   "red-light",
   "missing-light",
   "cold-light",
   "flicker-light",
+  "extra-light",
+  "low-light",
+  "missing-plaque",
+  "tilted-plaque",
+  "missing-knob",
+  "knob-left",
+  "door-scratches",
   "left-portrait",
   "extra-frame-left",
   "extra-frame-right",
@@ -64,6 +87,14 @@ const ANOMALIES: AnomalyId[] = [
   "upside-down-left",
   "upside-down-right",
   "crooked-frame-left",
+  "eye-in-painting",
+  "portrait-bleed",
+  "runner-symbol",
+  "runner-stripe-missing",
+  "vent-missing-left",
+  "vent-open-right",
+  "wall-crack-left",
+  "wall-crack-right",
   "blood-text",
   "door-eye",
   "floor-stain",
@@ -528,7 +559,7 @@ const Hallway13: React.FC = () => {
           previous = current;
         }
 
-        [118, 252, 404, 572, 748].forEach((worldDistance, index) => {
+        [118, 252, 404, 572, 748].forEach((worldDistance) => {
           const distance = worldDistance - this.getPlayerDepth();
           if (distance <= 18 || distance >= this.getDoorDistance() - 38) {
             return;
@@ -536,13 +567,38 @@ const Hallway13: React.FC = () => {
           const point = this.projectPointAtDistance(distance, 0, 0.83);
           const width = 148 * point.scale;
           const height = 16 * point.scale;
-          const color = this.currentAnomaly === "trim-break" && index === 2 ? 0x4a2f2f : 0x6f5b33;
-          const alpha = this.currentAnomaly === "trim-break" && index === 2 ? 0.18 : 0.46;
-          this.graphics.fillStyle(color, alpha);
+          this.graphics.fillStyle(0x6f5b33, 0.46);
           this.graphics.fillRoundedRect(point.x - width / 2, point.y - height / 2, width, height, 3);
           this.graphics.lineStyle(1, 0xa78b54, 0.14);
           this.graphics.strokeRoundedRect(point.x - width / 2, point.y - height / 2, width, height, 3);
         });
+
+        RUNNER_STRIPE_DISTANCES.forEach((worldDistance, index) => {
+          const distance = worldDistance - this.getPlayerDepth();
+          if (distance <= 14 || distance >= this.getDoorDistance() - 42) {
+            return;
+          }
+          if (this.currentAnomaly === "runner-stripe-missing" && index === 5) {
+            return;
+          }
+          const point = this.projectPointAtDistance(distance, 0, 0.79);
+          const width = 52 * point.scale;
+          const height = 6 * point.scale;
+          this.graphics.fillStyle(0xcbb489, 0.34);
+          this.graphics.fillRoundedRect(point.x - width / 2, point.y - height / 2, width, height, 2);
+        });
+
+        if (this.currentAnomaly === "runner-symbol") {
+          const distance = 466 - this.getPlayerDepth();
+          if (distance > 20 && distance < this.getDoorDistance() - 50) {
+            const point = this.projectPointAtDistance(distance, 0, 0.8);
+            const radius = 20 * point.scale;
+            this.graphics.lineStyle(Math.max(1, 2 * point.scale), 0xc1121f, 0.75);
+            this.graphics.strokeCircle(point.x, point.y, radius);
+            this.graphics.strokeLineShape(new Phaser.Geom.Line(point.x - radius * 0.6, point.y, point.x + radius * 0.6, point.y));
+            this.graphics.strokeLineShape(new Phaser.Geom.Line(point.x, point.y - radius * 0.6, point.x, point.y + radius * 0.6));
+          }
+        }
       }
 
       drawDoor() {
@@ -828,12 +884,9 @@ const Hallway13: React.FC = () => {
           }
         }
 
-        PANEL_WORLD_DISTANCES.forEach((worldDistance, index) => {
+        PANEL_WORLD_DISTANCES.forEach((worldDistance) => {
           const distance = worldDistance - this.getPlayerDepth();
           if (distance <= 10 || distance >= this.getDoorDistance() - 28) {
-            return;
-          }
-          if (this.currentAnomaly === "trim-break" && index === 4) {
             return;
           }
 
