@@ -77,6 +77,7 @@ const STORY_MUSIC = {
 const CHAPTER_LABEL = "Chapter 1: Snowbound Clearing";
 const ENCOUNTER_BOX_WIDTH = 520;
 const ENCOUNTER_BOX_HEIGHT = 180;
+const ENCOUNTER_REACTION_DELAY_MS = 850;
 
 type EncounterConfig = {
   key: "polarbear" | "snowtree" | "homelessdrunk";
@@ -337,22 +338,22 @@ const FOREST_AFTER_DRUNK_SCENE: DialogueScene = {
   speaker: "Flutter",
   location: "Forest path",
   body:
-    "Flutter flits down beside your shoulder and stays there instead of drifting ahead. \"Hey. Hey, look at me for a second,\" it says. \"That one was ugly. Are you still with me? If you need a breath, take one. I just want to know you're okay.\"",
-  note: "Flutter sounds more worried than usual, and it does not rush you this time.",
+    "Flutter drops into view at eye level and flaps there like it cannot believe what just happened. \"Okay, what the hell was up with that guy?\" it says. \"First the tree, now some bottle-swinging forest goblin? This path is a mess. You good? Because that was insane.\"",
+  note: "Flutter sounds more like a rattled friend than a guide for once.",
   choices: [
     {
       id: "flutter-im-fine",
-      label: "Tell Flutter you're fine and ask it to stay close.",
+      label: "Tell Flutter you're fine and that the guy was just weird.",
       nextSceneId: "forest-free"
     },
     {
       id: "flutter-that-hurt",
-      label: "Admit that fight actually hurt and ask for a second.",
+      label: "Tell Flutter that absolutely sucked and ask for a second.",
       nextSceneId: "forest-free"
     },
     {
       id: "flutter-ask-why",
-      label: "Ask Flutter if every road out here is going to feel like this.",
+      label: "Ask if every road out here is this cursed.",
       nextSceneId: "forest-free"
     }
   ]
@@ -385,6 +386,11 @@ const StoryGame: React.FC = () => {
   const forestUnlocked = campIsMorning;
   const forestTreeDone = Boolean(progress.flags.forest_tree_done);
   const forestDrunkDone = Boolean(progress.flags.forest_drunk_done);
+  const inForestScene =
+    currentSceneId === "forest-free" ||
+    currentSceneId === "forest-tree-encounter" ||
+    currentSceneId === "forest-drunk-encounter" ||
+    currentSceneId === "forest-after-drunk";
   const inCabinScene =
     currentSceneId === "cabin-oldman" ||
     currentSceneId === "cabin-oldman-more" ||
@@ -601,11 +607,11 @@ const StoryGame: React.FC = () => {
 
   const handleDialogueChoice = (choice: DialogueChoice) => {
     if (choice.id === "flutter-im-fine") {
-      setSaveStatus("Flutter settles in behind your shoulder and keeps pace with you.");
+      setSaveStatus("Flutter calms down, mutters that the guy was definitely weird, and sticks close.");
     } else if (choice.id === "flutter-that-hurt") {
-      setSaveStatus("Flutter waits a beat with you, then gently nudges the two of you onward.");
+      setSaveStatus("Flutter gives you a second to reset, then says the forest owes both of you an apology.");
     } else if (choice.id === "flutter-ask-why") {
-      setSaveStatus("Flutter admits the roads are getting worse, then urges you to keep moving.");
+      setSaveStatus("Flutter says the roads were not supposed to be this bad, then nudges you onward.");
     }
 
     goToScene(choice.nextSceneId);
@@ -891,8 +897,12 @@ const StoryGame: React.FC = () => {
                       Follow the path. The next fights start the moment you reach them.
                     </div>
                   </>
+                ) : currentDialogueScene?.speaker === "Flutter" ? (
+                  <div className="story-map story-map--flutter-talk" />
                 ) : inCabinScene ? (
                   <div className="story-map story-map--cabininside" />
+                ) : inForestScene ? (
+                  <div className="story-map story-map--forest-static" />
                 ) : (
                   <div className={`story-map ${campIsMorning ? "story-map--snowcamp" : "story-map--snowcamp-night"}`}>
                     <div className="story-stage__butterfly" aria-hidden="true">
@@ -1746,6 +1756,7 @@ const EncounterBattle: React.FC<EncounterBattleProps> = ({
   const lastHitRef = useRef(0);
   const finishTimeoutRef = useRef<number | null>(null);
   const hitDamage = config.key === "polarbear" ? 3 : config.key === "snowtree" ? 4 : 5;
+  const activeElapsedMs = Math.max(0, elapsed - ENCOUNTER_REACTION_DELAY_MS);
 
   useEffect(() => {
     return () => {
@@ -1820,33 +1831,61 @@ const EncounterBattle: React.FC<EncounterBattleProps> = ({
   }, [config.dodgeDurationMs, phase]);
 
   const pelletPositions = useMemo(() => {
-    const t = elapsed / 1000;
+    const t = activeElapsedMs / 1000;
     if (config.key === "snowtree") {
-      const columns = [80, 170, 265, 360, 445];
-      return columns.map((x, index) => ({
-        x,
-        y: ((t * 240 + index * 58) % (ENCOUNTER_BOX_HEIGHT + 60)) - 30
+      const fallingIcicles = [72, 156, 244, 332, 420].map((baseX, index) => ({
+        x: baseX + Math.sin(t * 1.6 + index * 0.8) * 22,
+        y: -34 + ((t * (200 + index * 16) + index * 54) % (ENCOUNTER_BOX_HEIGHT + 84))
       }));
+
+      const sideBranches = [
+        {
+          x: -26 + ((t * 210) % (ENCOUNTER_BOX_WIDTH + 52)),
+          y: 46 + Math.sin(t * 1.8) * 18
+        },
+        {
+          x: ENCOUNTER_BOX_WIDTH + 26 - ((t * 238 + 110) % (ENCOUNTER_BOX_WIDTH + 52)),
+          y: 118 + Math.cos(t * 1.4 + 0.7) * 22
+        }
+      ];
+
+      return [...fallingIcicles, ...sideBranches];
     }
 
     if (config.key === "homelessdrunk") {
       return [
-        { x: 36 + ((t * 110) % (ENCOUNTER_BOX_WIDTH - 72)), y: 44 + Math.sin(t * 2.0) * 24 },
-        { x: ENCOUNTER_BOX_WIDTH - 44 - ((t * 132) % (ENCOUNTER_BOX_WIDTH - 80)), y: 92 + Math.sin(t * 1.25 + 1.4) * 30 },
-        { x: 48 + ((t * 96) % (ENCOUNTER_BOX_WIDTH - 96)), y: 144 + Math.cos(t * 1.65) * 20 },
-        { x: ENCOUNTER_BOX_WIDTH / 2 + Math.sin(t * 2.3) * 150, y: 28 + ((t * 68) % 120) }
+        {
+          x: -30 + ((t * 164) % (ENCOUNTER_BOX_WIDTH + 60)),
+          y: 34 + Math.sin(t * 2.1) * 18
+        },
+        {
+          x: ENCOUNTER_BOX_WIDTH + 30 - ((t * 178 + 120) % (ENCOUNTER_BOX_WIDTH + 60)),
+          y: 84 + Math.sin(t * 1.5 + 1.1) * 26
+        },
+        {
+          x: -26 + ((t * 144 + 210) % (ENCOUNTER_BOX_WIDTH + 52)),
+          y: 138 + Math.cos(t * 1.9 + 0.5) * 18
+        },
+        {
+          x: ENCOUNTER_BOX_WIDTH / 2 + Math.sin(t * 2.4) * 170,
+          y: -28 + ((t * 92) % (ENCOUNTER_BOX_HEIGHT + 56))
+        }
       ];
     }
 
     return [
-      { x: 36 + ((t * 132) % (ENCOUNTER_BOX_WIDTH - 72)), y: 34 + Math.sin(t * 1.5) * 18 },
-      { x: ENCOUNTER_BOX_WIDTH - 36 - ((t * 148) % (ENCOUNTER_BOX_WIDTH - 72)), y: 86 + Math.cos(t * 1.7) * 28 },
-      { x: 42 + ((t * 116) % (ENCOUNTER_BOX_WIDTH - 84)), y: 138 + Math.sin(t * 2.1) * 16 }
+      { x: -24 + ((t * 168) % (ENCOUNTER_BOX_WIDTH + 48)), y: 34 + Math.sin(t * 1.5) * 18 },
+      { x: ENCOUNTER_BOX_WIDTH + 24 - ((t * 182) % (ENCOUNTER_BOX_WIDTH + 48)), y: 86 + Math.cos(t * 1.7) * 28 },
+      { x: -20 + ((t * 154 + 160) % (ENCOUNTER_BOX_WIDTH + 40)), y: 138 + Math.sin(t * 2.1) * 16 }
     ];
-  }, [config.key, elapsed]);
+  }, [activeElapsedMs, config.key]);
 
   useEffect(() => {
     if (phase !== "dodging") {
+      return;
+    }
+
+    if (elapsed < ENCOUNTER_REACTION_DELAY_MS) {
       return;
     }
 
@@ -1867,13 +1906,13 @@ const EncounterBattle: React.FC<EncounterBattleProps> = ({
       }
       window.setTimeout(() => setFlash(false), 180);
     }
-  }, [config.enemyName, hitDamage, onLose, onPlayerHpChange, pelletPositions, phase, playerHp, soul.x, soul.y]);
+  }, [config.enemyName, elapsed, hitDamage, onLose, onPlayerHpChange, pelletPositions, phase, playerHp, soul.x, soul.y]);
 
   const startDodgePhase = () => {
     setSoul({ x: ENCOUNTER_BOX_WIDTH / 2, y: ENCOUNTER_BOX_HEIGHT / 2 });
     setElapsed(0);
     setPhase("dodging");
-    setStatusLine(config.introLines[0] ?? `${config.enemyName} attacks.`);
+    setStatusLine(`Brace yourself. ${config.enemyName} is winding up...`);
   };
 
   const handleAttack = () => {

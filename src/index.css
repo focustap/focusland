@@ -3938,6 +3938,30 @@ body[data-theme="dark"] .card-battle-card--hidden {
   background-color: #18100d;
 }
 
+.story-map--forest-static {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(8, 11, 18, 0.05), rgba(8, 11, 18, 0.16)),
+    url("/assets/story/forestmap.png");
+  background-position: center;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-color: #101726;
+}
+
+.story-map--flutter-talk {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(8, 11, 18, 0.06), rgba(8, 11, 18, 0.18)),
+    url("/assets/story/talkingtoflutter.png");
+  background-position: center;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-color: #0f1724;
+}
+
 .story-map--camp-free {
   filter: saturate(1.02);
 }
@@ -3949,6 +3973,8 @@ body[data-theme="dark"] .card-battle-card--hidden {
 .story-map--title::after,
 .story-map--snowcamp-night::after,
 .story-map--snowcamp::after,
+.story-map--flutter-talk::after,
+.story-map--forest-static::after,
 .story-map--camp-free::after,
 .story-map--tutorial::after,
 .story-map--cabininside::after {
