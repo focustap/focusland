@@ -36,7 +36,8 @@ type SceneId =
   | "forest-free"
   | "forest-tree-encounter"
   | "forest-drunk-encounter"
-  | "forest-after-drunk";
+  | "forest-after-drunk"
+  | "town-free";
 
 type DialogueChoice = {
   id: string;
@@ -160,6 +161,7 @@ function mapLegacySceneId(sceneId: string): SceneId {
     case "forest-tree-encounter":
     case "forest-drunk-encounter":
     case "forest-after-drunk":
+    case "town-free":
       return sceneId;
     default:
       return "wake-intro";
@@ -378,7 +380,8 @@ const StoryGame: React.FC = () => {
   const currentSceneId = mapLegacySceneId(progress.sceneId);
   const campMovementUnlocked = currentSceneId === "camp-free";
   const forestMovementUnlocked = currentSceneId === "forest-free";
-  const movementUnlocked = campMovementUnlocked || forestMovementUnlocked;
+  const townMovementUnlocked = currentSceneId === "town-free";
+  const movementUnlocked = campMovementUnlocked || forestMovementUnlocked || townMovementUnlocked;
   const tutorialCompleted = Boolean(progress.flags.tutorial_completed);
   const houseVisited = Boolean(progress.flags.house_visited);
   const campIsMorning = Boolean(progress.flags.morning_arrived);
@@ -391,6 +394,7 @@ const StoryGame: React.FC = () => {
     currentSceneId === "forest-tree-encounter" ||
     currentSceneId === "forest-drunk-encounter" ||
     currentSceneId === "forest-after-drunk";
+  const inTownScene = currentSceneId === "town-free";
   const inCabinScene =
     currentSceneId === "cabin-oldman" ||
     currentSceneId === "cabin-oldman-more" ||
@@ -768,12 +772,16 @@ const StoryGame: React.FC = () => {
                       ? "Snowbound Clearing"
                       : currentSceneId === "forest-free"
                         ? "Forest Trail"
+                        : currentSceneId === "town-free"
+                          ? "Frosthollow"
                         : "Encounter")}
                 </h2>
                 <p className="story-subtle">
                   {currentDialogueScene?.location
                     ?? (currentSceneId === "forest-free"
                       ? "Forest path"
+                      : currentSceneId === "town-free"
+                        ? "Town center"
                       : campIsMorning
                         ? "Forest edge camp"
                         : "Night camp")} | {movementUnlocked ? "Exploration" : "Conversation"}
@@ -891,13 +899,50 @@ const StoryGame: React.FC = () => {
                         }));
                         setSaveStatus("Someone lurches into the trail ahead.");
                       }}
+                      onEnterTown={() => {
+                        setProgress((current) => ({
+                          ...current,
+                          sceneId: "town-free",
+                          updatedAt: new Date().toISOString(),
+                          returnSpawns: {
+                            ...current.returnSpawns,
+                            forest: "town",
+                            town: "south"
+                          }
+                        }));
+                        setSaveStatus("The trees finally break. A town waits ahead.");
+                      }}
                       onStatusChange={setSaveStatus}
                     />
                     <div className="story-stage__hint">
-                      Follow the path. The next fights start the moment you reach them.
+                      Follow the path. After the forest fights, the top of the trail leads into town.
                     </div>
                   </>
-                ) : currentDialogueScene?.speaker === "Flutter" ? (
+                ) : townMovementUnlocked ? (
+                  <>
+                    <FlutterTownExploration
+                      customization={avatarCustomization}
+                      spawnPointId={progress.returnSpawns.town}
+                      onReturnToForest={() => {
+                        setProgress((current) => ({
+                          ...current,
+                          sceneId: "forest-free",
+                          updatedAt: new Date().toISOString(),
+                          returnSpawns: {
+                            ...current.returnSpawns,
+                            town: "south",
+                            forest: "town"
+                          }
+                        }));
+                        setSaveStatus("You head back out toward the forest trail.");
+                      }}
+                      onStatusChange={setSaveStatus}
+                    />
+                    <div className="story-stage__hint">
+                      Walk the roads and press E near places of interest. The south road goes back to the forest.
+                    </div>
+                  </>
+                ) : currentSceneId === "forest-after-drunk" ? (
                   <div className="story-map story-map--flutter-talk" />
                 ) : inCabinScene ? (
                   <div className="story-map story-map--cabininside" />
@@ -1037,12 +1082,14 @@ const StoryGame: React.FC = () => {
                             : forestTreeDone
                               ? "Flutter stays a little nearer after the tree fight and fills the quiet with small comments about the snow, the path, whether you're still doing alright, and whether it should scout a little farther ahead."
                               : "The trees crowd in on both sides of the path. Flutter chatters lightly while you move, pointing out the trail, asking if you're cold, and checking now and then that you're holding up.")
+                        : townMovementUnlocked
+                        ? "The town is bigger than it looked from the path. Flutter keeps up a running little commentary while you explore, pointing out the inn, the store, and anything else that looks important."
                         : campIsMorning
                         ? "The camp is brighter now. Flutter sounds relieved to have daylight back and keeps your spirits up with little observations about the snow, the road ahead, and whether you feel more like yourself after resting."
                         : "The camp is quiet for now. Flutter keeps close, talking just enough to keep the silence from settling too hard around you and checking that you're alright after waking up alone out here."}
                     </p>
                     <p className="story-subtle">
-                      Velmora explained: {houseVisited ? "yes" : "not yet"} | Fight tutorial complete: {tutorialCompleted ? "yes" : "not yet"} | Morning: {campIsMorning ? "yes" : "not yet"} | Forest fights: {Number(forestTreeDone) + Number(forestDrunkDone)}/2 | HP: {progress.playerHp}/20 | Potions: {progress.bagPotions}
+                      Velmora explained: {houseVisited ? "yes" : "not yet"} | Fight tutorial complete: {tutorialCompleted ? "yes" : "not yet"} | Morning: {campIsMorning ? "yes" : "not yet"} | Forest fights: {Number(forestTreeDone) + Number(forestDrunkDone)}/2 | Area: {townMovementUnlocked ? "town" : forestMovementUnlocked ? "forest" : "camp"} | HP: {progress.playerHp}/20 | Potions: {progress.bagPotions}
                     </p>
                   </>
                 )}
@@ -1478,6 +1525,7 @@ type FlutterForestExplorationProps = {
   drunkEncounterComplete: boolean;
   onTriggerTreeEncounter: () => void;
   onTriggerDrunkEncounter: () => void;
+  onEnterTown: () => void;
   onStatusChange: (message: string) => void;
 };
 
@@ -1488,6 +1536,7 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
   drunkEncounterComplete,
   onTriggerTreeEncounter,
   onTriggerDrunkEncounter,
+  onEnterTown,
   onStatusChange
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -1495,6 +1544,7 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
   const callbacksRef = useRef({
     onTriggerTreeEncounter,
     onTriggerDrunkEncounter,
+    onEnterTown,
     onStatusChange,
     treeEncounterComplete,
     drunkEncounterComplete
@@ -1505,11 +1555,12 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
     callbacksRef.current = {
       onTriggerTreeEncounter,
       onTriggerDrunkEncounter,
+      onEnterTown,
       onStatusChange,
       treeEncounterComplete,
       drunkEncounterComplete
     };
-  }, [drunkEncounterComplete, onStatusChange, onTriggerDrunkEncounter, onTriggerTreeEncounter, treeEncounterComplete]);
+  }, [drunkEncounterComplete, onEnterTown, onStatusChange, onTriggerDrunkEncounter, onTriggerTreeEncounter, treeEncounterComplete]);
 
   useEffect(() => {
     if (!containerRef.current || gameRef.current) {
@@ -1534,12 +1585,15 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
     ];
     const treeTrigger = new Phaser.Geom.Rectangle(360, 1160, 304, 96);
     const drunkTrigger = new Phaser.Geom.Rectangle(360, 670, 304, 104);
+    const townInteract = new Phaser.Geom.Rectangle(390, 92, 250, 88);
 
     let player: ReturnType<typeof createAvatarRender> | null = null;
     let targetX: number | null = null;
     let targetY: number | null = null;
     let butterfly: Phaser.GameObjects.Container | null = null;
     let butterflyBob: Phaser.GameObjects.Container | null = null;
+    let hotspotHint: Phaser.GameObjects.Text | null = null;
+    let atTownExit = false;
 
     const isBlocked = (x: number, y: number) => {
       const footprint = new Phaser.Geom.Circle(x, y, collisionRadius);
@@ -1615,6 +1669,30 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
           targetX = Phaser.Math.Clamp(pointer.x, 146, width - 146);
           targetY = Phaser.Math.Clamp(pointer.worldY - logicalYOffset, 80, height - 60);
         });
+
+        hotspotHint = this.add.text(width / 2, 980, "", {
+          fontFamily: "\"Trebuchet MS\", system-ui, sans-serif",
+          fontSize: "14px",
+          color: "#e5eefc",
+          backgroundColor: "rgba(8, 12, 20, 0.72)",
+          padding: { x: 12, y: 8 }
+        })
+          .setOrigin(0.5)
+          .setDepth(20)
+          .setScrollFactor(0)
+          .setVisible(false);
+
+        this.input.keyboard?.on("keydown-E", () => {
+          if (atTownExit && callbacksRef.current.treeEncounterComplete && callbacksRef.current.drunkEncounterComplete) {
+            callbacksRef.current.onEnterTown();
+          }
+        });
+
+        this.input.keyboard?.on("keydown-ENTER", () => {
+          if (atTownExit && callbacksRef.current.treeEncounterComplete && callbacksRef.current.drunkEncounterComplete) {
+            callbacksRef.current.onEnterTown();
+          }
+        });
       }
 
       update(_time: number, delta: number) {
@@ -1624,6 +1702,7 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
 
         const currentX = player.container.x;
         const currentY = player.container.y - logicalYOffset;
+        atTownExit = townInteract.contains(currentX, currentY);
 
         if (!callbacksRef.current.treeEncounterComplete && treeTrigger.contains(currentX, currentY)) {
           callbacksRef.current.onTriggerTreeEncounter();
@@ -1633,6 +1712,16 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
         if (callbacksRef.current.treeEncounterComplete && !callbacksRef.current.drunkEncounterComplete && drunkTrigger.contains(currentX, currentY)) {
           callbacksRef.current.onTriggerDrunkEncounter();
           return;
+        }
+
+        if (hotspotHint) {
+          if (atTownExit && callbacksRef.current.treeEncounterComplete && callbacksRef.current.drunkEncounterComplete) {
+            hotspotHint.setText("Press E to enter the town").setVisible(true);
+          } else if (atTownExit) {
+            hotspotHint.setText("Keep going. Something else is still lurking on the trail.").setVisible(true);
+          } else {
+            hotspotHint.setVisible(false);
+          }
         }
 
         if (targetX == null || targetY == null) {
@@ -1722,7 +1811,325 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
         gameRef.current = null;
       }
     };
-  }, [assetBase, customization, drunkEncounterComplete, onStatusChange, onTriggerDrunkEncounter, onTriggerTreeEncounter, spawnPointId, treeEncounterComplete]);
+  }, [assetBase, customization, drunkEncounterComplete, onEnterTown, onStatusChange, onTriggerDrunkEncounter, onTriggerTreeEncounter, spawnPointId, treeEncounterComplete]);
+
+  return <div ref={containerRef} className="flutter-phaser-camp" />;
+};
+
+type FlutterTownExplorationProps = {
+  customization: AvatarCustomization;
+  spawnPointId?: string;
+  onReturnToForest: () => void;
+  onStatusChange: (message: string) => void;
+};
+
+const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
+  customization,
+  spawnPointId,
+  onReturnToForest,
+  onStatusChange
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const gameRef = useRef<Phaser.Game | null>(null);
+  const callbacksRef = useRef({
+    onReturnToForest,
+    onStatusChange
+  });
+  const assetBase = import.meta.env.BASE_URL;
+
+  useEffect(() => {
+    callbacksRef.current = {
+      onReturnToForest,
+      onStatusChange
+    };
+  }, [onReturnToForest, onStatusChange]);
+
+  useEffect(() => {
+    if (!containerRef.current || gameRef.current) {
+      return;
+    }
+
+    const worldWidth = 2048;
+    const worldHeight = 2048;
+    const viewport = 1024;
+    const logicalYOffset = 18;
+    const walkSpeed = 220;
+    const arrivalThreshold = 14;
+    const collisionRadius = 22;
+    const spawnPoints = {
+      south: { x: 1010, y: 1858 }
+    } as const;
+    const spawn = spawnPoints[(spawnPointId as keyof typeof spawnPoints) ?? "south"] ?? spawnPoints.south;
+    const blockers = [
+      new Phaser.Geom.Rectangle(0, 0, worldWidth, 116),
+      new Phaser.Geom.Rectangle(0, 0, 96, worldHeight),
+      new Phaser.Geom.Rectangle(worldWidth - 96, 0, 96, worldHeight),
+      new Phaser.Geom.Rectangle(0, worldHeight - 92, worldWidth, 92),
+      new Phaser.Geom.Rectangle(0, 0, worldWidth, 290),
+      new Phaser.Geom.Rectangle(1370, 0, 620, 900),
+      new Phaser.Geom.Rectangle(0, 1410, 780, 638),
+      new Phaser.Geom.Rectangle(164, 638, 452, 382),
+      new Phaser.Geom.Rectangle(765, 770, 312, 250),
+      new Phaser.Geom.Rectangle(1510, 760, 332, 272),
+      new Phaser.Geom.Rectangle(1180, 1452, 550, 370),
+      new Phaser.Geom.Rectangle(670, 1100, 240, 160),
+      new Phaser.Geom.Rectangle(840, 944, 404, 186),
+      new Phaser.Geom.Rectangle(744, 1006, 166, 158)
+    ];
+    const hotspots = [
+      {
+        name: "forest",
+        interactBounds: new Phaser.Geom.Rectangle(938, 1746, 160, 114),
+        label: "Press E to head back to the forest"
+      },
+      {
+        name: "store",
+        interactBounds: new Phaser.Geom.Rectangle(892, 844, 142, 86),
+        label: "Press E to check the store"
+      },
+      {
+        name: "inn",
+        interactBounds: new Phaser.Geom.Rectangle(1482, 924, 146, 94),
+        label: "Press E to check the inn"
+      },
+      {
+        name: "castle",
+        interactBounds: new Phaser.Geom.Rectangle(1518, 332, 136, 86),
+        label: "Press E to look toward the castle road"
+      },
+      {
+        name: "cave",
+        interactBounds: new Phaser.Geom.Rectangle(318, 404, 120, 76),
+        label: "Press E to inspect the cave"
+      },
+      {
+        name: "homes",
+        interactBounds: new Phaser.Geom.Rectangle(252, 886, 256, 110),
+        label: "Press E to check the houses"
+      }
+    ] as const;
+
+    let player: ReturnType<typeof createAvatarRender> | null = null;
+    let targetX: number | null = null;
+    let targetY: number | null = null;
+    let butterfly: Phaser.GameObjects.Container | null = null;
+    let butterflyBob: Phaser.GameObjects.Container | null = null;
+    let hotspotHint: Phaser.GameObjects.Text | null = null;
+    let currentHotspot: (typeof hotspots)[number]["name"] | null = null;
+
+    const isBlocked = (x: number, y: number) => {
+      const footprint = new Phaser.Geom.Circle(x, y, collisionRadius);
+      return blockers.some((blocker) => Phaser.Geom.Intersects.CircleToRectangle(footprint, blocker));
+    };
+
+    const resolveBlockedStep = (
+      currentX: number,
+      currentY: number,
+      nextX: number,
+      nextY: number
+    ) => {
+      if (!isBlocked(nextX, nextY)) {
+        return { x: nextX, y: nextY, blocked: false };
+      }
+      if (!isBlocked(nextX, currentY)) {
+        return { x: nextX, y: currentY, blocked: false };
+      }
+      if (!isBlocked(currentX, nextY)) {
+        return { x: currentX, y: nextY, blocked: false };
+      }
+      return { x: currentX, y: currentY, blocked: true };
+    };
+
+    class FlutterTownScene extends Phaser.Scene {
+      preload() {
+        loadAvatarSpriteSheet(this, assetBase);
+        this.load.image("flutter-town", `${assetBase}assets/story/townmap.png`);
+      }
+
+      create() {
+        const bg = this.add.image(worldWidth / 2, worldHeight / 2, "flutter-town");
+        bg.setDisplaySize(worldWidth, worldHeight);
+        bg.setDepth(0);
+
+        player = createAvatarRender(
+          this,
+          spawn.x,
+          spawn.y + logicalYOffset,
+          customization,
+          8,
+          TOWN_AVATAR_SCALE * 1.16
+        );
+        updateAvatarRender(player, customization, "front", false);
+
+        const leftWing = this.add.ellipse(-7, 0, 12, 10, 0xe7f6ff, 0.85).setAngle(-18);
+        const rightWing = this.add.ellipse(7, 0, 12, 10, 0xe7f6ff, 0.85).setAngle(18);
+        const glow = this.add.circle(0, 0, 3.5, 0xa9e6ff, 0.95);
+        butterflyBob = this.add.container(0, 0, [leftWing, rightWing, glow]);
+        butterfly = this.add.container(spawn.x - 18, spawn.y - 10, [butterflyBob]).setDepth(9);
+
+        this.tweens.add({
+          targets: [leftWing, rightWing],
+          angle: { from: -26, to: 26 },
+          yoyo: true,
+          repeat: -1,
+          duration: 170,
+          ease: "Sine.easeInOut"
+        });
+
+        this.tweens.add({
+          targets: butterflyBob,
+          y: -6,
+          yoyo: true,
+          repeat: -1,
+          duration: 900,
+          ease: "Sine.easeInOut"
+        });
+
+        this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
+        this.cameras.main.startFollow(player.container, false, 0.12, 0.12, 0, -logicalYOffset);
+
+        this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+          targetX = Phaser.Math.Clamp(pointer.worldX, 32, worldWidth - 32);
+          targetY = Phaser.Math.Clamp(pointer.worldY - logicalYOffset, 130, worldHeight - 40);
+        });
+
+        hotspotHint = this.add.text(viewport / 2, viewport - 34, "", {
+          fontFamily: "\"Trebuchet MS\", system-ui, sans-serif",
+          fontSize: "14px",
+          color: "#e5eefc",
+          backgroundColor: "rgba(8, 12, 20, 0.72)",
+          padding: { x: 12, y: 8 }
+        })
+          .setOrigin(0.5)
+          .setDepth(20)
+          .setScrollFactor(0)
+          .setVisible(false);
+
+        const handleInteract = () => {
+          if (currentHotspot === "forest") {
+            callbacksRef.current.onReturnToForest();
+          } else if (currentHotspot === "store") {
+            callbacksRef.current.onStatusChange("The store is here. We'll make it enterable next.");
+          } else if (currentHotspot === "inn") {
+            callbacksRef.current.onStatusChange("The inn looks warm. We'll wire it up next.");
+          } else if (currentHotspot === "castle") {
+            callbacksRef.current.onStatusChange("The road to the castle is there, but that feels like later-story business.");
+          } else if (currentHotspot === "cave") {
+            callbacksRef.current.onStatusChange("The cave mouth watches the town. Not entering it yet.");
+          } else if (currentHotspot === "homes") {
+            callbacksRef.current.onStatusChange("People definitely live here. House interiors can come next.");
+          }
+        };
+
+        this.input.keyboard?.on("keydown-E", handleInteract);
+        this.input.keyboard?.on("keydown-ENTER", handleInteract);
+      }
+
+      update(_time: number, delta: number) {
+        if (!player) {
+          return;
+        }
+
+        const currentX = player.container.x;
+        const currentY = player.container.y - logicalYOffset;
+        const matchingHotspot = hotspots.find((hotspot) => hotspot.interactBounds.contains(currentX, currentY));
+        currentHotspot = matchingHotspot?.name ?? null;
+
+        if (hotspotHint) {
+          if (matchingHotspot) {
+            hotspotHint.setText(matchingHotspot.label).setVisible(true);
+          } else {
+            hotspotHint.setVisible(false);
+          }
+        }
+
+        if (targetX == null || targetY == null) {
+          updateAvatarRender(player, customization, player.facing, false);
+          if (butterfly) {
+            const idleOffsets = {
+              front: { x: -16, y: -8 },
+              back: { x: 16, y: 12 },
+              left: { x: 18, y: 2 },
+              right: { x: -18, y: 2 }
+            } as const;
+            const offset = idleOffsets[player.facing];
+            butterfly.setPosition(player.container.x + offset.x, player.container.y - logicalYOffset + offset.y);
+          }
+          return;
+        }
+
+        const dx = targetX - currentX;
+        const dy = targetY - currentY;
+        const distance = Math.hypot(dx, dy);
+
+        if (distance < arrivalThreshold) {
+          player.container.setPosition(targetX, targetY + logicalYOffset);
+          updateAvatarRender(player, customization, "front", false);
+          targetX = null;
+          targetY = null;
+          return;
+        }
+
+        const step = (walkSpeed * delta) / 1000;
+        const moveDistance = Math.min(step, distance);
+        const nextX = Phaser.Math.Clamp(currentX + (dx / distance) * moveDistance, 32, worldWidth - 32);
+        const nextY = Phaser.Math.Clamp(currentY + (dy / distance) * moveDistance, 130, worldHeight - 40);
+        const resolvedStep = resolveBlockedStep(currentX, currentY, nextX, nextY);
+
+        if (resolvedStep.blocked) {
+          targetX = null;
+          targetY = null;
+          updateAvatarRender(player, customization, player.facing, false);
+          callbacksRef.current.onStatusChange("That route is blocked off.");
+          return;
+        }
+
+        player.container.setPosition(resolvedStep.x, resolvedStep.y + logicalYOffset);
+
+        const facing =
+          Math.abs(dx) > Math.abs(dy)
+            ? dx < 0
+              ? "left"
+              : "right"
+            : dy < 0
+              ? "back"
+              : "front";
+
+        updateAvatarRender(player, customization, facing, true);
+
+        if (butterfly) {
+          const offsets = {
+            front: { x: -16, y: -8 },
+            back: { x: 16, y: 12 },
+            left: { x: 18, y: 2 },
+            right: { x: -18, y: 2 }
+          } as const;
+          const offset = offsets[facing];
+          butterfly.setPosition(player.container.x + offset.x, player.container.y - logicalYOffset + offset.y);
+        }
+      }
+    }
+
+    gameRef.current = new Phaser.Game({
+      type: Phaser.AUTO,
+      width: viewport,
+      height: viewport,
+      parent: containerRef.current,
+      backgroundColor: "#0d1225",
+      scene: FlutterTownScene,
+      scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH
+      }
+    });
+
+    return () => {
+      if (gameRef.current) {
+        gameRef.current.destroy(true);
+        gameRef.current = null;
+      }
+    };
+  }, [assetBase, customization, onReturnToForest, onStatusChange, spawnPointId]);
 
   return <div ref={containerRef} className="flutter-phaser-camp" />;
 };
