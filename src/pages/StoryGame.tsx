@@ -1861,20 +1861,23 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
     } as const;
     const spawn = spawnPoints[(spawnPointId as keyof typeof spawnPoints) ?? "south"] ?? spawnPoints.south;
     const blockers = [
-      new Phaser.Geom.Rectangle(0, 0, worldWidth, 116),
-      new Phaser.Geom.Rectangle(0, 0, 96, worldHeight),
-      new Phaser.Geom.Rectangle(worldWidth - 96, 0, 96, worldHeight),
-      new Phaser.Geom.Rectangle(0, worldHeight - 92, worldWidth, 92),
-      new Phaser.Geom.Rectangle(0, 0, worldWidth, 290),
-      new Phaser.Geom.Rectangle(1370, 0, 620, 900),
-      new Phaser.Geom.Rectangle(0, 1410, 780, 638),
-      new Phaser.Geom.Rectangle(164, 638, 452, 382),
-      new Phaser.Geom.Rectangle(765, 770, 312, 250),
-      new Phaser.Geom.Rectangle(1510, 760, 332, 272),
-      new Phaser.Geom.Rectangle(1180, 1452, 550, 370),
-      new Phaser.Geom.Rectangle(670, 1100, 240, 160),
-      new Phaser.Geom.Rectangle(840, 944, 404, 186),
-      new Phaser.Geom.Rectangle(744, 1006, 166, 158)
+      new Phaser.Geom.Rectangle(0, 0, worldWidth, 78),
+      new Phaser.Geom.Rectangle(0, 0, 64, worldHeight),
+      new Phaser.Geom.Rectangle(worldWidth - 64, 0, 64, worldHeight),
+      new Phaser.Geom.Rectangle(0, worldHeight - 70, worldWidth, 70),
+      new Phaser.Geom.Rectangle(0, 0, worldWidth, 250),
+      new Phaser.Geom.Rectangle(0, 1185, 700, 540),
+      new Phaser.Geom.Rectangle(918, 0, 86, 768),
+      new Phaser.Geom.Rectangle(974, 660, 84, 308),
+      new Phaser.Geom.Rectangle(1010, 930, 118, 1118),
+      new Phaser.Geom.Rectangle(150, 760, 388, 210),
+      new Phaser.Geom.Rectangle(714, 430, 304, 178),
+      new Phaser.Geom.Rectangle(822, 822, 238, 170),
+      new Phaser.Geom.Rectangle(1472, 886, 250, 184),
+      new Phaser.Geom.Rectangle(1470, 1500, 300, 220),
+      new Phaser.Geom.Rectangle(1760, 1450, 200, 250),
+      new Phaser.Geom.Rectangle(1486, 76, 318, 220),
+      new Phaser.Geom.Rectangle(290, 270, 180, 106)
     ];
     const hotspots = [
       {
@@ -1938,6 +1941,24 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
         return { x: currentX, y: nextY, blocked: false };
       }
       return { x: currentX, y: currentY, blocked: true };
+    };
+
+    const findNearestSafePoint = (x: number, y: number) => {
+      if (!isBlocked(x, y)) {
+        return { x, y };
+      }
+
+      for (let radius = 10; radius <= 120; radius += 10) {
+        for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
+          const candidateX = Phaser.Math.Clamp(x + Math.cos(angle) * radius, 32, worldWidth - 32);
+          const candidateY = Phaser.Math.Clamp(y + Math.sin(angle) * radius, 130, worldHeight - 40);
+          if (!isBlocked(candidateX, candidateY)) {
+            return { x: candidateX, y: candidateY };
+          }
+        }
+      }
+
+      return { x: spawn.x, y: spawn.y };
     };
 
     class FlutterTownScene extends Phaser.Scene {
@@ -2032,6 +2053,17 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
 
         const currentX = player.container.x;
         const currentY = player.container.y - logicalYOffset;
+
+        if (isBlocked(currentX, currentY)) {
+          const safe = findNearestSafePoint(currentX, currentY);
+          player.container.setPosition(safe.x, safe.y + logicalYOffset);
+          targetX = null;
+          targetY = null;
+          updateAvatarRender(player, customization, player.facing, false);
+          callbacksRef.current.onStatusChange("Flutter nudges you back onto the road.");
+          return;
+        }
+
         const matchingHotspot = hotspots.find((hotspot) => hotspot.interactBounds.contains(currentX, currentY));
         currentHotspot = matchingHotspot?.name ?? null;
 
