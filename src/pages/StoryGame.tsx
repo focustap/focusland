@@ -1858,7 +1858,7 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
     const collisionRadius = 22;
     const collisionMaskKey = "flutter-town-blockers";
     const spawnPoints = {
-      south: { x: 1010, y: 1858 }
+      south: { x: 820, y: 1816 }
     } as const;
     const spawn = spawnPoints[(spawnPointId as keyof typeof spawnPoints) ?? "south"] ?? spawnPoints.south;
     const hotspots = [
@@ -1985,10 +1985,12 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
         bg.setDisplaySize(worldWidth, worldHeight);
         bg.setDepth(0);
 
+        const safeSpawn = findNearestSafePoint(spawn.x, spawn.y);
+
         player = createAvatarRender(
           this,
-          spawn.x,
-          spawn.y + logicalYOffset,
+          safeSpawn.x,
+          safeSpawn.y + logicalYOffset,
           customization,
           8,
           TOWN_AVATAR_SCALE * 1.16
@@ -1999,7 +2001,7 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
         const rightWing = this.add.ellipse(7, 0, 12, 10, 0xe7f6ff, 0.85).setAngle(18);
         const glow = this.add.circle(0, 0, 3.5, 0xa9e6ff, 0.95);
         butterflyBob = this.add.container(0, 0, [leftWing, rightWing, glow]);
-        butterfly = this.add.container(spawn.x - 18, spawn.y - 10, [butterflyBob]).setDepth(9);
+        butterfly = this.add.container(safeSpawn.x - 18, safeSpawn.y - 10, [butterflyBob]).setDepth(9);
 
         this.tweens.add({
           targets: [leftWing, rightWing],
