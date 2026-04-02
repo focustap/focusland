@@ -1856,79 +1856,11 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
     const walkSpeed = 220;
     const arrivalThreshold = 14;
     const collisionRadius = 22;
+    const collisionMaskKey = "flutter-town-blockers";
     const spawnPoints = {
       south: { x: 1010, y: 1858 }
     } as const;
     const spawn = spawnPoints[(spawnPointId as keyof typeof spawnPoints) ?? "south"] ?? spawnPoints.south;
-    type TownBlocker =
-      | { kind: "rect"; shape: Phaser.Geom.Rectangle }
-      | { kind: "circle"; shape: Phaser.Geom.Circle };
-
-    const rectBlocker = (x: number, y: number, width: number, height: number): TownBlocker => ({
-      kind: "rect",
-      shape: new Phaser.Geom.Rectangle(x, y, width, height)
-    });
-
-    const circleBlocker = (x: number, y: number, radius: number): TownBlocker => ({
-      kind: "circle",
-      shape: new Phaser.Geom.Circle(x, y, radius)
-    });
-
-    const blockers: TownBlocker[] = [
-      // World edges and the ocean beyond the northern shoreline.
-      rectBlocker(0, 0, worldWidth, 88),
-      rectBlocker(0, 0, 72, worldHeight),
-      rectBlocker(worldWidth - 72, 0, 72, worldHeight),
-      rectBlocker(0, worldHeight - 72, worldWidth, 72),
-      rectBlocker(0, 0, worldWidth, 242),
-
-      // Raised cliff decks the player should never reach.
-      rectBlocker(0, 0, 828, 232),
-      rectBlocker(1470, 0, 578, 286),
-      rectBlocker(0, 242, 110, 598),
-      rectBlocker(1930, 0, 118, 1620),
-
-      // Cave and castle cliff faces to stop wall clipping.
-      rectBlocker(0, 238, 380, 70),
-      rectBlocker(410, 240, 212, 62),
-      rectBlocker(1496, 286, 154, 64),
-      rectBlocker(1788, 290, 260, 82),
-      rectBlocker(1456, 626, 88, 58),
-      rectBlocker(1660, 628, 82, 56),
-
-      // Building shells.
-      rectBlocker(740, 434, 236, 132),
-      rectBlocker(88, 828, 174, 128),
-      rectBlocker(314, 850, 182, 134),
-      rectBlocker(874, 844, 170, 128),
-      rectBlocker(1502, 922, 194, 142),
-      rectBlocker(1492, 1516, 220, 176),
-      rectBlocker(1794, 1480, 124, 180),
-
-      // Left pond and icy shoreline.
-      circleBlocker(170, 1182, 92),
-      circleBlocker(334, 1114, 136),
-      circleBlocker(490, 1152, 96),
-      circleBlocker(246, 1288, 106),
-      rectBlocker(0, 1218, 112, 132),
-      rectBlocker(0, 1452, 160, 104),
-
-      // River splits around the bridge deck openings.
-      rectBlocker(1032, 958, 88, 34),
-      rectBlocker(1030, 1120, 86, 38),
-      rectBlocker(1018, 1312, 96, 48),
-      rectBlocker(980, 1486, 136, 562),
-      circleBlocker(1070, 1026, 44),
-      circleBlocker(1068, 1212, 46),
-      circleBlocker(1042, 1362, 54),
-      circleBlocker(1008, 1596, 74),
-      circleBlocker(984, 1786, 82),
-      circleBlocker(980, 1956, 86),
-
-      // South-west and south-east tree lines to keep players out of the woods.
-      rectBlocker(0, 1736, 736, 312),
-      rectBlocker(1194, 1736, 854, 312)
-    ];
     const hotspots = [
       {
         name: "forest",
@@ -1969,14 +1901,39 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
     let butterflyBob: Phaser.GameObjects.Container | null = null;
     let hotspotHint: Phaser.GameObjects.Text | null = null;
     let currentHotspot: (typeof hotspots)[number]["name"] | null = null;
+    let townScene: Phaser.Scene | null = null;
+
+    const isMaskPixelBlocked = (x: number, y: number) => {
+      if (!townScene) {
+        return false;
+      }
+
+      const sample = townScene.textures.getPixel(Math.round(x), Math.round(y), collisionMaskKey);
+      if (!sample) {
+        return false;
+      }
+
+      return sample.red >= 190 && sample.red - sample.green >= 70 && sample.red - sample.blue >= 70;
+    };
 
     const isBlocked = (x: number, y: number) => {
-      const footprint = new Phaser.Geom.Circle(x, y, collisionRadius);
-      return blockers.some((blocker) =>
-        blocker.kind === "rect"
-          ? Phaser.Geom.Intersects.CircleToRectangle(footprint, blocker.shape)
-          : Phaser.Geom.Intersects.CircleToCircle(footprint, blocker.shape)
-      );
+      const sampleOffsets = [
+        [0, 0],
+        [collisionRadius, 0],
+        [-collisionRadius, 0],
+        [0, collisionRadius],
+        [0, -collisionRadius],
+        [collisionRadius * 0.72, collisionRadius * 0.72],
+        [collisionRadius * 0.72, -collisionRadius * 0.72],
+        [-collisionRadius * 0.72, collisionRadius * 0.72],
+        [-collisionRadius * 0.72, -collisionRadius * 0.72],
+        [collisionRadius * 0.45, 0],
+        [-collisionRadius * 0.45, 0],
+        [0, collisionRadius * 0.45],
+        [0, -collisionRadius * 0.45]
+      ] as const;
+
+      return sampleOffsets.some(([offsetX, offsetY]) => isMaskPixelBlocked(x + offsetX, y + offsetY));
     };
 
     const resolveBlockedStep = (
@@ -2019,9 +1976,11 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
       preload() {
         loadAvatarSpriteSheet(this, assetBase);
         this.load.image("flutter-town", `${assetBase}assets/story/townmap.png`);
+        this.load.image(collisionMaskKey, `${assetBase}assets/story/town1blocks.png`);
       }
 
       create() {
+        townScene = this;
         const bg = this.add.image(worldWidth / 2, worldHeight / 2, "flutter-town");
         bg.setDisplaySize(worldWidth, worldHeight);
         bg.setDepth(0);
