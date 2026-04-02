@@ -1811,7 +1811,7 @@ const FlutterForestExploration: React.FC<FlutterForestExplorationProps> = ({
         gameRef.current = null;
       }
     };
-  }, [assetBase, customization, drunkEncounterComplete, onEnterTown, onStatusChange, onTriggerDrunkEncounter, onTriggerTreeEncounter, spawnPointId, treeEncounterComplete]);
+  }, [assetBase, customization, drunkEncounterComplete, spawnPointId, treeEncounterComplete]);
 
   return <div ref={containerRef} className="flutter-phaser-camp" />;
 };
@@ -2215,7 +2215,7 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
         gameRef.current = null;
       }
     };
-  }, [assetBase, customization, onReturnToForest, onStatusChange, spawnPointId]);
+  }, [assetBase, customization, spawnPointId]);
 
   return <div ref={containerRef} className="flutter-phaser-camp" />;
 };
