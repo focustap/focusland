@@ -1860,24 +1860,74 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
       south: { x: 1010, y: 1858 }
     } as const;
     const spawn = spawnPoints[(spawnPointId as keyof typeof spawnPoints) ?? "south"] ?? spawnPoints.south;
-    const blockers = [
-      new Phaser.Geom.Rectangle(0, 0, worldWidth, 78),
-      new Phaser.Geom.Rectangle(0, 0, 64, worldHeight),
-      new Phaser.Geom.Rectangle(worldWidth - 64, 0, 64, worldHeight),
-      new Phaser.Geom.Rectangle(0, worldHeight - 70, worldWidth, 70),
-      new Phaser.Geom.Rectangle(0, 0, worldWidth, 250),
-      new Phaser.Geom.Rectangle(0, 1185, 700, 540),
-      new Phaser.Geom.Rectangle(918, 0, 86, 768),
-      new Phaser.Geom.Rectangle(974, 660, 84, 308),
-      new Phaser.Geom.Rectangle(1010, 930, 118, 1118),
-      new Phaser.Geom.Rectangle(150, 760, 388, 210),
-      new Phaser.Geom.Rectangle(714, 430, 304, 178),
-      new Phaser.Geom.Rectangle(822, 822, 238, 170),
-      new Phaser.Geom.Rectangle(1472, 886, 250, 184),
-      new Phaser.Geom.Rectangle(1470, 1500, 300, 220),
-      new Phaser.Geom.Rectangle(1760, 1450, 200, 250),
-      new Phaser.Geom.Rectangle(1486, 76, 318, 220),
-      new Phaser.Geom.Rectangle(290, 270, 180, 106)
+    type TownBlocker =
+      | { kind: "rect"; shape: Phaser.Geom.Rectangle }
+      | { kind: "circle"; shape: Phaser.Geom.Circle };
+
+    const rectBlocker = (x: number, y: number, width: number, height: number): TownBlocker => ({
+      kind: "rect",
+      shape: new Phaser.Geom.Rectangle(x, y, width, height)
+    });
+
+    const circleBlocker = (x: number, y: number, radius: number): TownBlocker => ({
+      kind: "circle",
+      shape: new Phaser.Geom.Circle(x, y, radius)
+    });
+
+    const blockers: TownBlocker[] = [
+      // World edges and the ocean beyond the northern shoreline.
+      rectBlocker(0, 0, worldWidth, 88),
+      rectBlocker(0, 0, 72, worldHeight),
+      rectBlocker(worldWidth - 72, 0, 72, worldHeight),
+      rectBlocker(0, worldHeight - 72, worldWidth, 72),
+      rectBlocker(0, 0, worldWidth, 242),
+
+      // Raised cliff decks the player should never reach.
+      rectBlocker(0, 0, 828, 232),
+      rectBlocker(1470, 0, 578, 286),
+      rectBlocker(0, 242, 110, 598),
+      rectBlocker(1930, 0, 118, 1620),
+
+      // Cave and castle cliff faces to stop wall clipping.
+      rectBlocker(0, 238, 380, 70),
+      rectBlocker(410, 240, 212, 62),
+      rectBlocker(1496, 286, 154, 64),
+      rectBlocker(1788, 290, 260, 82),
+      rectBlocker(1456, 626, 88, 58),
+      rectBlocker(1660, 628, 82, 56),
+
+      // Building shells.
+      rectBlocker(740, 434, 236, 132),
+      rectBlocker(88, 828, 174, 128),
+      rectBlocker(314, 850, 182, 134),
+      rectBlocker(874, 844, 170, 128),
+      rectBlocker(1502, 922, 194, 142),
+      rectBlocker(1492, 1516, 220, 176),
+      rectBlocker(1794, 1480, 124, 180),
+
+      // Left pond and icy shoreline.
+      circleBlocker(170, 1182, 92),
+      circleBlocker(334, 1114, 136),
+      circleBlocker(490, 1152, 96),
+      circleBlocker(246, 1288, 106),
+      rectBlocker(0, 1218, 112, 132),
+      rectBlocker(0, 1452, 160, 104),
+
+      // River splits around the bridge deck openings.
+      rectBlocker(1032, 958, 88, 34),
+      rectBlocker(1030, 1120, 86, 38),
+      rectBlocker(1018, 1312, 96, 48),
+      rectBlocker(980, 1486, 136, 562),
+      circleBlocker(1070, 1026, 44),
+      circleBlocker(1068, 1212, 46),
+      circleBlocker(1042, 1362, 54),
+      circleBlocker(1008, 1596, 74),
+      circleBlocker(984, 1786, 82),
+      circleBlocker(980, 1956, 86),
+
+      // South-west and south-east tree lines to keep players out of the woods.
+      rectBlocker(0, 1736, 736, 312),
+      rectBlocker(1194, 1736, 854, 312)
     ];
     const hotspots = [
       {
@@ -1922,7 +1972,11 @@ const FlutterTownExploration: React.FC<FlutterTownExplorationProps> = ({
 
     const isBlocked = (x: number, y: number) => {
       const footprint = new Phaser.Geom.Circle(x, y, collisionRadius);
-      return blockers.some((blocker) => Phaser.Geom.Intersects.CircleToRectangle(footprint, blocker));
+      return blockers.some((blocker) =>
+        blocker.kind === "rect"
+          ? Phaser.Geom.Intersects.CircleToRectangle(footprint, blocker.shape)
+          : Phaser.Geom.Intersects.CircleToCircle(footprint, blocker.shape)
+      );
     };
 
     const resolveBlockedStep = (
