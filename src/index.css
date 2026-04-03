@@ -4617,3 +4617,29 @@ body[data-theme="dark"] .card-battle-card--hidden {
   }
 }
 
+.zombtrain-game-shell {
+  max-width: 980px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 227, 184, 0.18), transparent 24%),
+    linear-gradient(180deg, #12211f 0%, #172927 100%);
+}
+
+.zombtrain-game-copy {
+  max-width: 52rem;
+  color: #efe2cd;
+}
+
+.zombtrain-canvas-shell {
+  width: 100%;
+  max-width: 820px;
+  margin: 1rem auto;
+  border-radius: 1.3rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 238, 210, 0.14);
+  box-shadow: 0 22px 55px rgba(3, 8, 8, 0.34);
+}
+
+.zombtrain-reset-button {
+  margin-top: 0.5rem;
+}
+

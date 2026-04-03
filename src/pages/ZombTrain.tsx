@@ -2,591 +2,543 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Phaser from "phaser";
 import NavBar from "../components/NavBar";
 import {
+  createAvatarRender,
+  getStoredAvatarCustomization,
+  loadAvatarSpriteSheet,
+  normalizeAvatarCustomization,
+  TOWN_AVATAR_SCALE,
+  updateAvatarRender,
+  type AvatarCustomization,
+  type AvatarFacing,
+  type AvatarRender
+} from "../lib/avatarSprites";
+import {
   DEFAULT_ZOMBTRAIN_SAVE,
   ZOMBTRAIN_DESTINATIONS,
   ZOMBTRAIN_UPGRADES,
-  formatResourceLabel,
   getDestinationById,
   getPalettePreview,
   loadZombTrainSave,
   resetZombTrainSave,
   saveZombTrainSave,
-  type ZombTrainDestination,
-  type ZombTrainResourceKey,
+  type ZombTrainDestinationId,
   type ZombTrainSave,
-  type ZombTrainTrainPalette,
+  type ZombTrainTrainUpgradeKey,
   type ZombTrainView
 } from "../lib/zombTrain";
 
-type FishingState = {
-  phase: "idle" | "playing" | "caught";
-  fishY: number;
-  bobberY: number;
-  bobberVelocity: number;
-  catchProgress: number;
-  timer: number;
-  holdActive: boolean;
-  caughtFishName: string | null;
+type SceneMode = "title" | "route" | "train" | "fishing";
+type HotspotId = "route-board" | "train-door" | "pond" | "sell-crate" | "salvage" | "woods" | "paint" | "upgrade" | "sleep" | "exit";
+type Hotspot = { id: HotspotId; label: string; x: number; y: number; radius: number; prompt: string };
+
+const WORLD_HOTSPOTS: Hotspot[] = [
+  { id: "route-board", label: "Route Board", x: 660, y: 154, radius: 48, prompt: "Choose the next stop" },
+  { id: "train-door", label: "Train Door", x: 354, y: 258, radius: 74, prompt: "Go inside the train" },
+  { id: "pond", label: "Stillwater Pond", x: 146, y: 444, radius: 78, prompt: "Fish for dinner" },
+  { id: "sell-crate", label: "Sell Crate", x: 690, y: 434, radius: 50, prompt: "Ship your haul for coins" },
+  { id: "salvage", label: "Salvage Pile", x: 582, y: 474, radius: 56, prompt: "Scavenge scrap and ore" },
+  { id: "woods", label: "Pine Edge", x: 108, y: 170, radius: 88, prompt: "Gather wood and herbs" }
+];
+
+const TRAIN_HOTSPOTS: Hotspot[] = [
+  { id: "paint", label: "Paint Shelf", x: 148, y: 132, radius: 54, prompt: "Switch paint colors" },
+  { id: "upgrade", label: "Workbench", x: 276, y: 406, radius: 62, prompt: "Install upgrades" },
+  { id: "sleep", label: "Bunk", x: 596, y: 130, radius: 76, prompt: "Rest and settle the nerves" },
+  { id: "exit", label: "Railcar Door", x: 728, y: 270, radius: 70, prompt: "Head back outside" }
+];
+
+const VIEW_FROM_MODE: Record<SceneMode, ZombTrainView> = {
+  title: "title",
+  route: "map",
+  train: "train",
+  fishing: "fishing"
 };
 
-const INITIAL_FISHING_STATE: FishingState = {
-  phase: "idle",
-  fishY: 50,
-  bobberY: 50,
-  bobberVelocity: 0,
-  catchProgress: 16,
-  timer: 26,
-  holdActive: false,
-  caughtFishName: null
+const MODE_FROM_VIEW: Record<ZombTrainView, SceneMode> = {
+  title: "title",
+  map: "route",
+  train: "train",
+  fishing: "fishing"
 };
 
 const ZombTrain: React.FC = () => {
   const [save, setSave] = useState<ZombTrainSave>(DEFAULT_ZOMBTRAIN_SAVE);
+  const [status, setStatus] = useState("A cozier apocalypse starts with a good train.");
   const [loaded, setLoaded] = useState(false);
-  const [status, setStatus] = useState("Rolling toward a softer kind of survival.");
-  const [fishing, setFishing] = useState<FishingState>(INITIAL_FISHING_STATE);
-  const titleRef = useRef<HTMLDivElement | null>(null);
-  const titleGameRef = useRef<Phaser.Game | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const gameRef = useRef<Phaser.Game | null>(null);
+  const saveRef = useRef<ZombTrainSave>(DEFAULT_ZOMBTRAIN_SAVE);
+  const avatarRef = useRef<AvatarCustomization>(normalizeAvatarCustomization(getStoredAvatarCustomization()));
 
   useEffect(() => {
-    setSave(loadZombTrainSave());
+    const loadedSave = loadZombTrainSave();
+    setSave(loadedSave);
+    saveRef.current = loadedSave;
+    avatarRef.current = normalizeAvatarCustomization(getStoredAvatarCustomization());
     setLoaded(true);
   }, []);
 
   useEffect(() => {
-    if (!loaded) {
-      return;
-    }
+    if (!loaded) return;
+    saveRef.current = save;
     saveZombTrainSave(save);
   }, [loaded, save]);
 
   useEffect(() => {
-    if (!titleRef.current || titleGameRef.current) {
-      return;
-    }
+    if (!loaded || !containerRef.current || gameRef.current) return;
 
-    class ZombTrainTitleScene extends Phaser.Scene {
-      trainShell!: Phaser.GameObjects.Rectangle;
-      trainTrim!: Phaser.GameObjects.Rectangle;
-      smoke!: Phaser.GameObjects.Group;
+    const helpers = {
+      getSave: () => saveRef.current,
+      getAvatar: () => avatarRef.current,
+      patchSave: (updater: (current: ZombTrainSave) => ZombTrainSave) =>
+        setSave((current) => {
+          const next = updater(current);
+          saveRef.current = next;
+          return next;
+        }),
+      setStatus: (message: string) => setStatus(message)
+    };
+
+    class ZombTrainScene extends Phaser.Scene {
+      mode: SceneMode = MODE_FROM_VIEW[helpers.getSave().activeView];
+      player: AvatarRender | null = null;
+      targetX: number | null = null;
+      targetY: number | null = null;
+      currentHotspot: HotspotId | null = null;
+      header!: Phaser.GameObjects.Text;
+      subheader!: Phaser.GameObjects.Text;
+      hint!: Phaser.GameObjects.Text;
       drift = 0;
+      titleTrain!: Phaser.GameObjects.Container;
+      fishingFish = 240;
+      fishingBar = 260;
+      fishingVelocity = 0;
+      fishingCatch = 28;
+      fishingTimer = 18;
+      holdingCast = false;
+      selectedUpgradeIndex = 0;
+      selectedDestinationId: ZombTrainDestinationId = helpers.getSave().selectedDestinationId;
+
+      preload() {
+        loadAvatarSpriteSheet(this, import.meta.env.BASE_URL);
+      }
 
       create() {
-        const width = 920;
-        const height = 360;
+        this.header = this.add.text(20, 18, "", { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "16px", color: "#fff4df" }).setDepth(40);
+        this.subheader = this.add.text(20, 42, "", { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "13px", color: "#d6d1c2" }).setDepth(40);
+        this.hint = this.add.text(798, 18, "", { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "13px", color: "#fff4df", align: "right" }).setOrigin(1, 0).setDepth(40);
+
+        this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+          if (this.mode === "title") {
+            this.enterMode("route");
+            helpers.setStatus("You roll off the title screen and into the world.");
+            return;
+          }
+          if (this.mode === "fishing") {
+            this.holdingCast = true;
+            return;
+          }
+          if (!this.player) return;
+          this.targetX = pointer.worldX;
+          this.targetY = pointer.worldY;
+        });
+        this.input.on("pointerup", () => { this.holdingCast = false; });
+        this.input.keyboard?.on("keydown-E", () => this.handleInteract());
+        this.input.keyboard?.on("keydown-ENTER", () => this.handleInteract());
+        this.input.keyboard?.on("keydown-SPACE", () => { this.holdingCast = true; });
+        this.input.keyboard?.on("keyup-SPACE", () => { this.holdingCast = false; });
+        this.input.keyboard?.on("keydown-ESC", () => {
+          if (this.mode === "train" || this.mode === "fishing") {
+            this.enterMode("route");
+            helpers.setStatus("Back outside by the train tracks.");
+          }
+        });
+        this.input.keyboard?.on("keydown-LEFT", () => { if (this.mode === "route") this.cycleDestination(-1); });
+        this.input.keyboard?.on("keydown-RIGHT", () => { if (this.mode === "route") this.cycleDestination(1); });
+        this.input.keyboard?.on("keydown-UP", () => { if (this.mode === "train") { this.selectedUpgradeIndex = Phaser.Math.Wrap(this.selectedUpgradeIndex - 1, 0, ZOMBTRAIN_UPGRADES.length); this.renderMode(); } });
+        this.input.keyboard?.on("keydown-DOWN", () => { if (this.mode === "train") { this.selectedUpgradeIndex = Phaser.Math.Wrap(this.selectedUpgradeIndex + 1, 0, ZOMBTRAIN_UPGRADES.length); this.renderMode(); } });
+
+        this.renderMode();
+      }
+
+      enterMode(mode: SceneMode) {
+        this.mode = mode;
+        helpers.patchSave((current) => ({ ...current, activeView: VIEW_FROM_MODE[mode] }));
+        this.renderMode();
+      }
+
+      renderMode() {
+        this.children.removeAll();
+        this.add.existing(this.header);
+        this.add.existing(this.subheader);
+        this.add.existing(this.hint);
+        this.player = null;
+        this.targetX = null;
+        this.targetY = null;
+        this.currentHotspot = null;
+
+        if (this.mode === "title") this.renderTitle();
+        else if (this.mode === "route") this.renderWorld();
+        else if (this.mode === "train") this.renderTrain();
+        else this.renderFishing();
+
+        this.syncHud();
+      }
+
+      syncHud(message?: string) {
+        const save = helpers.getSave();
+        const destination = getDestinationById(save.currentStopId);
+        this.header.setText(`ZombTrain  Day ${save.day}  Cozy ${save.cozyMeter}%  Danger ${save.dangerMeter}%  Coins ${save.inventory.coins}`);
+        this.subheader.setText(
+          message ?? (
+            this.mode === "title"
+              ? "Click to start."
+              : this.mode === "route"
+                ? `${destination.name}: walk up to a hotspot and press E.`
+                : this.mode === "train"
+                  ? "Everything important lives inside the world now."
+                  : "Hold Space or the mouse to keep the bar on the fish."
+          )
+        );
+        this.hint.setText(
+          this.mode === "title"
+            ? "Click"
+            : this.mode === "route"
+              ? "Move: click  Interact: E  Route: arrows"
+              : this.mode === "train"
+                ? "Move: click  Interact: E  Exit: Esc"
+                : "Hold Space / mouse  Exit: Esc"
+        );
+      }
+
+      renderTitle() {
+        const bg = this.add.graphics();
+        bg.fillGradientStyle(0x132726, 0x294642, 0x435a55, 0x1a2728, 1);
+        bg.fillRect(0, 0, 820, 560);
+        for (let i = 0; i < 10; i += 1) {
+          const y = 70 + i * 52;
+          this.add.rectangle(410, y, 680, 8, 0x4f3b2f, 0.8).setAngle(28);
+        }
+        this.add.rectangle(410, 280, 760, 14, 0xb8a18e, 1).setAngle(28);
+        this.add.rectangle(410, 314, 760, 14, 0xb8a18e, 1).setAngle(28);
+        this.titleTrain = this.add.container(230, 236, [
+          this.add.ellipse(0, 0, 184, 86, 0x051111, 0.25),
+          this.add.rectangle(0, 0, 164, 80, 0x5f7e65, 1).setStrokeStyle(6, 0xefe5c6, 0.9),
+          this.add.rectangle(-16, -4, 74, 38, 0xefe5c6, 1).setStrokeStyle(3, 0x2f4136, 0.4),
+          this.add.rectangle(38, 2, 48, 52, 0x7f4b34, 1).setStrokeStyle(3, 0xefe5c6, 0.7),
+          this.add.circle(-56, -6, 12, 0xf8d48b, 1),
+          this.add.circle(-44, 26, 14, 0x1d1d1d, 1).setStrokeStyle(4, 0x6d6d6d, 1),
+          this.add.circle(44, 26, 14, 0x1d1d1d, 1).setStrokeStyle(4, 0x6d6d6d, 1)
+        ]).setAngle(28);
+        this.add.rectangle(410, 108, 430, 122, 0x081212, 0.48).setStrokeStyle(2, 0xf5d8a4, 0.4);
+        this.add.text(410, 86, "ZombTrain", { fontFamily: "Georgia, serif", fontSize: "44px", color: "#fff4df", fontStyle: "bold" }).setOrigin(0.5);
+        this.add.text(410, 126, "Top-down cozy survival on the rails", { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "18px", color: "#ead4b0" }).setOrigin(0.5);
+        this.add.text(410, 454, "Click anywhere to board the train", { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "18px", color: "#fff4df" }).setOrigin(0.5);
+      }
+
+      renderWorld() {
+        const save = helpers.getSave();
+        const destination = getDestinationById(save.currentStopId);
+        this.selectedDestinationId = save.selectedDestinationId;
+        const palette = getPalettePreview(save.train.palette);
+        const shell = Phaser.Display.Color.HexStringToColor(palette.shell).color;
+        const trim = Phaser.Display.Color.HexStringToColor(palette.trim).color;
 
         const sky = this.add.graphics();
-        sky.fillGradientStyle(0x11223a, 0x1d3557, 0xf3c89c, 0x8bb5b4, 1);
-        sky.fillRect(0, 0, width, height);
-        this.add.ellipse(760, 76, 148, 66, 0xf7ddb6, 0.9);
-        this.add.ellipse(742, 70, 196, 88, 0xfff3de, 0.16);
+        sky.fillGradientStyle(0x769995, 0x8db1ab, 0x49635a, 0x28413c, 1);
+        sky.fillRect(0, 0, 820, 560);
+        const ground = this.add.graphics();
+        ground.fillStyle(0x3f5e48, 1);
+        ground.fillRect(0, 120, 820, 440);
+        ground.fillStyle(0x567b5c, 1);
+        ground.fillRect(0, 350, 820, 210);
+        this.add.ellipse(150, 444, 178, 118, 0x4f8ba2, 0.95).setStrokeStyle(6, 0xa5e3dd, 0.6);
+        this.add.circle(92, 160, 62, 0x2b4b34, 1);
+        this.add.circle(138, 200, 58, 0x34563a, 1);
+        this.add.circle(68, 214, 46, 0x3e6545, 1);
+        this.add.rectangle(582, 474, 92, 72, 0x6d5645, 1).setAngle(-4).setStrokeStyle(4, 0xb48b66, 0.75);
+        this.add.rectangle(688, 434, 74, 64, 0x8b6b41, 1).setStrokeStyle(4, 0xf0c783, 0.85);
+        this.add.rectangle(660, 154, 118, 96, 0x6f5238, 1).setStrokeStyle(4, 0xf7deae, 0.85).setAngle(2);
+        this.add.rectangle(360, 272, 248, 116, shell, 1).setStrokeStyle(6, trim, 0.95);
+        this.add.rectangle(326, 244, 102, 54, trim, 1).setStrokeStyle(3, 0x21382f, 0.35);
+        this.add.rectangle(424, 272, 86, 86, 0x7a4a33, 1).setStrokeStyle(4, trim, 0.75);
+        this.add.circle(264, 272, 18, 0xf8d48b, 1);
+        this.add.rectangle(354, 258, 50, 76, 0x1b1916, 0.72);
+        this.add.circle(300, 318, 18, 0x1b1b1b, 1).setStrokeStyle(5, 0x707070, 1);
+        this.add.circle(420, 318, 18, 0x1b1b1b, 1).setStrokeStyle(5, 0x707070, 1);
+        this.add.rectangle(412, 86, 318, 56, 0x081212, 0.45).setStrokeStyle(2, 0xffe1ad, 0.28);
+        this.add.text(412, 74, destination.name, { fontFamily: "Georgia, serif", fontSize: "24px", color: "#fff4df", fontStyle: "bold" }).setOrigin(0.5);
+        this.add.text(412, 96, destination.vibe, { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "12px", color: "#e7d6b5" }).setOrigin(0.5);
 
-        for (let i = 0; i < 4; i += 1) {
-          this.add.ellipse(120 + i * 210, 110 + (i % 2) * 18, 180, 60, 0xf5efe5, 0.16);
-        }
+        this.player = createAvatarRender(this, 260, 310, helpers.getAvatar(), 24, TOWN_AVATAR_SCALE);
+      }
 
-        const hills = this.add.graphics();
-        hills.fillStyle(0x415e61, 0.55);
-        hills.fillRoundedRect(-20, 184, 320, 140, 90);
-        hills.fillRoundedRect(180, 168, 400, 160, 120);
-        hills.fillRoundedRect(500, 180, 320, 150, 100);
-        hills.fillRoundedRect(690, 160, 280, 170, 120);
+      renderTrain() {
+        const save = helpers.getSave();
+        const palette = getPalettePreview(save.train.palette);
+        const shell = Phaser.Display.Color.HexStringToColor(palette.shell).color;
+        const upgrade = ZOMBTRAIN_UPGRADES[this.selectedUpgradeIndex];
+        const owned = save.upgrades.includes(upgrade.key);
 
-        const foreground = this.add.graphics();
-        foreground.fillStyle(0x203b32, 0.95);
-        foreground.fillRoundedRect(-20, 230, 280, 170, 90);
-        foreground.fillRoundedRect(160, 252, 300, 150, 110);
-        foreground.fillRoundedRect(390, 236, 260, 165, 100);
-        foreground.fillRoundedRect(585, 248, 360, 160, 120);
+        const floor = this.add.graphics();
+        floor.fillGradientStyle(0x8e6c4e, 0x7b5b40, 0x6a4e37, 0x5e442f, 1);
+        floor.fillRect(0, 0, 820, 560);
+        this.add.rectangle(410, 280, 420, 220, 0x4b6f64, 0.62).setStrokeStyle(6, 0xe7d4ad, 0.55);
+        this.add.rectangle(410, 40, 820, 80, shell, 1);
+        this.add.rectangle(37, 280, 74, 560, shell, 1);
+        this.add.rectangle(783, 280, 74, 560, shell, 1);
+        this.add.rectangle(410, 523, 820, 74, shell, 1);
+        this.add.circle(410, 94, 90, 0xf6ce85, save.train.lanternGlow / 260);
+        this.add.circle(410, 94, 22, 0xf6ce85, 1);
+        this.add.rectangle(150, 132, 110, 104, 0x5d4431, 1).setStrokeStyle(4, 0xf2ddbb, 0.6);
+        this.add.rectangle(276, 408, 150, 106, 0x4e3828, 1).setStrokeStyle(4, 0xf2ddbb, 0.6);
+        this.add.rectangle(598, 132, 170, 102, 0xcab18d, 1).setStrokeStyle(4, 0xeedfb8, 0.7);
+        this.add.rectangle(730, 270, 82, 144, 0x271d18, 0.88).setStrokeStyle(4, 0xf0debc, 0.7);
+        this.add.rectangle(560, 404, 218, 108, 0x0a1213, 0.55).setStrokeStyle(2, 0xf0debc, 0.2);
+        this.add.text(462, 368, `Workbench: ${upgrade.name}`, { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "16px", color: "#fff4df", fontStyle: "bold", wordWrap: { width: 180 } });
+        this.add.text(462, 394, upgrade.description, { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "13px", color: "#dacdaf", wordWrap: { width: 188 } });
+        this.add.text(462, 446, owned ? "Installed" : `${upgrade.cost} coins`, { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "14px", color: owned ? "#9be8b0" : "#f5d18f" });
+        this.add.text(410, 42, "Inside the ZombTrain", { fontFamily: "Georgia, serif", fontSize: "24px", color: "#fff4df", fontStyle: "bold" }).setOrigin(0.5);
+        this.player = createAvatarRender(this, 664, 306, helpers.getAvatar(), 24, TOWN_AVATAR_SCALE);
+      }
 
-        for (let i = 0; i < 8; i += 1) {
-          const x = 38 + i * 118;
-          this.add.rectangle(x, 312, 10, 50, 0x4d3428, 1).setAngle(-6);
-          this.add.rectangle(x + 50, 312, 10, 50, 0x4d3428, 1).setAngle(6);
-        }
+      renderFishing() {
+        const destination = getDestinationById(helpers.getSave().currentStopId);
+        const bg = this.add.graphics();
+        bg.fillGradientStyle(0x27454a, 0x3f6b6d, 0x1b2f37, 0x122128, 1);
+        bg.fillRect(0, 0, 820, 560);
+        this.add.ellipse(250, 292, 320, 232, 0x4f8ba2, 0.95).setStrokeStyle(8, 0xace7de, 0.5);
+        this.add.rectangle(248, 432, 210, 42, 0x7a5a3e, 1).setStrokeStyle(4, 0xc8a57b, 0.6);
+        this.add.text(546, 82, destination.fishName ?? "Stillwater fish", { fontFamily: "Georgia, serif", fontSize: "24px", color: "#fff4df", fontStyle: "bold" });
+        this.add.text(546, 118, "Keep the green bar on the fish to fill the catch meter.", { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "13px", color: "#dacdaf", wordWrap: { width: 220 } });
+        this.add.rectangle(628, 288, 54, 360, 0x0b1618, 0.65).setStrokeStyle(2, 0xf0debc, 0.2);
+        this.add.rectangle(628, this.fishingFish, 36, 40, 0x87dc86, 0.48).setStrokeStyle(2, 0xbaf1bc, 0.8);
+        this.add.rectangle(628, this.fishingBar, 42, 54, 0xf6ce85, 1).setStrokeStyle(2, 0xfff4df, 0.65);
+        this.add.rectangle(628, 500, 160, 18, 0x0b1618, 0.6).setStrokeStyle(2, 0xf0debc, 0.2);
+        this.add.rectangle(550, 500, this.fishingCatch * 1.52, 12, 0x87dc86, 1).setOrigin(0, 0.5);
+        this.add.text(548, 154, `Time ${this.fishingTimer.toFixed(1)}s`, { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "18px", color: "#fff4df" });
+        this.add.text(546, 470, "Esc to stop fishing", { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "13px", color: "#dacdaf" });
+      }
 
-        const rail = this.add.graphics();
-        rail.lineStyle(6, 0xb8a18e, 1);
-        rail.beginPath();
-        rail.moveTo(-20, 274);
-        rail.lineTo(width + 20, 274);
-        rail.moveTo(-20, 306);
-        rail.lineTo(width + 20, 306);
-        rail.strokePath();
-
-        this.trainShell = this.add.rectangle(360, 236, 170, 76, 0x5f7e65, 1).setStrokeStyle(4, 0xefe5c6, 1);
-        this.trainTrim = this.add.rectangle(372, 212, 132, 24, 0xefe5c6, 0.95);
-        this.add.rectangle(286, 246, 54, 54, 0x7b4933, 1).setStrokeStyle(4, 0xefe5c6, 0.95);
-        this.add.rectangle(438, 232, 18, 44, 0x2b2019, 0.75);
-        this.add.rectangle(352, 236, 40, 28, 0xa8d5d0, 0.9).setStrokeStyle(2, 0xffffff, 0.6);
-        this.add.rectangle(398, 236, 40, 28, 0xa8d5d0, 0.9).setStrokeStyle(2, 0xffffff, 0.6);
-        this.add.circle(308, 280, 20, 0x1d1d1d, 1).setStrokeStyle(6, 0x6f6f6f, 1);
-        this.add.circle(414, 280, 20, 0x1d1d1d, 1).setStrokeStyle(6, 0x6f6f6f, 1);
-        this.add.circle(264, 278, 12, 0x1d1d1d, 1).setStrokeStyle(4, 0x6f6f6f, 1);
-        this.add.rectangle(278, 178, 16, 46, 0x34241a, 1).setStrokeStyle(3, 0xefe5c6, 0.7);
-        this.add.rectangle(278, 156, 26, 12, 0x34241a, 1).setStrokeStyle(3, 0xefe5c6, 0.7);
-        this.add.circle(248, 222, 16, 0xf5d49b, 0.95);
-        this.add.circle(248, 222, 36, 0xf5d49b, 0.16);
-
-        this.smoke = this.add.group();
-        for (let i = 0; i < 7; i += 1) {
-          this.smoke.add(this.add.circle(280, 140 - i * 8, 14 + i * 2, 0xf5efe5, 0.2 + i * 0.05));
-        }
+      cycleDestination(direction: number) {
+        const currentIndex = ZOMBTRAIN_DESTINATIONS.findIndex((destination) => destination.id === this.selectedDestinationId);
+        const next = ZOMBTRAIN_DESTINATIONS[Phaser.Math.Wrap(currentIndex + direction, 0, ZOMBTRAIN_DESTINATIONS.length)];
+        this.selectedDestinationId = next.id;
+        helpers.patchSave((current) => ({ ...current, selectedDestinationId: next.id }));
+        helpers.setStatus(`Route board highlighted ${next.name}.`);
       }
 
       update(_time: number, delta: number) {
-        this.drift += delta * 0.0011;
-        this.trainShell.x = 360 + Math.sin(this.drift * 3.2) * 7;
-        this.trainShell.y = 236 + Math.sin(this.drift * 7.6) * 2;
-        this.trainTrim.x = 372 + Math.sin(this.drift * 3.2) * 7;
-        this.trainTrim.y = 212 + Math.sin(this.drift * 7.6) * 2;
+        this.drift += delta * 0.0012;
+        if (this.mode === "title") {
+          this.titleTrain?.setPosition(230 + Math.sin(this.drift * 1.6) * 180, 236 + Math.cos(this.drift * 2.2) * 12);
+          return;
+        }
+        if (this.mode === "fishing") {
+          this.updateFishing(delta);
+          return;
+        }
+        this.updateMovement(delta);
+        this.updatePrompt();
+      }
 
-        let index = 0;
-        this.smoke.children.each((child) => {
-          const puff = child as Phaser.GameObjects.Arc;
-          puff.x = 278 + Math.sin(this.drift * 1.6 + index) * 10 + index * 9;
-          puff.y = 144 - ((this.drift * 140 + index * 20) % 120);
-          puff.alpha = 0.42 - index * 0.04;
-          index += 1;
-        });
+      updateMovement(delta: number) {
+        if (!this.player || this.targetX == null || this.targetY == null) {
+          if (this.player) updateAvatarRender(this.player, helpers.getAvatar(), this.player.facing, false);
+          return;
+        }
+        const dx = this.targetX - this.player.container.x;
+        const dy = this.targetY - this.player.container.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance < 8) {
+          this.targetX = null;
+          this.targetY = null;
+          updateAvatarRender(this.player, helpers.getAvatar(), this.player.facing, false);
+          return;
+        }
+        const step = Math.min(distance, (delta / 1000) * 150);
+        this.player.container.setPosition(
+          Phaser.Math.Clamp(this.player.container.x + (dx / distance) * step, 72, 748),
+          Phaser.Math.Clamp(this.player.container.y + (dy / distance) * step, 84, 492)
+        );
+        const facing: AvatarFacing = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? "left" : "right") : (dy < 0 ? "back" : "front");
+        updateAvatarRender(this.player, helpers.getAvatar(), facing, true);
+      }
+
+      updatePrompt() {
+        if (!this.player) return;
+        const source = this.mode === "route" ? WORLD_HOTSPOTS : TRAIN_HOTSPOTS;
+        const hotspot = source.find((candidate) => Phaser.Math.Distance.Between(this.player!.container.x, this.player!.container.y, candidate.x, candidate.y) <= candidate.radius);
+        this.currentHotspot = hotspot?.id ?? null;
+        if (hotspot) this.syncHud(`${hotspot.label}: ${hotspot.prompt}. Press E.`);
+        else this.syncHud();
+      }
+
+      updateFishing(delta: number) {
+        const destination = getDestinationById(helpers.getSave().currentStopId);
+        this.fishingFish = 240 + Math.sin(this.drift * 2.1) * 86 + Math.sin(this.drift * 4.8) * 24;
+        this.fishingVelocity += (this.holdingCast ? -0.12 : 0.09) * (delta / 16);
+        this.fishingVelocity = Phaser.Math.Clamp(this.fishingVelocity, -4.2, 4.2);
+        this.fishingBar = Phaser.Math.Clamp(this.fishingBar + this.fishingVelocity, 118, 458);
+        this.fishingCatch = Phaser.Math.Clamp(this.fishingCatch + (Math.abs(this.fishingFish - this.fishingBar) < 30 ? 0.22 * delta : -0.18 * delta), 0, 100);
+        this.fishingTimer = Math.max(0, this.fishingTimer - delta / 1000);
+        this.renderMode();
+        if (this.fishingCatch >= 100) {
+          helpers.patchSave((current) => ({
+            ...current,
+            inventory: { ...current.inventory, fish: current.inventory.fish + 1 },
+            cozyMeter: Math.min(100, current.cozyMeter + 2)
+          }));
+          helpers.setStatus(`You caught a ${destination.fishName ?? "fresh fish"}.`);
+          this.enterMode("route");
+        } else if (this.fishingTimer <= 0 || this.fishingCatch <= 0) {
+          helpers.setStatus("The fish got away.");
+          this.enterMode("route");
+        }
+      }
+
+      handleInteract() {
+        const save = helpers.getSave();
+        if (this.mode === "route") {
+          if (this.currentHotspot === "route-board") {
+            const destination = getDestinationById(save.selectedDestinationId);
+            helpers.patchSave((current) => ({
+              ...current,
+              currentStopId: destination.id,
+              day: current.day + 1,
+              cozyMeter: Math.min(100, current.cozyMeter + 3),
+              dangerMeter: Math.min(100, current.dangerMeter + (destination.risk === "Medium" ? 7 : 4))
+            }));
+            helpers.setStatus(`The train rumbles toward ${destination.name}.`);
+            this.renderMode();
+          } else if (this.currentHotspot === "train-door") {
+            this.enterMode("train");
+            helpers.setStatus("You step inside the railcar.");
+          } else if (this.currentHotspot === "pond") {
+            if (save.inventory.bait <= 0) {
+              helpers.setStatus("You need bait before you can fish.");
+            } else {
+              helpers.patchSave((current) => ({ ...current, inventory: { ...current.inventory, bait: current.inventory.bait - 1 } }));
+              this.fishingFish = 240;
+              this.fishingBar = 260;
+              this.fishingVelocity = 0;
+              this.fishingCatch = 28;
+              this.fishingTimer = 18;
+              this.enterMode("fishing");
+              helpers.setStatus("Line in the water.");
+            }
+          } else if (this.currentHotspot === "sell-crate") {
+            const total = save.inventory.fish * 12 + save.inventory.wood * 3 + save.inventory.ore * 9 + save.inventory.scrap * 5 + save.inventory.herbs * 4;
+            if (total <= 0) helpers.setStatus("The sell crate is empty.");
+            else helpers.patchSave((current) => ({
+              ...current,
+              inventory: { ...current.inventory, coins: current.inventory.coins + total, fish: 0, wood: 0, ore: 0, scrap: 0, herbs: 0 },
+              cozyMeter: Math.min(100, current.cozyMeter + 3)
+            }));
+          } else if (this.currentHotspot === "salvage") {
+            helpers.patchSave((current) => ({ ...current, inventory: { ...current.inventory, scrap: current.inventory.scrap + 3, ore: current.inventory.ore + 1 } }));
+            helpers.setStatus("You pulled usable scrap and a little ore from the pile.");
+          } else if (this.currentHotspot === "woods") {
+            helpers.patchSave((current) => ({ ...current, inventory: { ...current.inventory, wood: current.inventory.wood + 4, herbs: current.inventory.herbs + 2, bait: current.inventory.bait + 1 } }));
+            helpers.setStatus("You gathered wood, herbs, and bait from the treeline.");
+          }
+          return;
+        }
+        if (this.mode === "train") {
+          if (this.currentHotspot === "exit") {
+            this.enterMode("route");
+          } else if (this.currentHotspot === "paint") {
+            helpers.patchSave((current) => {
+              const palettes = ["sage", "cream", "ember", "night"] as const;
+              const index = palettes.findIndex((palette) => palette === current.train.palette);
+              return { ...current, train: { ...current.train, palette: palettes[(index + 1) % palettes.length] } };
+            });
+            helpers.setStatus("Fresh paint for the railcar.");
+            this.renderMode();
+          } else if (this.currentHotspot === "sleep") {
+            helpers.patchSave((current) => ({ ...current, cozyMeter: Math.min(100, current.cozyMeter + 6), dangerMeter: Math.max(0, current.dangerMeter - 8) }));
+            helpers.setStatus("A short rest makes the apocalypse feel further away.");
+          } else if (this.currentHotspot === "upgrade") {
+            this.buySelectedUpgrade();
+          }
+        }
+      }
+
+      buySelectedUpgrade() {
+        const save = helpers.getSave();
+        const upgrade = ZOMBTRAIN_UPGRADES[this.selectedUpgradeIndex];
+        if (save.upgrades.includes(upgrade.key)) {
+          helpers.setStatus(`${upgrade.name} is already installed.`);
+          return;
+        }
+        if (save.inventory.coins < upgrade.cost) {
+          helpers.setStatus(`You need ${upgrade.cost - save.inventory.coins} more coins for ${upgrade.name}.`);
+          return;
+        }
+        helpers.patchSave((current) => applyUpgrade(current, upgrade.key));
+        helpers.setStatus(`${upgrade.name} installed.`);
+        this.renderMode();
       }
     }
 
-    titleGameRef.current = new Phaser.Game({
+    gameRef.current = new Phaser.Game({
       type: Phaser.AUTO,
-      width: 920,
-      height: 360,
-      parent: titleRef.current,
-      backgroundColor: "#0f1720",
-      scene: ZombTrainTitleScene,
-      scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH
-      }
+      width: 820,
+      height: 560,
+      parent: containerRef.current,
+      backgroundColor: "#0d1716",
+      scene: ZombTrainScene,
+      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }
     });
 
     return () => {
-      titleGameRef.current?.destroy(true);
-      titleGameRef.current = null;
+      gameRef.current?.destroy(true);
+      gameRef.current = null;
     };
-  }, []);
+  }, [loaded]);
 
   const currentDestination = useMemo(() => getDestinationById(save.currentStopId), [save.currentStopId]);
-  const selectedDestination = useMemo(() => getDestinationById(save.selectedDestinationId), [save.selectedDestinationId]);
-  const palettePreview = getPalettePreview(save.train.palette);
-
-  useEffect(() => {
-    if (save.activeView !== "fishing" || fishing.phase !== "playing") {
-      return;
-    }
-
-    let frameId = 0;
-    let lastTime = performance.now();
-
-    const tick = (time: number) => {
-      const delta = Math.min(32, time - lastTime);
-      lastTime = time;
-
-      setFishing((current) => {
-        if (current.phase !== "playing") {
-          return current;
-        }
-
-        const t = time / 1000;
-        const fishY = 50 + Math.sin(t * 1.6) * 24 + Math.sin(t * 3.4) * 11;
-        const lift = current.holdActive ? 0.025 * delta : -0.018 * delta;
-        const bobberVelocity = Phaser.Math.Clamp(current.bobberVelocity + lift, -1.9, 1.8);
-        const bobberY = Phaser.Math.Clamp(current.bobberY - bobberVelocity, 5, 95);
-        const proximity = Math.abs(fishY - bobberY);
-        const catchProgress = Phaser.Math.Clamp(current.catchProgress + (proximity < 16 ? 0.04 * delta : -0.032 * delta), 0, 100);
-        const timer = Math.max(0, current.timer - delta / 1000);
-
-        if (catchProgress >= 100) {
-          return {
-            ...current,
-            phase: "caught",
-            fishY,
-            bobberY,
-            bobberVelocity,
-            catchProgress,
-            timer,
-            caughtFishName: getDestinationById(save.currentStopId).fishName ?? "Railcar trout"
-          };
-        }
-
-        if (timer <= 0 || catchProgress <= 0) {
-          return { ...INITIAL_FISHING_STATE };
-        }
-
-        return { ...current, fishY, bobberY, bobberVelocity, catchProgress, timer };
-      });
-
-      frameId = window.requestAnimationFrame(tick);
-    };
-
-    frameId = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frameId);
-  }, [fishing.phase, save.activeView, save.currentStopId]);
-
-  useEffect(() => {
-    if (fishing.phase !== "caught") {
-      return;
-    }
-
-    setSave((current) => ({
-      ...current,
-      inventory: { ...current.inventory, fish: current.inventory.fish + 1 },
-      cozyMeter: Math.min(100, current.cozyMeter + 2),
-      journal: [`Caught a ${fishing.caughtFishName ?? "railcar fish"} at ${getDestinationById(current.currentStopId).name}.`, ...current.journal].slice(0, 12)
-    }));
-    setStatus(`You landed a ${fishing.caughtFishName ?? "fresh fish"} and the whole train smells like dinner.`);
-  }, [fishing.caughtFishName, fishing.phase]);
-
-  const setActiveView = (activeView: ZombTrainView) => {
-    setSave((current) => ({ ...current, activeView }));
-  };
-
-  const addResource = (resource: ZombTrainResourceKey, amount: number, message: string) => {
-    setSave((current) => ({
-      ...current,
-      inventory: { ...current.inventory, [resource]: current.inventory[resource] + amount }
-    }));
-    setStatus(message);
-  };
-
-  const handleTravel = (destination: ZombTrainDestination) => {
-    const riskCost = destination.risk === "High" ? 14 : destination.risk === "Medium" ? 9 : 5;
-    setSave((current) => ({
-      ...current,
-      activeView: "map",
-      currentStopId: destination.id,
-      selectedDestinationId: destination.id,
-      day: current.day + 1,
-      cozyMeter: Math.max(35, Math.min(100, current.cozyMeter + (destination.risk === "Low" ? 4 : 1))),
-      dangerMeter: Math.max(8, Math.min(100, current.dangerMeter + riskCost - Math.min(10, current.train.lanternGlow / 10))),
-      journal: [`Rolled into ${destination.name}. ${destination.vibe}`, ...current.journal].slice(0, 12)
-    }));
-    setStatus(`The engine sighs into ${destination.name}. Time to fish, forage, or make a little money.`);
-  };
-
-  const handleForage = () => {
-    const entries = Object.entries(currentDestination.forageYield) as Array<[ZombTrainResourceKey, number]>;
-    if (entries.length === 0) {
-      setStatus("Nothing worth gathering here right now.");
-      return;
-    }
-
-    setSave((current) => {
-      const nextInventory = { ...current.inventory };
-      entries.forEach(([resource, amount]) => {
-        nextInventory[resource] += amount;
-      });
-      return {
-        ...current,
-        inventory: nextInventory,
-        cozyMeter: Math.min(100, current.cozyMeter + 1),
-        dangerMeter: Math.max(0, current.dangerMeter - 1),
-        journal: [`Gathered supplies at ${currentDestination.name}.`, ...current.journal].slice(0, 12)
-      };
-    });
-
-    setStatus(`You took the scenic route and came back with ${entries.map(([resource, amount]) => `+${amount} ${formatResourceLabel(resource).toLowerCase()}`).join(", ")}.`);
-  };
-
-  const handleMine = () => {
-    if (!currentDestination.mineYield) {
-      setStatus("This stop is better for fishing and scavenging than mining.");
-      return;
-    }
-
-    const entries = Object.entries(currentDestination.mineYield) as Array<[ZombTrainResourceKey, number]>;
-    setSave((current) => {
-      const nextInventory = { ...current.inventory };
-      entries.forEach(([resource, amount]) => {
-        nextInventory[resource] += amount;
-      });
-      return {
-        ...current,
-        inventory: nextInventory,
-        dangerMeter: Math.min(100, current.dangerMeter + 4),
-        journal: [`Worked the old shafts at ${currentDestination.name}.`, ...current.journal].slice(0, 12)
-      };
-    });
-
-    setStatus("The haul was good, but the quarry echoes are never truly cozy.");
-  };
-
-  const handleSellBox = () => {
-    const saleValue = save.inventory.fish * 12 + save.inventory.wood * 3 + save.inventory.ore * 9 + save.inventory.scrap * 5 + save.inventory.herbs * 4;
-    if (saleValue <= 0) {
-      setStatus("The sell box is empty. A cozy apocalypse still needs inventory.");
-      return;
-    }
-
-    const coinsEarned = Math.round(saleValue * (currentDestination.sellBonus ?? 1));
-    setSave((current) => ({
-      ...current,
-      inventory: {
-        ...current.inventory,
-        coins: current.inventory.coins + coinsEarned,
-        fish: 0,
-        wood: 0,
-        ore: 0,
-        scrap: 0,
-        herbs: 0
-      },
-      cozyMeter: Math.min(100, current.cozyMeter + 3),
-      journal: [`Sold the haul at ${currentDestination.name} for ${coinsEarned} coins.`, ...current.journal].slice(0, 12)
-    }));
-    setStatus(`You filled the sell box and cleared ${coinsEarned} coins.`);
-  };
-
-  const handleUpgradePurchase = (upgradeKey: string) => {
-    const upgrade = ZOMBTRAIN_UPGRADES.find((item) => item.key === upgradeKey);
-    if (!upgrade) return;
-    if (save.upgrades.includes(upgrade.key)) {
-      setStatus(`${upgrade.name} is already installed.`);
-      return;
-    }
-    if (save.inventory.coins < upgrade.cost) {
-      setStatus(`You need ${upgrade.cost - save.inventory.coins} more coins for ${upgrade.name}.`);
-      return;
-    }
-
-    setSave((current) => ({
-      ...current,
-      inventory: { ...current.inventory, coins: current.inventory.coins - upgrade.cost },
-      upgrades: [...current.upgrades, upgrade.key],
-      cozyMeter: Math.min(100, current.cozyMeter + 6),
-      train: {
-        ...current.train,
-        lanternGlow: upgrade.key === "lanterns" ? Math.min(100, current.train.lanternGlow + 18) : current.train.lanternGlow,
-        plantCount: upgrade.key === "stove" ? Math.min(6, current.train.plantCount + 1) : current.train.plantCount
-      },
-      journal: [`Installed ${upgrade.name}.`, ...current.journal].slice(0, 12)
-    }));
-    setStatus(`${upgrade.name} is live. The train feels more like home now.`);
-  };
-
-  const handlePaletteChange = (palette: ZombTrainTrainPalette) => {
-    setSave((current) => ({ ...current, train: { ...current.train, palette } }));
-    setStatus(`Fresh paint, same apocalypse. ${palette} looks right on this train.`);
-  };
-
-  const handleFishingStart = () => {
-    if (save.inventory.bait <= 0) {
-      setStatus("You need bait before you can drop a line.");
-      return;
-    }
-
-    setSave((current) => ({
-      ...current,
-      activeView: "fishing",
-      inventory: { ...current.inventory, bait: current.inventory.bait - 1 }
-    }));
-    setFishing({ ...INITIAL_FISHING_STATE, phase: "playing" });
-    setStatus(`Line in the water at ${currentDestination.name}. Keep the bobber on the fish like Stardew-style pressure.`);
-  };
-
-  const restartFishing = () => {
-    setFishing({ ...INITIAL_FISHING_STATE, phase: "playing" });
-    setStatus("Another cast, another chance.");
-  };
-
-  const startFresh = () => {
-    setSave(resetZombTrainSave());
-    setFishing(INITIAL_FISHING_STATE);
-    setStatus("Fresh run started. Same soft blankets, different apocalypse.");
-  };
 
   return (
     <div className="page">
       <NavBar />
-      <div className="content card zombtrain-shell">
-        <section className="zombtrain-hero">
-          <div className="zombtrain-hero__copy">
-            <p className="zombtrain-kicker">New Cozy Survival Prototype</p>
-            <h1>ZombTrain</h1>
-            <p className="zombtrain-lead">A warm train in a broken world. Travel to fishing holes, timber stops, and salvage towns, then bring the haul home to upgrade the railcar that keeps everyone going.</p>
-            <div className="zombtrain-hero__actions">
-              <button type="button" className="primary-button" onClick={() => setActiveView("map")}>Enter the train</button>
-              <button type="button" className="secondary-button zombtrain-secondary-button" onClick={() => setActiveView("train")}>Customize railcar</button>
-              <button type="button" className="secondary-button zombtrain-secondary-button" onClick={startFresh}>Fresh save</button>
-            </div>
-            <p className="info zombtrain-status">{status}</p>
-          </div>
-          <div className="zombtrain-hero__visual">
-            <div ref={titleRef} className="zombtrain-title-canvas" />
-            <div className="zombtrain-overlay-card">
-              <span>Current stop</span>
-              <strong>{currentDestination.name}</strong>
-              <small>{currentDestination.vibe}</small>
-            </div>
-          </div>
-        </section>
-
-        <section className="zombtrain-dashboard">
-          <div className="zombtrain-stat"><span>Day</span><strong>{save.day}</strong></div>
-          <div className="zombtrain-stat"><span>Cozy</span><strong>{save.cozyMeter}%</strong></div>
-          <div className="zombtrain-stat"><span>Danger</span><strong>{save.dangerMeter}%</strong></div>
-          <div className="zombtrain-stat"><span>Coins</span><strong>{save.inventory.coins}</strong></div>
-        </section>
-
-        <section className="zombtrain-tabs">
-          <button type="button" className={save.activeView === "map" ? "is-active" : ""} onClick={() => setActiveView("map")}>Route board</button>
-          <button type="button" className={save.activeView === "train" ? "is-active" : ""} onClick={() => setActiveView("train")}>Train interior</button>
-          <button type="button" className={save.activeView === "fishing" ? "is-active" : ""} onClick={() => setActiveView("fishing")}>Fishing</button>
-        </section>
-
-        <section className="zombtrain-grid">
-          <div className="zombtrain-panel">
-            <div className="zombtrain-panel__head">
-              <h2>Destination loop</h2>
-              <span>Tarkov-style pick-your-stop structure, but cozy-first.</span>
-            </div>
-            <div className="zombtrain-destinations">
-              {ZOMBTRAIN_DESTINATIONS.map((destination) => (
-                <button
-                  key={destination.id}
-                  type="button"
-                  className={`zombtrain-destination ${save.selectedDestinationId === destination.id ? "is-selected" : ""}`}
-                  onClick={() => setSave((current) => ({ ...current, selectedDestinationId: destination.id }))}
-                >
-                  <strong>{destination.name}</strong>
-                  <span>{destination.vibe}</span>
-                  <small>{destination.risk} risk • {destination.travelTime}</small>
-                </button>
-              ))}
-            </div>
-            <div className="zombtrain-stop-card">
-              <h3>{selectedDestination.name}</h3>
-              <p>{selectedDestination.vibe}</p>
-              <div className="zombtrain-stop-meta">
-                <span>Featured: {formatResourceLabel(selectedDestination.featuredResource)}</span>
-                <span>Fish: {selectedDestination.fishName ?? "No fishing stop"}</span>
-              </div>
-              <div className="zombtrain-stop-actions">
-                <button type="button" className="primary-button" onClick={() => handleTravel(selectedDestination)}>Take the train here</button>
-                <button type="button" className="secondary-button zombtrain-secondary-button" onClick={handleForage}>Forage this stop</button>
-                <button type="button" className="secondary-button zombtrain-secondary-button" onClick={handleMine}>Mine / salvage</button>
-              </div>
-            </div>
-          </div>
-
-          <div className="zombtrain-panel">
-            <div className="zombtrain-panel__head">
-              <h2>Train home</h2>
-              <span>Customization, comfort, and upgrades all live here.</span>
-            </div>
-            <div className="zombtrain-train-card" style={{ ["--zt-shell" as string]: palettePreview.shell, ["--zt-trim" as string]: palettePreview.trim }}>
-              <div className="zombtrain-train-card__window" />
-              <div className="zombtrain-train-card__window" />
-              <div className="zombtrain-train-card__window" />
-              <div className="zombtrain-train-card__details">
-                <span>Lantern glow {save.train.lanternGlow}%</span>
-                <span>{save.train.plantCount} plants</span>
-                <span>{save.train.quiltPattern} quilt</span>
-              </div>
-            </div>
-            <div className="zombtrain-palette-row">
-              {(["ember", "sage", "cream", "night"] as ZombTrainTrainPalette[]).map((palette) => {
-                const preview = getPalettePreview(palette);
-                return (
-                  <button
-                    key={palette}
-                    type="button"
-                    className={`zombtrain-palette ${save.train.palette === palette ? "is-selected" : ""}`}
-                    onClick={() => handlePaletteChange(palette)}
-                    style={{ ["--zt-palette-shell" as string]: preview.shell, ["--zt-palette-trim" as string]: preview.trim }}
-                  >
-                    {palette}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="zombtrain-upgrades">
-              {ZOMBTRAIN_UPGRADES.map((upgrade) => (
-                <button key={upgrade.key} type="button" className={`zombtrain-upgrade ${save.upgrades.includes(upgrade.key) ? "is-owned" : ""}`} onClick={() => handleUpgradePurchase(upgrade.key)}>
-                  <strong>{upgrade.name}</strong>
-                  <span>{upgrade.description}</span>
-                  <small>{save.upgrades.includes(upgrade.key) ? "Installed" : `${upgrade.cost} coins`}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="zombtrain-panel">
-            <div className="zombtrain-panel__head">
-              <h2>Work loop</h2>
-              <span>Fish, gather, sell, then pour the money back into the railcar.</span>
-            </div>
-            <div className="zombtrain-action-row">
-              <button type="button" className="primary-button" onClick={handleFishingStart}>Start fishing minigame</button>
-              <button type="button" className="secondary-button zombtrain-secondary-button" onClick={handleSellBox}>Load sell box</button>
-              <button type="button" className="secondary-button zombtrain-secondary-button" onClick={() => addResource("bait", 2, "You traded gossip and got two fresh cups of bait.")}>Get bait</button>
-            </div>
-            <div className="zombtrain-fishing-card">
-              <div className="zombtrain-fishing-card__sidebar">
-                <span>{currentDestination.fishName ?? "Railwater perch"}</span>
-                <strong>{fishing.phase === "playing" ? `${fishing.timer.toFixed(1)}s` : "Ready to cast"}</strong>
-                <small>Hold the button to lift the green bar. Keep it on the fish to fill the meter.</small>
-              </div>
-              <div className="zombtrain-fishing-meter">
-                <div className="zombtrain-fishing-meter__water" />
-                <div className="zombtrain-fishing-meter__target" style={{ bottom: `${fishing.fishY}%` }} />
-                <button
-                  type="button"
-                  className="zombtrain-fishing-meter__bobber"
-                  style={{ bottom: `${fishing.bobberY}%` }}
-                  onMouseDown={() => setFishing((current) => ({ ...current, holdActive: true }))}
-                  onMouseUp={() => setFishing((current) => ({ ...current, holdActive: false }))}
-                  onMouseLeave={() => setFishing((current) => ({ ...current, holdActive: false }))}
-                  onTouchStart={() => setFishing((current) => ({ ...current, holdActive: true }))}
-                  onTouchEnd={() => setFishing((current) => ({ ...current, holdActive: false }))}
-                >
-                  Hold
-                </button>
-              </div>
-              <div className="zombtrain-catch-progress">
-                <div className="zombtrain-catch-progress__bar" style={{ width: `${fishing.catchProgress}%` }} />
-              </div>
-            </div>
-            <div className="zombtrain-action-row">
-              <button type="button" className="secondary-button zombtrain-secondary-button" onClick={restartFishing}>Recast</button>
-              <button type="button" className="secondary-button zombtrain-secondary-button" onClick={() => setActiveView("train")}>Head back inside</button>
-            </div>
-            <div className="zombtrain-inventory">
-              {(Object.entries(save.inventory) as Array<[ZombTrainResourceKey, number]>).map(([resource, amount]) => (
-                <div key={resource} className="zombtrain-inventory__item">
-                  <span>{formatResourceLabel(resource)}</span>
-                  <strong>{amount}</strong>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="zombtrain-panel">
-            <div className="zombtrain-panel__head">
-              <h2>Design direction</h2>
-              <span>What the existing repo taught us about building this cleanly.</span>
-            </div>
-            <ul className="zombtrain-notes">
-              <li>Use React for menus, inventory, route selection, and cozy upgrade surfaces.</li>
-              <li>Use Phaser islands where motion sells the fantasy, starting with the train title scene.</li>
-              <li>Keep progression and save data outside the renderer so future gathering maps stay modular.</li>
-              <li>Treat combat as occasional pressure, not the default emotional tone of the game.</li>
-              <li>The loop is now in place: choose stop, gather, fish, sell, upgrade, repeat.</li>
-            </ul>
-            <div className="zombtrain-journal">
-              {save.journal.map((entry) => (
-                <p key={entry}>{entry}</p>
-              ))}
-            </div>
-          </div>
-        </section>
+      <div className="content card zombtrain-game-shell">
+        <h2>ZombTrain</h2>
+        <p className="zombtrain-game-copy">This version is rebuilt as a top-down game surface first. The route board, train interior, fishing, upgrades, and resource loop now happen in the actual playfield.</p>
+        <div ref={containerRef} className="zombtrain-canvas-shell" />
+        <p className="info">{status}</p>
+        <p className="score-display">Current stop: {currentDestination.name}. Inventory: {save.inventory.coins} coins, {save.inventory.bait} bait, {save.inventory.fish} fish, {save.inventory.wood} wood, {save.inventory.ore} ore.</p>
+        <button type="button" className="secondary-button zombtrain-reset-button" onClick={() => {
+          const reset = resetZombTrainSave();
+          saveRef.current = reset;
+          setSave(reset);
+          setStatus("Fresh save loaded.");
+          gameRef.current?.destroy(true);
+          gameRef.current = null;
+          setLoaded(false);
+          window.setTimeout(() => setLoaded(true), 0);
+        }}>
+          Reset save
+        </button>
       </div>
     </div>
   );
 };
+
+function applyUpgrade(current: ZombTrainSave, key: ZombTrainTrainUpgradeKey): ZombTrainSave {
+  const upgrade = ZOMBTRAIN_UPGRADES.find((item) => item.key === key);
+  if (!upgrade || current.upgrades.includes(key)) return current;
+  return {
+    ...current,
+    inventory: { ...current.inventory, coins: current.inventory.coins - upgrade.cost },
+    upgrades: [...current.upgrades, key],
+    cozyMeter: Math.min(100, current.cozyMeter + 6),
+    train: {
+      ...current.train,
+      lanternGlow: key === "lanterns" ? Math.min(100, current.train.lanternGlow + 18) : current.train.lanternGlow,
+      plantCount: key === "stove" ? Math.min(6, current.train.plantCount + 1) : current.train.plantCount
+    }
+  };
+}
 
 export default ZombTrain;
