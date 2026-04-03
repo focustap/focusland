@@ -370,6 +370,18 @@ const Lobby: React.FC = () => {
             y: 108,
             width: 134,
             height: 108
+          },
+          {
+            name: "ZombTrain",
+            color: 0xf97316,
+            body: null,
+            entranceX: 672,
+            entranceY: 420,
+            route: "/zombtrain",
+            x: 672,
+            y: 418,
+            width: 132,
+            height: 108
           }
         ];
 

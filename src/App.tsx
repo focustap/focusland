@@ -29,6 +29,7 @@ const ShopRoom = lazy(() => import("./pages/ShopRoom"));
 const Slots = lazy(() => import("./pages/Slots"));
 const SpaceInvaders = lazy(() => import("./pages/SpaceInvaders"));
 const StoryGame = lazy(() => import("./pages/StoryGame"));
+const ZombTrain = lazy(() => import("./pages/ZombTrain"));
 
 const RouteFallback = () => (
   <div className="page auth-page">
@@ -242,6 +243,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <StoryGame />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/zombtrain"
+            element={
+              <ProtectedRoute>
+                <ZombTrain />
               </ProtectedRoute>
             }
           />
