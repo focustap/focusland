@@ -4643,3 +4643,329 @@ body[data-theme="dark"] .card-battle-card--hidden {
   margin-top: 0.5rem;
 }
 
+.zombtrain-v2-shell {
+  max-width: 1100px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 225, 171, 0.16), transparent 24%),
+    linear-gradient(180deg, #0f1b1e 0%, #18282b 100%);
+}
+
+.zombtrain-v2-copy {
+  max-width: 54rem;
+  color: #e7d9c2;
+}
+
+.zombtrain-title-screen,
+.zombtrain-panel-screen {
+  display: grid;
+  gap: 1rem;
+}
+
+.zombtrain-title-stage {
+  overflow: hidden;
+  border-radius: 1.35rem;
+  border: 1px solid rgba(255, 234, 206, 0.14);
+  box-shadow: 0 24px 54px rgba(3, 8, 8, 0.34);
+}
+
+.zombtrain-title-overlay {
+  display: grid;
+  gap: 0.8rem;
+  justify-items: center;
+  margin-top: -4.5rem;
+  padding: 0 1rem 1rem;
+}
+
+.zombtrain-title-overlay h1 {
+  margin: 0;
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  color: #fff3de;
+}
+
+.zombtrain-title-overlay p {
+  margin: 0;
+  color: #ead6b6;
+}
+
+.zombtrain-title-actions,
+.zombtrain-toolbar,
+.zombtrain-fish-list,
+.zombtrain-store-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.zombtrain-toolbar {
+  margin-top: 0.25rem;
+}
+
+.zombtrain-tab {
+  border: 1px solid rgba(255, 237, 212, 0.16);
+  background: rgba(10, 18, 19, 0.52);
+  color: #fff4df;
+}
+
+.zombtrain-train-room,
+.zombtrain-venture-map,
+.zombtrain-location-card,
+.zombtrain-fishing-shell,
+.zombtrain-store-panel {
+  border-radius: 1.2rem;
+  border: 1px solid rgba(255, 236, 209, 0.12);
+  background: rgba(9, 15, 16, 0.52);
+}
+
+.zombtrain-train-room {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(126, 89, 59, 0.95), rgba(89, 63, 42, 0.96));
+}
+
+.zombtrain-train-board,
+.zombtrain-train-bed,
+.zombtrain-train-workbench,
+.zombtrain-train-item {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 1rem;
+  color: #fff8ea;
+  font-weight: 700;
+}
+
+.zombtrain-train-board {
+  left: 280px;
+  top: 42px;
+  width: 170px;
+  height: 94px;
+  background: #6b4e36;
+  border: 4px solid #f2ddb7;
+}
+
+.zombtrain-train-bed {
+  right: 92px;
+  top: 46px;
+  width: 190px;
+  height: 110px;
+  background: #cdb089;
+  color: #443025;
+}
+
+.zombtrain-train-workbench {
+  left: 220px;
+  bottom: 44px;
+  width: 220px;
+  height: 104px;
+  background: #513826;
+}
+
+.zombtrain-train-item {
+  width: 70px;
+  height: 54px;
+  border: none;
+  cursor: grab;
+}
+
+.zombtrain-train-item.is-dragging {
+  cursor: grabbing;
+  opacity: 0.8;
+}
+
+.zombtrain-venture-map {
+  min-height: 260px;
+  align-items: center;
+  justify-content: center;
+  padding: 1.4rem;
+  background:
+    radial-gradient(circle at 20% 40%, rgba(118, 155, 129, 0.35), transparent 20%),
+    linear-gradient(180deg, #314942 0%, #24352f 100%);
+}
+
+.zombtrain-location-node {
+  min-width: 220px;
+  min-height: 120px;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 2px solid rgba(246, 203, 133, 0.38);
+  background: rgba(8, 14, 15, 0.56);
+  color: #fff3de;
+  text-align: left;
+}
+
+.zombtrain-location-node.is-coming {
+  display: grid;
+  place-items: center;
+  min-width: 220px;
+  min-height: 120px;
+  border-radius: 1rem;
+  color: #d6c8af;
+  background: rgba(8, 14, 15, 0.3);
+}
+
+.zombtrain-location-card {
+  position: relative;
+  min-height: 320px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(85, 129, 139, 0.95), rgba(46, 83, 88, 0.98));
+}
+
+.zombtrain-location-card__pond {
+  position: absolute;
+  left: 56px;
+  bottom: 36px;
+  width: 320px;
+  height: 180px;
+  border-radius: 50%;
+  background: rgba(77, 139, 162, 0.95);
+  border: 6px solid rgba(165, 227, 221, 0.6);
+}
+
+.zombtrain-location-card__train {
+  position: absolute;
+  right: 70px;
+  bottom: 74px;
+  width: 220px;
+  height: 104px;
+  display: grid;
+  place-items: center;
+  border-radius: 1rem;
+  background: #5f7e65;
+  border: 6px solid #efe5c6;
+  color: #fff3de;
+  font-weight: 700;
+}
+
+.zombtrain-location-card__copy {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(90%, 420px);
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgba(8, 14, 15, 0.5);
+  text-align: center;
+}
+
+.zombtrain-fish-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.zombtrain-fish-card {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: rgba(10, 17, 18, 0.54);
+  border: 1px solid rgba(255, 236, 209, 0.1);
+}
+
+.zombtrain-fish-card.is-common { border-color: rgba(174, 215, 163, 0.5); }
+.zombtrain-fish-card.is-uncommon { border-color: rgba(122, 197, 217, 0.55); }
+.zombtrain-fish-card.is-rare { border-color: rgba(203, 152, 235, 0.55); }
+.zombtrain-fish-card.is-legendary { border-color: rgba(245, 201, 134, 0.72); }
+
+.zombtrain-fishing-shell {
+  display: grid;
+  grid-template-columns: 240px 120px 1fr;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+}
+
+.zombtrain-fishing-info {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.zombtrain-fishing-meter {
+  position: relative;
+  height: 320px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(149, 205, 214, 0.18), rgba(49, 87, 99, 0.46));
+  border: 1px solid rgba(255, 236, 209, 0.12);
+}
+
+.zombtrain-fishing-fish,
+.zombtrain-fishing-bar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 999px;
+}
+
+.zombtrain-fishing-fish {
+  width: 52px;
+  background: rgba(130, 222, 135, 0.46);
+  border: 2px solid rgba(188, 255, 189, 0.86);
+}
+
+.zombtrain-fishing-bar {
+  width: 66px;
+  height: 58px;
+  background: #f6cd84;
+  border: 2px solid rgba(255, 247, 229, 0.82);
+}
+
+.zombtrain-fishing-progress {
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 246, 233, 0.08);
+  overflow: hidden;
+}
+
+.zombtrain-fishing-progress__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #84e490, #f6c986);
+}
+
+.zombtrain-store-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.zombtrain-store-panel {
+  padding: 1rem;
+}
+
+.zombtrain-store-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.zombtrain-store-item {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.95rem;
+  border: 1px solid rgba(255, 236, 209, 0.1);
+  background: rgba(255, 248, 235, 0.04);
+  text-align: left;
+  color: #fff4df;
+}
+
+.zombtrain-store-item.is-sell {
+  background: rgba(245, 201, 134, 0.12);
+}
+
+.zombtrain-sell-box {
+  min-height: 320px;
+}
+
+@media (max-width: 900px) {
+  .zombtrain-fishing-shell,
+  .zombtrain-store-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .zombtrain-title-overlay {
+    margin-top: 0.75rem;
+  }
+}
+

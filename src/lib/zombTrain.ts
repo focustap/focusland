@@ -18,6 +18,12 @@ export type ZombTrainResourceKey =
 export type ZombTrainTrainPalette = "ember" | "sage" | "cream" | "night";
 
 export type ZombTrainTrainUpgradeKey = "stove" | "storage" | "workbench" | "lanterns";
+export type ZombTrainFishRarity = "common" | "uncommon" | "rare" | "legendary";
+export type ZombTrainFishId =
+  | "glassfin-carp"
+  | "softshell-bluegill"
+  | "lantern-koi"
+  | "moon-eel";
 
 export type ZombTrainDestination = {
   id: ZombTrainDestinationId;
@@ -46,6 +52,17 @@ export type ZombTrainUpgrade = {
   cost: number;
 };
 
+export type ZombTrainFishDefinition = {
+  id: ZombTrainFishId;
+  name: string;
+  rarity: ZombTrainFishRarity;
+  value: number;
+  difficulty: number;
+  barSize: number;
+  speed: number;
+  destinationId: ZombTrainDestinationId;
+};
+
 export type ZombTrainSave = {
   activeView: ZombTrainView;
   selectedDestinationId: ZombTrainDestinationId;
@@ -56,6 +73,7 @@ export type ZombTrainSave = {
   inventory: Record<ZombTrainResourceKey, number>;
   train: ZombTrainTrainState;
   upgrades: ZombTrainTrainUpgradeKey[];
+  fishInventory: Record<ZombTrainFishId, number>;
   journal: string[];
   lastUpdatedAt: string;
 };
@@ -133,6 +151,49 @@ export const ZOMBTRAIN_UPGRADES: ZombTrainUpgrade[] = [
   }
 ];
 
+export const ZOMBTRAIN_FISH: ZombTrainFishDefinition[] = [
+  {
+    id: "softshell-bluegill",
+    name: "Softshell Bluegill",
+    rarity: "common",
+    value: 14,
+    difficulty: 1,
+    barSize: 84,
+    speed: 0.9,
+    destinationId: "stillwater-pond"
+  },
+  {
+    id: "glassfin-carp",
+    name: "Glassfin Carp",
+    rarity: "uncommon",
+    value: 24,
+    difficulty: 2,
+    barSize: 64,
+    speed: 1.15,
+    destinationId: "stillwater-pond"
+  },
+  {
+    id: "lantern-koi",
+    name: "Lantern Koi",
+    rarity: "rare",
+    value: 46,
+    difficulty: 3,
+    barSize: 48,
+    speed: 1.35,
+    destinationId: "stillwater-pond"
+  },
+  {
+    id: "moon-eel",
+    name: "Moon Eel",
+    rarity: "legendary",
+    value: 92,
+    difficulty: 4,
+    barSize: 34,
+    speed: 1.6,
+    destinationId: "stillwater-pond"
+  }
+];
+
 export const DEFAULT_ZOMBTRAIN_SAVE: ZombTrainSave = {
   activeView: "title",
   selectedDestinationId: "stillwater-pond",
@@ -156,6 +217,12 @@ export const DEFAULT_ZOMBTRAIN_SAVE: ZombTrainSave = {
     quiltPattern: "patchwork"
   },
   upgrades: [],
+  fishInventory: {
+    "glassfin-carp": 0,
+    "softshell-bluegill": 0,
+    "lantern-koi": 0,
+    "moon-eel": 0
+  },
   journal: [
     "The old world is gone, but the kettle still whistles.",
     "People pay well for calm places, fresh fish, and working lanterns."
@@ -282,11 +349,46 @@ function normalizeZombTrainSave(value: Partial<ZombTrainSave>): ZombTrainSave {
           ZOMBTRAIN_UPGRADES.some((item) => item.key === upgrade)
         )
       : [],
+    fishInventory: normalizeFishInventory(value.fishInventory),
     journal: Array.isArray(value.journal) && value.journal.length > 0
       ? value.journal.slice(0, 12)
       : DEFAULT_ZOMBTRAIN_SAVE.journal,
     lastUpdatedAt: typeof value.lastUpdatedAt === "string" ? value.lastUpdatedAt : new Date().toISOString()
   };
+}
+
+function normalizeFishInventory(
+  value: Partial<Record<ZombTrainFishId, number>> | undefined
+): Record<ZombTrainFishId, number> {
+  return {
+    "glassfin-carp": clampCount(value?.["glassfin-carp"], DEFAULT_ZOMBTRAIN_SAVE.fishInventory["glassfin-carp"]),
+    "softshell-bluegill": clampCount(value?.["softshell-bluegill"], DEFAULT_ZOMBTRAIN_SAVE.fishInventory["softshell-bluegill"]),
+    "lantern-koi": clampCount(value?.["lantern-koi"], DEFAULT_ZOMBTRAIN_SAVE.fishInventory["lantern-koi"]),
+    "moon-eel": clampCount(value?.["moon-eel"], DEFAULT_ZOMBTRAIN_SAVE.fishInventory["moon-eel"])
+  };
+}
+
+export function getFishByDestination(destinationId: ZombTrainDestinationId) {
+  return ZOMBTRAIN_FISH.filter((fish) => fish.destinationId === destinationId);
+}
+
+export function getFishById(id: ZombTrainFishId) {
+  return ZOMBTRAIN_FISH.find((fish) => fish.id === id) ?? ZOMBTRAIN_FISH[0];
+}
+
+export function formatFishRarity(rarity: ZombTrainFishRarity) {
+  switch (rarity) {
+    case "common":
+      return "Common";
+    case "uncommon":
+      return "Uncommon";
+    case "rare":
+      return "Rare";
+    case "legendary":
+      return "Legendary";
+    default:
+      return rarity;
+  }
 }
 
 function clampCount(value: number | undefined, fallback: number, min = 0, max = 999) {
