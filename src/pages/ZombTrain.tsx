@@ -151,9 +151,9 @@ const ZombTrain: React.FC = () => {
         const nextFishY = approachValue(current.fishY, desiredFishY, current.fish.pull * frame);
 
         let nextBarVelocity =
-          current.barVelocity + (holdingCastRef.current ? -0.06 : 0.038) * frame;
-        nextBarVelocity *= holdingCastRef.current ? 0.94 : 0.965;
-        nextBarVelocity = clampValue(nextBarVelocity, -0.72, 0.88);
+          current.barVelocity + (holdingCastRef.current ? -0.082 : 0.052) * frame;
+        nextBarVelocity *= holdingCastRef.current ? 0.952 : 0.978;
+        nextBarVelocity = clampValue(nextBarVelocity, -1.04, 1.12);
 
         let nextBarY = clampValue(current.barY + nextBarVelocity * frame, 4, 96);
         if ((nextBarY === 4 && nextBarVelocity < 0) || (nextBarY === 96 && nextBarVelocity > 0)) {
