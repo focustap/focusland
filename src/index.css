@@ -4663,8 +4663,10 @@ body[data-theme="dark"] .card-battle-card--hidden {
 
 .zombtrain-title-stage {
   position: relative;
-  min-height: 340px;
   width: 100%;
+  aspect-ratio: 3 / 2;
+  min-height: 420px;
+  max-height: 620px;
   overflow: hidden;
   border-radius: 1.35rem;
   border: 1px solid rgba(255, 234, 206, 0.14);
@@ -4684,12 +4686,14 @@ body[data-theme="dark"] .card-battle-card--hidden {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center bottom;
+  background: #0e1620;
 }
 
 .zombtrain-title-stage__train {
   left: -34%;
-  bottom: -1.5%;
-  width: min(48vw, 540px);
+  bottom: 5.5%;
+  width: min(42vw, 500px);
   image-rendering: pixelated;
   filter: drop-shadow(0 20px 24px rgba(0, 0, 0, 0.42));
   animation: zombtrain-title-roll 18s linear infinite;
@@ -4993,6 +4997,15 @@ body[data-theme="dark"] .card-battle-card--hidden {
   .zombtrain-fishing-shell,
   .zombtrain-store-grid {
     grid-template-columns: 1fr;
+  }
+
+  .zombtrain-title-stage {
+    min-height: 320px;
+  }
+
+  .zombtrain-title-stage__train {
+    bottom: 4%;
+    width: min(62vw, 420px);
   }
 
   .zombtrain-title-overlay {
