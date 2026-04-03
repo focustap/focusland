@@ -4688,7 +4688,7 @@ body[data-theme="dark"] .card-battle-card--hidden {
 
 .zombtrain-title-stage__train {
   left: -34%;
-  bottom: 10%;
+  bottom: -1.5%;
   width: min(48vw, 540px);
   image-rendering: pixelated;
   filter: drop-shadow(0 20px 24px rgba(0, 0, 0, 0.42));

@@ -261,11 +261,11 @@ const ZombTrain: React.FC = () => {
         {screen === "title" && (
           <section className="zombtrain-title-screen">
             <div className="zombtrain-title-stage">
-              <img
-                className="zombtrain-title-stage__bg"
-                src={`${import.meta.env.BASE_URL}assets/zombtrain/backgroundfortrain.png`}
-                alt=""
-              />
+                <img
+                  className="zombtrain-title-stage__bg"
+                  src={`${import.meta.env.BASE_URL}assets/zombtrain/backgroundfortrainfinal.png`}
+                  alt=""
+                />
               <img
                 className="zombtrain-title-stage__train"
                 src={`${import.meta.env.BASE_URL}assets/zombtrain/train.png`}
