@@ -27,20 +27,12 @@ import {
   type ZombTrainView
 } from "../lib/zombTrain";
 
-type SceneMode = "title" | "route" | "train" | "fishing";
+type SceneMode = "title" | "location" | "train" | "fishing";
 type HotspotId = "route-board" | "train-door" | "pond" | "sell-crate" | "salvage" | "woods" | "paint" | "upgrade" | "sleep" | "exit";
 type Hotspot = { id: HotspotId; label: string; x: number; y: number; radius: number; prompt: string };
 
-const WORLD_HOTSPOTS: Hotspot[] = [
-  { id: "route-board", label: "Route Board", x: 660, y: 154, radius: 48, prompt: "Choose the next stop" },
-  { id: "train-door", label: "Train Door", x: 354, y: 258, radius: 74, prompt: "Go inside the train" },
-  { id: "pond", label: "Stillwater Pond", x: 146, y: 444, radius: 78, prompt: "Fish for dinner" },
-  { id: "sell-crate", label: "Sell Crate", x: 690, y: 434, radius: 50, prompt: "Ship your haul for coins" },
-  { id: "salvage", label: "Salvage Pile", x: 582, y: 474, radius: 56, prompt: "Scavenge scrap and ore" },
-  { id: "woods", label: "Pine Edge", x: 108, y: 170, radius: 88, prompt: "Gather wood and herbs" }
-];
-
 const TRAIN_HOTSPOTS: Hotspot[] = [
+  { id: "route-board", label: "Route Board", x: 360, y: 130, radius: 58, prompt: "Pick the next destination" },
   { id: "paint", label: "Paint Shelf", x: 148, y: 132, radius: 54, prompt: "Switch paint colors" },
   { id: "upgrade", label: "Workbench", x: 276, y: 406, radius: 62, prompt: "Install upgrades" },
   { id: "sleep", label: "Bunk", x: 596, y: 130, radius: 76, prompt: "Rest and settle the nerves" },
@@ -49,17 +41,52 @@ const TRAIN_HOTSPOTS: Hotspot[] = [
 
 const VIEW_FROM_MODE: Record<SceneMode, ZombTrainView> = {
   title: "title",
-  route: "map",
+  location: "map",
   train: "train",
   fishing: "fishing"
 };
 
 const MODE_FROM_VIEW: Record<ZombTrainView, SceneMode> = {
   title: "title",
-  map: "route",
+  map: "location",
   train: "train",
   fishing: "fishing"
 };
+
+function getLocationHotspots(destinationId: ZombTrainDestinationId): Hotspot[] {
+  const common: Hotspot[] = [
+    { id: "train-door", label: "Parked Train", x: 650, y: 300, radius: 96, prompt: "Board the train and head back inside" },
+    { id: "sell-crate", label: "Sell Crate", x: 690, y: 434, radius: 52, prompt: "Ship your haul for coins" }
+  ];
+
+  switch (destinationId) {
+    case "stillwater-pond":
+      return [
+        ...common,
+        { id: "pond", label: "Stillwater Pond", x: 180, y: 380, radius: 90, prompt: "Fish for dinner" },
+        { id: "woods", label: "Reed Bank", x: 148, y: 156, radius: 74, prompt: "Gather herbs and bait" }
+      ];
+    case "pinewatch-woods":
+      return [
+        ...common,
+        { id: "woods", label: "Pine Edge", x: 150, y: 210, radius: 94, prompt: "Gather wood and herbs" },
+        { id: "pond", label: "Creek Pool", x: 250, y: 430, radius: 72, prompt: "Fish the creek" }
+      ];
+    case "iron-hollow":
+      return [
+        ...common,
+        { id: "salvage", label: "Mine Entrance", x: 194, y: 260, radius: 88, prompt: "Mine ore and pull scrap" }
+      ];
+    case "sunset-market":
+      return [
+        ...common,
+        { id: "sell-crate", label: "Market Stall", x: 248, y: 260, radius: 76, prompt: "Trade goods for better prices" },
+        { id: "woods", label: "Supply Cart", x: 194, y: 424, radius: 66, prompt: "Pick up bait and herbs" }
+      ];
+    default:
+      return common;
+  }
+}
 
 const ZombTrain: React.FC = () => {
   const [save, setSave] = useState<ZombTrainSave>(DEFAULT_ZOMBTRAIN_SAVE);
@@ -130,8 +157,8 @@ const ZombTrain: React.FC = () => {
 
         this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
           if (this.mode === "title") {
-            this.enterMode("route");
-            helpers.setStatus("You roll off the title screen and into the world.");
+            this.enterMode("train");
+            helpers.setStatus("You step through the railcar door and into the moving home.");
             return;
           }
           if (this.mode === "fishing") {
@@ -148,13 +175,13 @@ const ZombTrain: React.FC = () => {
         this.input.keyboard?.on("keydown-SPACE", () => { this.holdingCast = true; });
         this.input.keyboard?.on("keyup-SPACE", () => { this.holdingCast = false; });
         this.input.keyboard?.on("keydown-ESC", () => {
-          if (this.mode === "train" || this.mode === "fishing") {
-            this.enterMode("route");
-            helpers.setStatus("Back outside by the train tracks.");
+          if (this.mode === "location" || this.mode === "fishing") {
+            this.enterMode("train");
+            helpers.setStatus("Back inside the train.");
           }
         });
-        this.input.keyboard?.on("keydown-LEFT", () => { if (this.mode === "route") this.cycleDestination(-1); });
-        this.input.keyboard?.on("keydown-RIGHT", () => { if (this.mode === "route") this.cycleDestination(1); });
+        this.input.keyboard?.on("keydown-LEFT", () => { if (this.mode === "train") this.cycleDestination(-1); });
+        this.input.keyboard?.on("keydown-RIGHT", () => { if (this.mode === "train") this.cycleDestination(1); });
         this.input.keyboard?.on("keydown-UP", () => { if (this.mode === "train") { this.selectedUpgradeIndex = Phaser.Math.Wrap(this.selectedUpgradeIndex - 1, 0, ZOMBTRAIN_UPGRADES.length); this.renderMode(); } });
         this.input.keyboard?.on("keydown-DOWN", () => { if (this.mode === "train") { this.selectedUpgradeIndex = Phaser.Math.Wrap(this.selectedUpgradeIndex + 1, 0, ZOMBTRAIN_UPGRADES.length); this.renderMode(); } });
 
@@ -178,7 +205,7 @@ const ZombTrain: React.FC = () => {
         this.currentHotspot = null;
 
         if (this.mode === "title") this.renderTitle();
-        else if (this.mode === "route") this.renderWorld();
+        else if (this.mode === "location") this.renderLocation();
         else if (this.mode === "train") this.renderTrain();
         else this.renderFishing();
 
@@ -193,20 +220,20 @@ const ZombTrain: React.FC = () => {
           message ?? (
             this.mode === "title"
               ? "Click to start."
-              : this.mode === "route"
+              : this.mode === "location"
                 ? `${destination.name}: walk up to a hotspot and press E.`
                 : this.mode === "train"
-                  ? "Everything important lives inside the world now."
+                  ? "Train hub: route board, upgrades, sleep, and style all live in here."
                   : "Hold Space or the mouse to keep the bar on the fish."
           )
         );
         this.hint.setText(
           this.mode === "title"
             ? "Click"
-            : this.mode === "route"
-              ? "Move: click  Interact: E  Route: arrows"
+            : this.mode === "location"
+              ? "Move: click  Interact: E  Return: Esc"
               : this.mode === "train"
-                ? "Move: click  Interact: E  Exit: Esc"
+                ? "Move: click  Interact: E  Route: arrows"
                 : "Hold Space / mouse  Exit: Esc"
         );
       }
@@ -236,10 +263,9 @@ const ZombTrain: React.FC = () => {
         this.add.text(410, 454, "Click anywhere to board the train", { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "18px", color: "#fff4df" }).setOrigin(0.5);
       }
 
-      renderWorld() {
+      renderLocation() {
         const save = helpers.getSave();
         const destination = getDestinationById(save.currentStopId);
-        this.selectedDestinationId = save.selectedDestinationId;
         const palette = getPalettePreview(save.train.palette);
         const shell = Phaser.Display.Color.HexStringToColor(palette.shell).color;
         const trim = Phaser.Display.Color.HexStringToColor(palette.trim).color;
@@ -248,29 +274,44 @@ const ZombTrain: React.FC = () => {
         sky.fillGradientStyle(0x769995, 0x8db1ab, 0x49635a, 0x28413c, 1);
         sky.fillRect(0, 0, 820, 560);
         const ground = this.add.graphics();
-        ground.fillStyle(0x3f5e48, 1);
+        ground.fillStyle(destination.id === "iron-hollow" ? 0x585148 : 0x3f5e48, 1);
         ground.fillRect(0, 120, 820, 440);
-        ground.fillStyle(0x567b5c, 1);
+        ground.fillStyle(destination.id === "sunset-market" ? 0x856449 : 0x567b5c, 1);
         ground.fillRect(0, 350, 820, 210);
-        this.add.ellipse(150, 444, 178, 118, 0x4f8ba2, 0.95).setStrokeStyle(6, 0xa5e3dd, 0.6);
-        this.add.circle(92, 160, 62, 0x2b4b34, 1);
-        this.add.circle(138, 200, 58, 0x34563a, 1);
-        this.add.circle(68, 214, 46, 0x3e6545, 1);
-        this.add.rectangle(582, 474, 92, 72, 0x6d5645, 1).setAngle(-4).setStrokeStyle(4, 0xb48b66, 0.75);
-        this.add.rectangle(688, 434, 74, 64, 0x8b6b41, 1).setStrokeStyle(4, 0xf0c783, 0.85);
-        this.add.rectangle(660, 154, 118, 96, 0x6f5238, 1).setStrokeStyle(4, 0xf7deae, 0.85).setAngle(2);
-        this.add.rectangle(360, 272, 248, 116, shell, 1).setStrokeStyle(6, trim, 0.95);
-        this.add.rectangle(326, 244, 102, 54, trim, 1).setStrokeStyle(3, 0x21382f, 0.35);
-        this.add.rectangle(424, 272, 86, 86, 0x7a4a33, 1).setStrokeStyle(4, trim, 0.75);
-        this.add.circle(264, 272, 18, 0xf8d48b, 1);
-        this.add.rectangle(354, 258, 50, 76, 0x1b1916, 0.72);
-        this.add.circle(300, 318, 18, 0x1b1b1b, 1).setStrokeStyle(5, 0x707070, 1);
-        this.add.circle(420, 318, 18, 0x1b1b1b, 1).setStrokeStyle(5, 0x707070, 1);
+
+        if (destination.id === "stillwater-pond") {
+          this.add.ellipse(180, 380, 238, 150, 0x4f8ba2, 0.95).setStrokeStyle(6, 0xa5e3dd, 0.6);
+          this.add.circle(110, 160, 62, 0x2b4b34, 1);
+          this.add.circle(168, 196, 58, 0x34563a, 1);
+          this.add.circle(78, 214, 46, 0x3e6545, 1);
+        } else if (destination.id === "pinewatch-woods") {
+          this.add.circle(150, 210, 94, 0x27452f, 1);
+          this.add.circle(236, 228, 72, 0x31563a, 1);
+          this.add.circle(106, 282, 64, 0x3d6948, 1);
+          this.add.ellipse(250, 430, 164, 88, 0x4f8ba2, 0.95).setStrokeStyle(6, 0xa5e3dd, 0.5);
+        } else if (destination.id === "iron-hollow") {
+          this.add.circle(206, 260, 112, 0x3b342e, 1).setStrokeStyle(8, 0x8b7a6a, 0.55);
+          this.add.rectangle(148, 406, 94, 58, 0x6d5645, 1).setAngle(-8).setStrokeStyle(4, 0xb48b66, 0.75);
+          this.add.rectangle(246, 446, 110, 64, 0x5f493b, 1).setAngle(6).setStrokeStyle(4, 0xb48b66, 0.75);
+        } else if (destination.id === "sunset-market") {
+          this.add.rectangle(248, 260, 132, 110, 0x7f583a, 1).setStrokeStyle(5, 0xf0c783, 0.8);
+          this.add.rectangle(194, 424, 92, 64, 0x6d5645, 1).setStrokeStyle(4, 0xb48b66, 0.75);
+          this.add.rectangle(304, 404, 106, 72, 0x8b6b41, 1).setStrokeStyle(4, 0xf0c783, 0.7);
+        }
+
+        this.add.rectangle(690, 434, 74, 64, 0x8b6b41, 1).setStrokeStyle(4, 0xf0c783, 0.85);
+        this.add.rectangle(650, 300, 248, 116, shell, 1).setStrokeStyle(6, trim, 0.95);
+        this.add.rectangle(616, 272, 102, 54, trim, 1).setStrokeStyle(3, 0x21382f, 0.35);
+        this.add.rectangle(714, 300, 86, 86, 0x7a4a33, 1).setStrokeStyle(4, trim, 0.75);
+        this.add.circle(554, 300, 18, 0xf8d48b, 1);
+        this.add.rectangle(644, 286, 50, 76, 0x1b1916, 0.72);
+        this.add.circle(590, 346, 18, 0x1b1b1b, 1).setStrokeStyle(5, 0x707070, 1);
+        this.add.circle(710, 346, 18, 0x1b1b1b, 1).setStrokeStyle(5, 0x707070, 1);
         this.add.rectangle(412, 86, 318, 56, 0x081212, 0.45).setStrokeStyle(2, 0xffe1ad, 0.28);
         this.add.text(412, 74, destination.name, { fontFamily: "Georgia, serif", fontSize: "24px", color: "#fff4df", fontStyle: "bold" }).setOrigin(0.5);
         this.add.text(412, 96, destination.vibe, { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "12px", color: "#e7d6b5" }).setOrigin(0.5);
 
-        this.player = createAvatarRender(this, 260, 310, helpers.getAvatar(), 24, TOWN_AVATAR_SCALE);
+        this.player = createAvatarRender(this, 560, 336, helpers.getAvatar(), 24, TOWN_AVATAR_SCALE);
       }
 
       renderTrain() {
@@ -291,10 +332,13 @@ const ZombTrain: React.FC = () => {
         this.add.circle(410, 94, 90, 0xf6ce85, save.train.lanternGlow / 260);
         this.add.circle(410, 94, 22, 0xf6ce85, 1);
         this.add.rectangle(150, 132, 110, 104, 0x5d4431, 1).setStrokeStyle(4, 0xf2ddbb, 0.6);
+        this.add.rectangle(360, 130, 120, 96, 0x6f5238, 1).setStrokeStyle(4, 0xf7deae, 0.85);
         this.add.rectangle(276, 408, 150, 106, 0x4e3828, 1).setStrokeStyle(4, 0xf2ddbb, 0.6);
         this.add.rectangle(598, 132, 170, 102, 0xcab18d, 1).setStrokeStyle(4, 0xeedfb8, 0.7);
         this.add.rectangle(730, 270, 82, 144, 0x271d18, 0.88).setStrokeStyle(4, 0xf0debc, 0.7);
         this.add.rectangle(560, 404, 218, 108, 0x0a1213, 0.55).setStrokeStyle(2, 0xf0debc, 0.2);
+        this.add.text(360, 120, "Routes", { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "16px", color: "#fff4df", fontStyle: "bold" }).setOrigin(0.5);
+        this.add.text(360, 146, getDestinationById(save.selectedDestinationId).name, { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "13px", color: "#e7d6b5" }).setOrigin(0.5);
         this.add.text(462, 368, `Workbench: ${upgrade.name}`, { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "16px", color: "#fff4df", fontStyle: "bold", wordWrap: { width: 180 } });
         this.add.text(462, 394, upgrade.description, { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "13px", color: "#dacdaf", wordWrap: { width: 188 } });
         this.add.text(462, 446, owned ? "Installed" : `${upgrade.cost} coins`, { fontFamily: "\"Trebuchet MS\", system-ui, sans-serif", fontSize: "14px", color: owned ? "#9be8b0" : "#f5d18f" });
@@ -367,7 +411,7 @@ const ZombTrain: React.FC = () => {
 
       updatePrompt() {
         if (!this.player) return;
-        const source = this.mode === "route" ? WORLD_HOTSPOTS : TRAIN_HOTSPOTS;
+        const source = this.mode === "location" ? getLocationHotspots(helpers.getSave().currentStopId) : TRAIN_HOTSPOTS;
         const hotspot = source.find((candidate) => Phaser.Math.Distance.Between(this.player!.container.x, this.player!.container.y, candidate.x, candidate.y) <= candidate.radius);
         this.currentHotspot = hotspot?.id ?? null;
         if (hotspot) this.syncHud(`${hotspot.label}: ${hotspot.prompt}. Press E.`);
@@ -399,7 +443,7 @@ const ZombTrain: React.FC = () => {
 
       handleInteract() {
         const save = helpers.getSave();
-        if (this.mode === "route") {
+        if (this.mode === "location") {
           if (this.currentHotspot === "route-board") {
             const destination = getDestinationById(save.selectedDestinationId);
             helpers.patchSave((current) => ({
@@ -446,7 +490,7 @@ const ZombTrain: React.FC = () => {
         }
         if (this.mode === "train") {
           if (this.currentHotspot === "exit") {
-            this.enterMode("route");
+            this.enterMode("location");
           } else if (this.currentHotspot === "paint") {
             helpers.patchSave((current) => {
               const palettes = ["sage", "cream", "ember", "night"] as const;
@@ -455,6 +499,17 @@ const ZombTrain: React.FC = () => {
             });
             helpers.setStatus("Fresh paint for the railcar.");
             this.renderMode();
+          } else if (this.currentHotspot === "route-board") {
+            const destination = getDestinationById(save.selectedDestinationId);
+            helpers.patchSave((current) => ({
+              ...current,
+              currentStopId: destination.id,
+              day: current.day + 1,
+              cozyMeter: Math.min(100, current.cozyMeter + 3),
+              dangerMeter: Math.min(100, current.dangerMeter + (destination.risk === "Medium" ? 7 : 4))
+            }));
+            this.enterMode("location");
+            helpers.setStatus(`The train pulls into ${destination.name}.`);
           } else if (this.currentHotspot === "sleep") {
             helpers.patchSave((current) => ({ ...current, cozyMeter: Math.min(100, current.cozyMeter + 6), dangerMeter: Math.max(0, current.dangerMeter - 8) }));
             helpers.setStatus("A short rest makes the apocalypse feel further away.");
