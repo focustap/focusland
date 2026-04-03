@@ -4662,10 +4662,13 @@ body[data-theme="dark"] .card-battle-card--hidden {
 }
 
 .zombtrain-title-stage {
+  min-height: 340px;
+  width: 100%;
   overflow: hidden;
   border-radius: 1.35rem;
   border: 1px solid rgba(255, 234, 206, 0.14);
   box-shadow: 0 24px 54px rgba(3, 8, 8, 0.34);
+  background: linear-gradient(180deg, #142230, #1a2522);
 }
 
 .zombtrain-title-overlay {

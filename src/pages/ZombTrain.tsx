@@ -34,6 +34,7 @@ type DraggableTrainItem = {
 };
 
 type FishingRun = {
+  id: number;
   fish: ZombTrainFishDefinition;
   fishY: number;
   barY: number;
@@ -42,6 +43,7 @@ type FishingRun = {
   timeLeft: number;
   active: boolean;
   caught: boolean;
+  resolved: boolean;
 };
 
 const DEFAULT_TRAIN_ITEMS: DraggableTrainItem[] = [
@@ -72,6 +74,7 @@ const ZombTrain: React.FC = () => {
   const [fishing, setFishing] = useState<FishingRun | null>(null);
   const titleRef = useRef<HTMLDivElement | null>(null);
   const titleGameRef = useRef<Phaser.Game | null>(null);
+  const nextFishingIdRef = useRef(1);
 
   useEffect(() => {
     const loaded = loadZombTrainSave();
@@ -85,7 +88,7 @@ const ZombTrain: React.FC = () => {
   }, [save]);
 
   useEffect(() => {
-    if (!titleRef.current || titleGameRef.current) return;
+    if (screen !== "title" || !titleRef.current || titleGameRef.current) return;
 
     class TitleScene extends Phaser.Scene {
       train!: Phaser.GameObjects.Container;
@@ -144,7 +147,7 @@ const ZombTrain: React.FC = () => {
       titleGameRef.current?.destroy(true);
       titleGameRef.current = null;
     };
-  }, []);
+  }, [screen]);
 
   useEffect(() => {
     if (!fishing?.active || !save) return;
@@ -159,11 +162,15 @@ const ZombTrain: React.FC = () => {
       setFishing((current) => {
         if (!current?.active) return current;
         const t = time / 1000;
-        const nextFishY = 50 + Math.sin(t * current.fish.speed * 1.7) * 26 + Math.sin(t * (current.fish.speed + 1.2) * 2.3) * 12;
-        const nextVelocity = Phaser.Math.Clamp(current.velocity + (holdingCastRef.current ? -0.18 : 0.12), -3.2, 3.2);
-        const nextBarY = Phaser.Math.Clamp(current.barY + nextVelocity, 6, 94);
+        const nextFishY = 50 + Math.sin(t * current.fish.speed * 1.15) * 18 + Math.sin(t * (current.fish.speed + 0.55) * 1.6) * 8;
+        const nextVelocity = Phaser.Math.Clamp(
+          current.velocity + (holdingCastRef.current ? -0.042 : 0.028),
+          -1.25,
+          1.25
+        );
+        const nextBarY = Phaser.Math.Clamp(current.barY + nextVelocity, 10, 90);
         const distance = Math.abs(nextFishY - nextBarY);
-        const progressDelta = distance < current.fish.barSize / 2 ? 0.18 * delta : -0.15 * delta;
+        const progressDelta = distance < current.fish.barSize / 2 ? 0.08 * delta : -0.055 * delta;
         const nextProgress = Phaser.Math.Clamp(current.progress + progressDelta, 0, 100);
         const nextTimeLeft = Math.max(0, current.timeLeft - delta / 1000);
 
@@ -185,7 +192,7 @@ const ZombTrain: React.FC = () => {
   }, [fishing?.active, save]);
 
   useEffect(() => {
-    if (!fishing || !save || fishing.active) return;
+    if (!fishing || !save || fishing.active || fishing.resolved) return;
     if (fishing.caught) {
       setSave({
         ...save,
@@ -198,6 +205,7 @@ const ZombTrain: React.FC = () => {
     } else {
       setStatus("The fish got away. Cast again when you're ready.");
     }
+    setFishing((current) => current ? { ...current, resolved: true } : current);
   }, [fishing, save]);
 
   const holdingCastRef = useRef(false);
@@ -245,14 +253,16 @@ const ZombTrain: React.FC = () => {
   function startFishing() {
     const fish = rollFish(availableFish);
     setFishing({
+      id: nextFishingIdRef.current++,
       fish,
       fishY: 50,
       barY: 50,
       velocity: 0,
-      progress: 24,
-      timeLeft: 18 + (4 - fish.difficulty),
+      progress: 14,
+      timeLeft: 20 + (4 - fish.difficulty) * 1.5,
       active: true,
-      caught: false
+      caught: false,
+      resolved: false
     });
     setScreen("fishing");
     setStatus(`Casting for ${fish.name}. Harder fish pay more.`);
