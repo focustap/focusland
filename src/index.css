@@ -4692,7 +4692,7 @@ body[data-theme="dark"] .card-battle-card--hidden {
 
 .zombtrain-title-stage__train {
   left: -34%;
-  bottom: 5.5%;
+  bottom: calc(5.5% + 5px);
   width: min(42vw, 500px);
   image-rendering: pixelated;
   filter: drop-shadow(0 20px 24px rgba(0, 0, 0, 0.42));
@@ -4703,8 +4703,9 @@ body[data-theme="dark"] .card-battle-card--hidden {
   display: grid;
   gap: 0.8rem;
   justify-items: center;
-  margin-top: -4.5rem;
+  margin-top: 0.9rem;
   padding: 0 1rem 1rem;
+  text-align: center;
 }
 
 .zombtrain-title-overlay h1 {
@@ -5004,7 +5005,7 @@ body[data-theme="dark"] .card-battle-card--hidden {
   }
 
   .zombtrain-title-stage__train {
-    bottom: 4%;
+    bottom: calc(4% + 5px);
     width: min(62vw, 420px);
   }
 
