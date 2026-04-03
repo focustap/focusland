@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import Phaser from "phaser";
 import NavBar from "../components/NavBar";
 import {
   formatFishRarity,
@@ -72,8 +71,6 @@ const ZombTrain: React.FC = () => {
   const [sellBox, setSellBox] = useState(DEFAULT_SELL_BOX);
   const [status, setStatus] = useState("The line is quiet and the wheels never stop.");
   const [fishing, setFishing] = useState<FishingRun | null>(null);
-  const titleRef = useRef<HTMLDivElement | null>(null);
-  const titleGameRef = useRef<Phaser.Game | null>(null);
   const nextFishingIdRef = useRef(1);
 
   useEffect(() => {
@@ -86,68 +83,6 @@ const ZombTrain: React.FC = () => {
     if (!save) return;
     saveZombTrainSave(save);
   }, [save]);
-
-  useEffect(() => {
-    if (screen !== "title" || !titleRef.current || titleGameRef.current) return;
-
-    class TitleScene extends Phaser.Scene {
-      train!: Phaser.GameObjects.Container;
-      drift = 0;
-
-      create() {
-        const width = 900;
-        const height = 340;
-        const bg = this.add.graphics();
-        bg.fillGradientStyle(0x142230, 0x203a4f, 0x33473f, 0x1a2522, 1);
-        bg.fillRect(0, 0, width, height);
-        this.add.ellipse(742, 70, 154, 54, 0xf5d6a2, 0.86);
-        this.add.ellipse(742, 70, 220, 84, 0xf5d6a2, 0.12);
-        for (let i = 0; i < 10; i += 1) {
-          const y = 90 + i * 26;
-          this.add.rectangle(width / 2, y, 980, 6, 0x4d392f, 0.85).setAngle(0);
-        }
-        this.add.rectangle(width / 2, 208, 1040, 12, 0xc3b09b, 1);
-        this.add.rectangle(width / 2, 248, 1040, 12, 0xc3b09b, 1);
-        for (let i = 0; i < 20; i += 1) {
-          this.add.rectangle(40 + i * 44, 228, 18, 62, 0x5f4737, 1);
-        }
-
-        this.train = this.add.container(220, 196, [
-          this.add.ellipse(0, 20, 190, 58, 0x050809, 0.24),
-          this.add.rectangle(0, 0, 168, 80, 0x5f7e65, 1).setStrokeStyle(6, 0xefe5c6, 0.95),
-          this.add.rectangle(-18, -14, 80, 42, 0xefe5c6, 1).setStrokeStyle(3, 0x344239, 0.45),
-          this.add.rectangle(42, 4, 48, 56, 0x7d4a34, 1).setStrokeStyle(3, 0xefe5c6, 0.7),
-          this.add.circle(-56, -10, 12, 0xf5d18a, 1),
-          this.add.circle(-50, 28, 16, 0x171717, 1).setStrokeStyle(4, 0x737373, 1),
-          this.add.circle(46, 28, 16, 0x171717, 1).setStrokeStyle(4, 0x737373, 1)
-        ]);
-      }
-
-      update(_time: number, delta: number) {
-        this.drift += delta * 0.0011;
-        this.train.x = 220 + ((this.drift * 160) % 1040);
-        this.train.y = 196 + Math.sin(this.drift * 6) * 3;
-        if (this.train.x > 980) {
-          this.train.x = -120;
-        }
-      }
-    }
-
-    titleGameRef.current = new Phaser.Game({
-      type: Phaser.AUTO,
-      width: 900,
-      height: 340,
-      parent: titleRef.current,
-      backgroundColor: "#0d1518",
-      scene: TitleScene,
-      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }
-    });
-
-    return () => {
-      titleGameRef.current?.destroy(true);
-      titleGameRef.current = null;
-    };
-  }, [screen]);
 
   useEffect(() => {
     if (!fishing?.active || !save) return;
@@ -166,15 +101,17 @@ const ZombTrain: React.FC = () => {
         const centerBand = Math.abs(current.barY - 50) < 11;
         const holdLift = centerBand ? -0.07 : -0.055;
         const fallLift = centerBand ? 0.052 : 0.04;
-        const nextVelocity = Phaser.Math.Clamp(
-          current.velocity + (holdingCastRef.current ? holdLift : fallLift),
+        const nextVelocity = Math.max(
           -1.45,
-          1.45
+          Math.min(
+            1.45,
+          current.velocity + (holdingCastRef.current ? holdLift : fallLift),
+          )
         );
-        const nextBarY = Phaser.Math.Clamp(current.barY + nextVelocity, 4, 96);
+        const nextBarY = Math.max(4, Math.min(96, current.barY + nextVelocity));
         const distance = Math.abs(nextFishY - nextBarY);
         const progressDelta = distance < current.fish.barSize / 2 ? 0.028 * delta : -0.075 * delta;
-        const nextProgress = Phaser.Math.Clamp(current.progress + progressDelta, 0, 100);
+        const nextProgress = Math.max(0, Math.min(100, current.progress + progressDelta));
         const nextTimeLeft = Math.max(0, current.timeLeft - delta / 1000);
 
         if (nextProgress >= 100) {
@@ -323,7 +260,18 @@ const ZombTrain: React.FC = () => {
 
         {screen === "title" && (
           <section className="zombtrain-title-screen">
-            <div ref={titleRef} className="zombtrain-title-stage" />
+            <div className="zombtrain-title-stage">
+              <img
+                className="zombtrain-title-stage__bg"
+                src={`${import.meta.env.BASE_URL}assets/zombtrain/backgroundfortrain.png`}
+                alt=""
+              />
+              <img
+                className="zombtrain-title-stage__train"
+                src={`${import.meta.env.BASE_URL}assets/zombtrain/train.png`}
+                alt="Animated train"
+              />
+            </div>
             <div className="zombtrain-title-overlay">
               <h1>ZombTrain</h1>
               <p>The train keeps moving. You decide what the next stop is for.</p>
@@ -400,7 +348,13 @@ const ZombTrain: React.FC = () => {
             </div>
             <div className="zombtrain-location-card">
               <div className="zombtrain-location-card__pond" />
-              <div className="zombtrain-location-card__train">Train</div>
+              <div className="zombtrain-location-card__train">
+                <img
+                  className="zombtrain-location-card__train-img"
+                  src={`${import.meta.env.BASE_URL}assets/zombtrain/train.png`}
+                  alt="Train"
+                />
+              </div>
               <div className="zombtrain-location-card__copy">
                 <h3>{currentDestination.name}</h3>
                 <p>{currentDestination.vibe}</p>
