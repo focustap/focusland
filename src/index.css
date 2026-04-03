@@ -1,4 +1,4 @@
-/* Basic global styles for the app.
+﻿/* Basic global styles for the app.
    The goal is to keep things clean and beginner-friendly. */
 
 *,
@@ -4887,18 +4887,31 @@ body[data-theme="dark"] .card-battle-card--hidden {
   text-align: center;
 }
 
+
 .zombtrain-fish-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.9rem;
 }
 
 .zombtrain-fish-card {
   display: grid;
-  gap: 0.25rem;
-  padding: 0.9rem 1rem;
-  border-radius: 1rem;
-  background: rgba(10, 17, 18, 0.54);
+  gap: 0.35rem;
+  min-height: 152px;
+  padding: 1rem 1.05rem;
+  border-radius: 1.1rem;
+  background:
+    linear-gradient(180deg, rgba(10, 17, 18, 0.8), rgba(16, 26, 28, 0.62)),
+    radial-gradient(circle at top right, rgba(255, 255, 255, 0.08), transparent 38%);
   border: 1px solid rgba(255, 236, 209, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.zombtrain-fish-card p {
+  margin: 0.15rem 0 0;
+  color: #ddd1bd;
+  line-height: 1.45;
+  font-size: 0.9rem;
 }
 
 .zombtrain-fish-card.is-common { border-color: rgba(174, 215, 163, 0.5); }
@@ -4906,53 +4919,311 @@ body[data-theme="dark"] .card-battle-card--hidden {
 .zombtrain-fish-card.is-rare { border-color: rgba(203, 152, 235, 0.55); }
 .zombtrain-fish-card.is-legendary { border-color: rgba(245, 201, 134, 0.72); }
 
-.zombtrain-fishing-shell {
-  display: grid;
-  grid-template-columns: 240px 120px 1fr;
-  gap: 1rem;
+.zombtrain-rarity-pill {
+  display: inline-flex;
   align-items: center;
-  padding: 1rem;
+  width: fit-content;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(255, 248, 235, 0.08);
+  border: 1px solid rgba(255, 236, 209, 0.18);
+  color: #fff3de;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
-.zombtrain-fishing-info {
+.zombtrain-rarity-pill.is-common { border-color: rgba(174, 215, 163, 0.56); }
+.zombtrain-rarity-pill.is-uncommon { border-color: rgba(122, 197, 217, 0.62); }
+.zombtrain-rarity-pill.is-rare { border-color: rgba(203, 152, 235, 0.62); }
+.zombtrain-rarity-pill.is-legendary { border-color: rgba(245, 201, 134, 0.82); }
+
+.zombtrain-fishing-shell {
+  position: relative;
+  overflow: hidden;
+  padding: 1.2rem;
+  min-height: 660px;
+  border-radius: 1.35rem;
+  background:
+    radial-gradient(circle at top, rgba(165, 222, 234, 0.18), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(35, 79, 100, 0.44), transparent 30%),
+    linear-gradient(180deg, rgba(12, 26, 34, 0.96), rgba(10, 18, 26, 0.98));
+  border: 1px solid rgba(186, 226, 238, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 24px 48px rgba(0, 0, 0, 0.24);
+}
+
+.zombtrain-fishing-shell.is-common { --zt-fishing-accent: #95d8a4; }
+.zombtrain-fishing-shell.is-uncommon { --zt-fishing-accent: #7cd1ef; }
+.zombtrain-fishing-shell.is-rare { --zt-fishing-accent: #d49ef5; }
+.zombtrain-fishing-shell.is-legendary { --zt-fishing-accent: #f6c986; }
+
+.zombtrain-fishing-shell.is-danger {
+  animation: zombtrain-fishing-danger 720ms ease-in-out infinite alternate;
+}
+
+.zombtrain-fishing-shell.is-caught {
+  box-shadow: inset 0 0 0 1px rgba(132, 228, 144, 0.34), 0 24px 48px rgba(0, 0, 0, 0.24);
+}
+
+.zombtrain-fishing-scene {
+  position: relative;
+  z-index: 1;
   display: grid;
-  gap: 0.7rem;
+  gap: 1.2rem;
+}
+
+.zombtrain-fishing-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.zombtrain-fishing-summary__title {
+  display: grid;
+  gap: 0.55rem;
+  max-width: 34rem;
+}
+
+.zombtrain-fishing-summary__title h3 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  color: #fff4de;
+}
+
+.zombtrain-fishing-summary__title p {
+  margin: 0;
+  color: #d8d0c2;
+  line-height: 1.55;
+}
+
+.zombtrain-fishing-summary__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  width: min(100%, 420px);
+}
+
+.zombtrain-fishing-stat,
+.zombtrain-fishing-meter-card {
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: rgba(8, 16, 20, 0.46);
+  border: 1px solid rgba(255, 236, 209, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.zombtrain-fishing-stat span,
+.zombtrain-fishing-meter-card__head span,
+.zombtrain-fishing-controls-note {
+  color: #c8c2b7;
+  font-size: 0.82rem;
+}
+
+.zombtrain-fishing-stat strong,
+.zombtrain-fishing-meter-card__head strong {
+  display: block;
+  margin-top: 0.2rem;
+  color: #fff2de;
+  font-size: 1rem;
+}
+
+.zombtrain-fishing-play {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(260px, 1fr);
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.zombtrain-fishing-meter-wrap {
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
 }
 
 .zombtrain-fishing-meter {
   position: relative;
-  height: 420px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(149, 205, 214, 0.18), rgba(49, 87, 99, 0.46));
-  border: 1px solid rgba(255, 236, 209, 0.12);
+  width: min(100%, 220px);
+  height: 520px;
+  border-radius: 40px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(126, 186, 208, 0.3), rgba(24, 56, 76, 0.86)),
+    radial-gradient(circle at 50% 15%, rgba(255, 255, 255, 0.22), transparent 28%);
+  border: 1px solid rgba(196, 236, 240, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), inset 0 -22px 28px rgba(0, 0, 0, 0.14);
 }
 
+.zombtrain-fishing-meter__glow,
+.zombtrain-fishing-meter__foam {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.zombtrain-fishing-meter__glow {
+  background: radial-gradient(circle at 50% 10%, rgba(255, 255, 255, 0.18), transparent 28%);
+}
+
+.zombtrain-fishing-meter__foam {
+  background: repeating-linear-gradient(180deg, transparent 0 52px, rgba(255, 255, 255, 0.04) 52px 54px);
+  opacity: 0.6;
+}
+
+.zombtrain-fishing-meter__label {
+  position: absolute;
+  left: 1rem;
+  color: rgba(245, 245, 245, 0.42);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.zombtrain-fishing-meter__label--top { top: 0.9rem; }
+.zombtrain-fishing-meter__label--mid { top: calc(50% - 0.35rem); }
+.zombtrain-fishing-meter__label--bottom { bottom: 0.9rem; }
+
 .zombtrain-fishing-fish,
-.zombtrain-fishing-bar {
+.zombtrain-fishing-bar,
+.zombtrain-fishing-burst {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  border-radius: 999px;
 }
 
 .zombtrain-fishing-fish {
-  width: 52px;
-  background: rgba(130, 222, 135, 0.46);
-  border: 2px solid rgba(188, 255, 189, 0.86);
+  width: 112px;
+  filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.24));
+  transition: filter 120ms ease, transform 120ms ease;
+}
+
+.zombtrain-fishing-fish.is-hooked {
+  filter: drop-shadow(0 0 18px color-mix(in srgb, var(--zt-fishing-accent) 56%, transparent));
+}
+
+.zombtrain-fishing-fish__body,
+.zombtrain-fishing-fish__tail,
+.zombtrain-fishing-fish__eye {
+  position: absolute;
+  display: block;
+}
+
+.zombtrain-fishing-fish__body {
+  left: 22px;
+  top: 50%;
+  width: 70px;
+  height: 24px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--zt-fishing-accent) 80%, #f5f2e8 20%), rgba(255, 255, 255, 0.92));
+  border: 2px solid rgba(255, 255, 255, 0.42);
+}
+
+.zombtrain-fishing-fish__tail {
+  left: 8px;
+  top: 50%;
+  width: 24px;
+  height: 18px;
+  border-radius: 8px 0 0 8px;
+  transform: translateY(-50%) skewX(-20deg);
+  background: color-mix(in srgb, var(--zt-fishing-accent) 86%, #0f1c28 14%);
+}
+
+.zombtrain-fishing-fish__eye {
+  right: 20px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  background: #0f1a24;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.24);
 }
 
 .zombtrain-fishing-bar {
-  width: 66px;
-  height: 58px;
-  background: #f6cd84;
+  width: 104px;
+  height: 86px;
+  padding: 7px;
+  border-radius: 999px;
   border: 2px solid rgba(255, 247, 229, 0.82);
+  background: rgba(246, 205, 132, 0.22);
+  box-shadow: 0 0 0 1px rgba(255, 231, 188, 0.16), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  transition: transform 100ms ease, box-shadow 100ms ease, background 100ms ease;
+}
+
+.zombtrain-fishing-bar.is-reeling {
+  transform: translateX(-50%) scale(1.02);
+}
+
+.zombtrain-fishing-bar.is-contact {
+  box-shadow: 0 0 24px rgba(132, 228, 144, 0.32), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  background: rgba(132, 228, 144, 0.22);
+}
+
+.zombtrain-fishing-bar__core {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(248, 214, 147, 0.96), rgba(224, 170, 90, 0.92));
+}
+
+.zombtrain-fishing-burst {
+  width: 130px;
+  height: 130px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.2), transparent 58%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.zombtrain-fishing-burst.is-live {
+  opacity: 1;
+  animation: zombtrain-fishing-burst 600ms ease-out infinite;
+}
+
+.zombtrain-fishing-warning {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(121, 20, 20, 0.72);
+  border: 1px solid rgba(255, 167, 167, 0.28);
+  color: #ffe3e3;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.zombtrain-fishing-control-panel {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.zombtrain-fishing-meter-card__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.55rem;
+}
+
+.zombtrain-fishing-meter-card.is-alert strong {
+  color: #ffd3b4;
 }
 
 .zombtrain-fishing-progress {
-  height: 22px;
+  height: 14px;
   border-radius: 999px;
   background: rgba(255, 246, 233, 0.08);
   overflow: hidden;
+}
+
+.zombtrain-fishing-progress.is-danger .zombtrain-fishing-progress__fill {
+  background: linear-gradient(90deg, #ff9370, #ffd38f);
 }
 
 .zombtrain-fishing-progress__fill {
@@ -4960,6 +5231,38 @@ body[data-theme="dark"] .card-battle-card--hidden {
   background: linear-gradient(90deg, #84e490, #f6c986);
 }
 
+.zombtrain-fishing-instruction {
+  margin: 0;
+  color: #ece0cf;
+  line-height: 1.6;
+}
+
+.zombtrain-reel-button {
+  border: 1px solid rgba(255, 236, 209, 0.16);
+  border-radius: 999px;
+  padding: 0.95rem 1.2rem;
+  background: linear-gradient(180deg, rgba(255, 220, 169, 0.94), rgba(235, 175, 96, 0.92));
+  color: #2d1f14;
+  font-weight: 800;
+  font-size: 0.96rem;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.22);
+}
+
+.zombtrain-reel-button:hover {
+  transform: translateY(-1px);
+}
+
+@keyframes zombtrain-fishing-danger {
+  from { box-shadow: inset 0 0 0 1px rgba(255, 161, 161, 0.08), 0 24px 48px rgba(0, 0, 0, 0.24); }
+  to { box-shadow: inset 0 0 0 1px rgba(255, 161, 161, 0.22), 0 24px 48px rgba(0, 0, 0, 0.24); }
+}
+
+@keyframes zombtrain-fishing-burst {
+  from { transform: translateX(-50%) scale(0.72); opacity: 0.55; }
+  to { transform: translateX(-50%) scale(1.1); opacity: 0; }
+}
 .zombtrain-store-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -4994,10 +5297,16 @@ body[data-theme="dark"] .card-battle-card--hidden {
   min-height: 320px;
 }
 
+
 @media (max-width: 900px) {
-  .zombtrain-fishing-shell,
-  .zombtrain-store-grid {
+  .zombtrain-fishing-play,
+  .zombtrain-store-grid,
+  .zombtrain-fishing-summary__stats {
     grid-template-columns: 1fr;
+  }
+
+  .zombtrain-fishing-shell {
+    min-height: auto;
   }
 
   .zombtrain-title-stage {

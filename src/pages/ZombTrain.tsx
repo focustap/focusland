@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
 import {
   formatFishRarity,
@@ -6,7 +6,6 @@ import {
   getDestinationById,
   getFishByDestination,
   getFishById,
-  getPalettePreview,
   loadZombTrainSave,
   resetZombTrainSave,
   saveZombTrainSave,
@@ -36,13 +35,18 @@ type FishingRun = {
   id: number;
   fish: ZombTrainFishDefinition;
   fishY: number;
+  fishTargetY: number;
+  fishDecisionTimer: number;
   barY: number;
-  velocity: number;
+  barVelocity: number;
   progress: number;
+  slip: number;
   timeLeft: number;
+  contact: boolean;
   active: boolean;
   caught: boolean;
   resolved: boolean;
+  failReason: "time" | "slipped" | null;
 };
 
 const DEFAULT_TRAIN_ITEMS: DraggableTrainItem[] = [
@@ -71,6 +75,7 @@ const ZombTrain: React.FC = () => {
   const [sellBox, setSellBox] = useState(DEFAULT_SELL_BOX);
   const [status, setStatus] = useState("The line is quiet and the wheels never stop.");
   const [fishing, setFishing] = useState<FishingRun | null>(null);
+  const holdingCastRef = useRef(false);
   const nextFishingIdRef = useRef(1);
 
   useEffect(() => {
@@ -85,43 +90,156 @@ const ZombTrain: React.FC = () => {
   }, [save]);
 
   useEffect(() => {
-    if (!fishing?.active || !save) return;
+    if (screen !== "fishing") {
+      holdingCastRef.current = false;
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space") return;
+      event.preventDefault();
+      holdingCastRef.current = true;
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== "Space") return;
+      holdingCastRef.current = false;
+    };
+
+    const handleBlur = () => {
+      holdingCastRef.current = false;
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [screen]);
+
+  useEffect(() => {
+    if (!fishing?.active) return;
 
     let frameId = 0;
     let lastTime = performance.now();
 
     const tick = (time: number) => {
       const delta = Math.min(32, time - lastTime);
+      const frame = delta / 16.6667;
       lastTime = time;
 
       setFishing((current) => {
         if (!current?.active) return current;
-        const t = time / 1000;
-        const nextFishY = 50 + Math.sin(t * current.fish.speed * 1.28) * 30 + Math.sin(t * (current.fish.speed + 0.75) * 2.05) * 12;
-        const centerBand = Math.abs(current.barY - 50) < 11;
-        const holdLift = centerBand ? -0.07 : -0.055;
-        const fallLift = centerBand ? 0.052 : 0.04;
-        const nextVelocity = Math.max(
-          -1.45,
-          Math.min(
-            1.45,
-          current.velocity + (holdingCastRef.current ? holdLift : fallLift),
-          )
-        );
-        const nextBarY = Math.max(4, Math.min(96, current.barY + nextVelocity));
+
+        const panic = current.slip > 68 || current.timeLeft < 7;
+        let nextDecisionTimer = current.fishDecisionTimer - delta;
+        let nextTargetY = current.fishTargetY;
+
+        if (nextDecisionTimer <= 0) {
+          nextTargetY = pickFishTarget(current.fish, current.fishY, panic);
+          nextDecisionTimer = getFishDecisionWindow(current.fish, panic);
+        }
+
+        const sway =
+          Math.sin(time / 1000 * (current.fish.speed * 1.35) + current.id) *
+          (1.2 + current.fish.difficulty * 0.45);
+        const desiredFishY = clampValue(nextTargetY + sway, 8, 92);
+        const nextFishY = approachValue(current.fishY, desiredFishY, current.fish.pull * frame);
+
+        let nextBarVelocity =
+          current.barVelocity + (holdingCastRef.current ? -0.06 : 0.038) * frame;
+        nextBarVelocity *= holdingCastRef.current ? 0.94 : 0.965;
+        nextBarVelocity = clampValue(nextBarVelocity, -0.72, 0.88);
+
+        let nextBarY = clampValue(current.barY + nextBarVelocity * frame, 4, 96);
+        if ((nextBarY === 4 && nextBarVelocity < 0) || (nextBarY === 96 && nextBarVelocity > 0)) {
+          nextBarVelocity = 0;
+        }
+
         const distance = Math.abs(nextFishY - nextBarY);
-        const progressDelta = distance < current.fish.barSize / 2 ? 0.028 * delta : -0.075 * delta;
-        const nextProgress = Math.max(0, Math.min(100, current.progress + progressDelta));
+        const nextContact = distance <= current.fish.catchWindow;
+        const nextProgress = clampValue(
+          current.progress + (nextContact ? current.fish.catchRate : -current.fish.progressLoss) * frame,
+          0,
+          100
+        );
+        const nextSlip = clampValue(
+          current.slip + (nextContact ? -current.fish.slipRecover : current.fish.slipRate) * frame,
+          0,
+          100
+        );
         const nextTimeLeft = Math.max(0, current.timeLeft - delta / 1000);
 
         if (nextProgress >= 100) {
-          return { ...current, fishY: nextFishY, barY: nextBarY, velocity: nextVelocity, progress: 100, timeLeft: nextTimeLeft, active: false, caught: true };
-        }
-        if (nextTimeLeft <= 0) {
-          return { ...current, fishY: nextFishY, barY: nextBarY, velocity: nextVelocity, progress: nextProgress, timeLeft: 0, active: false, caught: false };
+          return {
+            ...current,
+            fishY: nextFishY,
+            fishTargetY: nextTargetY,
+            fishDecisionTimer: nextDecisionTimer,
+            barY: nextBarY,
+            barVelocity: nextBarVelocity,
+            progress: 100,
+            slip: nextSlip,
+            timeLeft: nextTimeLeft,
+            contact: true,
+            active: false,
+            caught: true,
+            failReason: null
+          };
         }
 
-        return { ...current, fishY: nextFishY, barY: nextBarY, velocity: nextVelocity, progress: nextProgress, timeLeft: nextTimeLeft };
+        if (nextSlip >= 100) {
+          return {
+            ...current,
+            fishY: nextFishY,
+            fishTargetY: nextTargetY,
+            fishDecisionTimer: nextDecisionTimer,
+            barY: nextBarY,
+            barVelocity: nextBarVelocity,
+            progress: nextProgress,
+            slip: 100,
+            timeLeft: nextTimeLeft,
+            contact: false,
+            active: false,
+            caught: false,
+            failReason: "slipped"
+          };
+        }
+
+        if (nextTimeLeft <= 0) {
+          return {
+            ...current,
+            fishY: nextFishY,
+            fishTargetY: nextTargetY,
+            fishDecisionTimer: nextDecisionTimer,
+            barY: nextBarY,
+            barVelocity: nextBarVelocity,
+            progress: nextProgress,
+            slip: nextSlip,
+            timeLeft: 0,
+            contact: false,
+            active: false,
+            caught: false,
+            failReason: "time"
+          };
+        }
+
+        return {
+          ...current,
+          fishY: nextFishY,
+          fishTargetY: nextTargetY,
+          fishDecisionTimer: nextDecisionTimer,
+          barY: nextBarY,
+          barVelocity: nextBarVelocity,
+          progress: nextProgress,
+          slip: nextSlip,
+          timeLeft: nextTimeLeft,
+          contact: nextContact
+        };
       });
 
       frameId = window.requestAnimationFrame(tick);
@@ -129,7 +247,7 @@ const ZombTrain: React.FC = () => {
 
     frameId = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frameId);
-  }, [fishing?.active, save]);
+  }, [fishing?.active]);
 
   useEffect(() => {
     if (!fishing || !save || fishing.active || fishing.resolved) return;
@@ -142,13 +260,13 @@ const ZombTrain: React.FC = () => {
         }
       });
       setStatus(`Caught ${fishing.fish.name}. ${formatFishRarity(fishing.fish.rarity)} fish sell for ${fishing.fish.value} rail bucks.`);
+    } else if (fishing.failReason === "slipped") {
+      setStatus(`${fishing.fish.name} slipped the line. Cast again and keep pressure on it.`);
     } else {
-      setStatus("The fish got away. Cast again when you're ready.");
+      setStatus(`You ran out of time on ${fishing.fish.name}. Cast again when you are ready.`);
     }
     setFishing((current) => current ? { ...current, resolved: true } : current);
   }, [fishing, save]);
-
-  const holdingCastRef = useRef(false);
   const currentDestination = save ? getDestinationById(save.currentStopId) : getDestinationById("stillwater-pond");
   const availableFish = useMemo(() => getFishByDestination("stillwater-pond"), []);
 
@@ -160,7 +278,7 @@ const ZombTrain: React.FC = () => {
     ...availableFish.map((fish) => ({
       key: `fish:${fish.id}` as SellItemKey,
       name: fish.name,
-      detail: `${formatFishRarity(fish.rarity)} • ${fish.value} each`,
+      detail: `${formatFishRarity(fish.rarity)} / ${fish.value} each`,
       count: save.fishInventory[fish.id]
     })),
     { key: "resource:wood" as SellItemKey, name: "Pine Lumber", detail: "8 each", count: save.inventory.wood },
@@ -172,6 +290,7 @@ const ZombTrain: React.FC = () => {
   const sellBoxValue = Object.entries(sellBox).reduce((total, [key, amount]) => total + getItemValue(key as SellItemKey) * amount, 0);
 
   function setView(next: Screen) {
+    holdingCastRef.current = false;
     setScreen(next);
     if (next === "venture") setStatus("Plan the next stop.");
     if (next === "store") setStatus("Everything here sells for in-game rail bucks only.");
@@ -192,24 +311,39 @@ const ZombTrain: React.FC = () => {
 
   function startFishing() {
     const fish = rollFish(availableFish);
+    holdingCastRef.current = false;
     setFishing({
       id: nextFishingIdRef.current++,
       fish,
-      fishY: 50,
-      barY: 50,
-      velocity: 0,
-      progress: 6,
-      timeLeft: 32 + (4 - fish.difficulty) * 2.5,
+      fishY: randomBetween(30, 68),
+      fishTargetY: randomBetween(24, 76),
+      fishDecisionTimer: getFishDecisionWindow(fish, false),
+      barY: 52,
+      barVelocity: 0,
+      progress: 18,
+      slip: 0,
+      timeLeft: 30 + (4 - fish.difficulty) * 2.75,
+      contact: false,
       active: true,
       caught: false,
-      resolved: false
+      resolved: false,
+      failReason: null
     });
     setScreen("fishing");
-    setStatus(`Casting for ${fish.name}. Harder fish pay more.`);
+    setStatus(`Casting for ${fish.name}. Feather the reel and do not let it shake free.`);
   }
 
   function castAgain() {
     startFishing();
+  }
+
+  function startHolding() {
+    if (screen !== "fishing" || !fishing?.active) return;
+    holdingCastRef.current = true;
+  }
+
+  function stopHolding() {
+    holdingCastRef.current = false;
   }
 
   function handleShiftAdd(key: SellItemKey) {
@@ -361,11 +495,14 @@ const ZombTrain: React.FC = () => {
                 <button type="button" className="primary-button" onClick={startFishing}>Start fishing</button>
               </div>
             </div>
+
             <div className="zombtrain-fish-list">
               {availableFish.map((fish) => (
                 <div key={fish.id} className={`zombtrain-fish-card is-${fish.rarity}`}>
                   <strong>{fish.name}</strong>
                   <span>{formatFishRarity(fish.rarity)}</span>
+                  <small>{fish.temperament}</small>
+                  <p>{fish.description}</p>
                   <small>{fish.value} rail bucks</small>
                 </div>
               ))}
@@ -380,32 +517,128 @@ const ZombTrain: React.FC = () => {
               <button type="button" className="secondary-button zombtrain-tab" onClick={castAgain}>Cast again</button>
               <button type="button" className="secondary-button zombtrain-tab" onClick={() => setView("store")}>Store</button>
             </div>
-            <div className="zombtrain-fishing-shell">
-              <div className="zombtrain-fishing-info">
-                <h3>{fishing.fish.name}</h3>
-                <p>{formatFishRarity(fishing.fish.rarity)} fish • {fishing.fish.value} rail bucks</p>
-                <p>Harder fish move faster and give you a smaller catch window.</p>
-                <button
-                  type="button"
-                  className="primary-button"
-                  onMouseDown={() => { holdingCastRef.current = true; }}
-                  onMouseUp={() => { holdingCastRef.current = false; }}
-                  onMouseLeave={() => { holdingCastRef.current = false; }}
-                  onTouchStart={() => { holdingCastRef.current = true; }}
-                  onTouchEnd={() => { holdingCastRef.current = false; }}
-                >
-                  Hold To Reel
-                </button>
-                <button type="button" className="secondary-button zombtrain-tab" onClick={castAgain}>Cast Again</button>
+
+            <div
+              className={`zombtrain-fishing-shell is-${fishing.fish.rarity} ${fishing.contact ? "is-contact" : ""} ${
+                fishing.slip > 72 ? "is-danger" : ""
+              } ${!fishing.active && fishing.caught ? "is-caught" : ""} ${
+                !fishing.active && !fishing.caught ? "is-lost" : ""
+              }`}
+            >
+              <div className="zombtrain-fishing-scene">
+                <div className="zombtrain-fishing-summary">
+                  <div className="zombtrain-fishing-summary__title">
+                    <span className={`zombtrain-rarity-pill is-${fishing.fish.rarity}`}>
+                      {formatFishRarity(fishing.fish.rarity)}
+                    </span>
+                    <h3>{fishing.fish.name}</h3>
+                    <p>{fishing.fish.description}</p>
+                  </div>
+                  <div className="zombtrain-fishing-summary__stats">
+                    <div className="zombtrain-fishing-stat">
+                      <span>Sell value</span>
+                      <strong>{fishing.fish.value} rail bucks</strong>
+                    </div>
+                    <div className="zombtrain-fishing-stat">
+                      <span>Temperament</span>
+                      <strong>{fishing.fish.temperament}</strong>
+                    </div>
+                    <div className="zombtrain-fishing-stat">
+                      <span>Status</span>
+                      <strong>{getFishingStateLabel(fishing)}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="zombtrain-fishing-play">
+                  <div
+                    className="zombtrain-fishing-meter-wrap"
+                    onPointerDown={startHolding}
+                    onPointerUp={stopHolding}
+                    onPointerLeave={stopHolding}
+                    onPointerCancel={stopHolding}
+                  >
+                    <div className="zombtrain-fishing-meter">
+                      <div className="zombtrain-fishing-meter__glow" />
+                      <div className="zombtrain-fishing-meter__foam" />
+                      <span className="zombtrain-fishing-meter__label zombtrain-fishing-meter__label--top">Shallows</span>
+                      <span className="zombtrain-fishing-meter__label zombtrain-fishing-meter__label--mid">Midwater</span>
+                      <span className="zombtrain-fishing-meter__label zombtrain-fishing-meter__label--bottom">Deep</span>
+
+                      <div
+                        className={`zombtrain-fishing-fish is-${fishing.fish.rarity} ${fishing.contact ? "is-hooked" : ""}`}
+                        style={{ bottom: `${fishing.fishY}%`, height: `${fishing.fish.spriteHeight}px` }}
+                      >
+                        <span className="zombtrain-fishing-fish__tail" />
+                        <span className="zombtrain-fishing-fish__body" />
+                        <span className="zombtrain-fishing-fish__eye" />
+                      </div>
+
+                      <div
+                        className={`zombtrain-fishing-bar ${holdingCastRef.current ? "is-reeling" : ""} ${
+                          fishing.contact ? "is-contact" : ""
+                        }`}
+                        style={{ bottom: `${fishing.barY}%` }}
+                      >
+                        <span className="zombtrain-fishing-bar__core" />
+                      </div>
+
+                      <div
+                        className={`zombtrain-fishing-burst ${fishing.contact ? "is-live" : ""}`}
+                        style={{ bottom: `${fishing.barY}%` }}
+                      />
+
+                      {fishing.slip > 72 && <div className="zombtrain-fishing-warning">Line slipping</div>}
+                    </div>
+                  </div>
+
+                  <div className="zombtrain-fishing-control-panel">
+                    <div className="zombtrain-fishing-meter-card">
+                      <div className="zombtrain-fishing-meter-card__head">
+                        <span>Catch</span>
+                        <strong>{Math.round(fishing.progress)}%</strong>
+                      </div>
+                      <div className="zombtrain-fishing-progress">
+                        <div className="zombtrain-fishing-progress__fill" style={{ width: `${fishing.progress}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="zombtrain-fishing-meter-card is-alert">
+                      <div className="zombtrain-fishing-meter-card__head">
+                        <span>Escape</span>
+                        <strong>{Math.round(fishing.slip)}%</strong>
+                      </div>
+                      <div className="zombtrain-fishing-progress is-danger">
+                        <div className="zombtrain-fishing-progress__fill" style={{ width: `${fishing.slip}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="zombtrain-fishing-meter-card">
+                      <div className="zombtrain-fishing-meter-card__head">
+                        <span>Time left</span>
+                        <strong>{fishing.timeLeft.toFixed(1)}s</strong>
+                      </div>
+                    </div>
+
+                    <p className="zombtrain-fishing-instruction">
+                      Tap or feather the hold so the hook zone floats with the fish. If you lose it too long, it breaks free.
+                    </p>
+
+                    <button
+                      type="button"
+                      className="zombtrain-reel-button"
+                      onPointerDown={startHolding}
+                      onPointerUp={stopHolding}
+                      onPointerLeave={stopHolding}
+                      onPointerCancel={stopHolding}
+                    >
+                      {fishing.active ? "Hold to Reel" : fishing.caught ? "Fish landed" : "Fish lost"}
+                    </button>
+
+                    <p className="zombtrain-fishing-controls-note">You can also hold Space.</p>
+                  </div>
+                </div>
               </div>
-              <div className="zombtrain-fishing-meter">
-                <div className="zombtrain-fishing-fish" style={{ bottom: `${fishing.fishY}%`, height: `${fishing.fish.barSize}px` }} />
-                <div className="zombtrain-fishing-bar" style={{ bottom: `${fishing.barY}%` }} />
-              </div>
-              <div className="zombtrain-fishing-progress">
-                <div className="zombtrain-fishing-progress__fill" style={{ width: `${fishing.progress}%` }} />
-              </div>
-              <p className="score-display">{fishing.active ? `${fishing.timeLeft.toFixed(1)}s left` : fishing.caught ? "Caught it." : "Missed it."}</p>
             </div>
           </section>
         )}
@@ -469,7 +702,7 @@ const ZombTrain: React.FC = () => {
         )}
 
         <p className="info">{status}</p>
-        <p className="score-display">Rail bucks: {save.inventory.coins} • Bait: {save.inventory.bait} • Lumber: {save.inventory.wood} • Ore: {save.inventory.ore}</p>
+        <p className="score-display">Rail bucks: {save.inventory.coins} â€¢ Bait: {save.inventory.bait} â€¢ Lumber: {save.inventory.wood} â€¢ Ore: {save.inventory.ore}</p>
         <button type="button" className="secondary-button zombtrain-reset-button" onClick={() => {
           const reset = resetZombTrainSave();
           setSave(reset);
@@ -521,4 +754,64 @@ function rollFish(pool: ZombTrainFishDefinition[]) {
   return pool.find((fish) => fish.rarity === "common") ?? pool[0];
 }
 
+
+function getFishDecisionWindow(fish: ZombTrainFishDefinition, panic: boolean) {
+  const base = 1120 - fish.difficulty * 135 - fish.speed * 80;
+  const jitter = randomBetween(0, 220);
+  return Math.max(panic ? 250 : 360, base + jitter - (panic ? 180 : 0));
+}
+
+function pickFishTarget(fish: ZombTrainFishDefinition, currentY: number, panic: boolean) {
+  let nextTarget = randomBetween(16, 84);
+
+  if (fish.id === "softshell-bluegill") {
+    if (Math.random() < 0.55) nextTarget = randomBetween(28, 70);
+  }
+
+  if (fish.id === "glassfin-carp") {
+    if (Math.random() < 0.5) nextTarget = randomBetween(40, 62);
+    if (Math.random() < 0.18) nextTarget = nextTarget > currentY ? randomBetween(16, 28) : randomBetween(72, 84);
+  }
+
+  if (fish.id === "lantern-koi") {
+    if (Math.random() < 0.42) nextTarget = currentY < 50 ? randomBetween(62, 84) : randomBetween(16, 38);
+  }
+
+  if (fish.id === "moon-eel") {
+    if (Math.random() < 0.5) nextTarget = currentY < 50 ? randomBetween(68, 88) : randomBetween(12, 30);
+    if (Math.random() < 0.24) nextTarget = randomBetween(34, 66);
+  }
+
+  if (panic) {
+    nextTarget = currentY < 50 ? randomBetween(64, 88) : randomBetween(12, 36);
+  }
+
+  return clampValue(nextTarget, 10, 90);
+}
+
+function getFishingStateLabel(fishing: FishingRun) {
+  if (!fishing.active) {
+    return fishing.caught ? "Caught" : fishing.failReason === "slipped" ? "Escaped" : "Time up";
+  }
+  if (fishing.contact && fishing.slip < 20) return "Locked in";
+  if (fishing.contact) return "Steady pressure";
+  if (fishing.slip > 72) return "Breaking free";
+  if (fishing.slip > 40) return "Losing it";
+  return "Tracking";
+}
+
+function approachValue(current: number, target: number, step: number) {
+  if (Math.abs(target - current) <= step) {
+    return target;
+  }
+  return current + Math.sign(target - current) * step;
+}
+
+function clampValue(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function randomBetween(min: number, max: number) {
+  return min + Math.random() * (max - min);
+}
 export default ZombTrain;

@@ -56,10 +56,19 @@ export type ZombTrainFishDefinition = {
   id: ZombTrainFishId;
   name: string;
   rarity: ZombTrainFishRarity;
+  temperament: string;
+  description: string;
   value: number;
   difficulty: number;
   barSize: number;
   speed: number;
+  catchWindow: number;
+  catchRate: number;
+  progressLoss: number;
+  slipRate: number;
+  slipRecover: number;
+  pull: number;
+  spriteHeight: number;
   destinationId: ZombTrainDestinationId;
 };
 
@@ -156,40 +165,76 @@ export const ZOMBTRAIN_FISH: ZombTrainFishDefinition[] = [
     id: "softshell-bluegill",
     name: "Softshell Bluegill",
     rarity: "common",
+    temperament: "Calm drifter",
+    description: "A mellow pond fish that slides lazily between the reeds.",
     value: 14,
     difficulty: 1,
     barSize: 84,
     speed: 0.9,
+    catchWindow: 12.6,
+    catchRate: 0.18,
+    progressLoss: 0.17,
+    slipRate: 0.26,
+    slipRecover: 0.58,
+    pull: 0.42,
+    spriteHeight: 74,
     destinationId: "stillwater-pond"
   },
   {
     id: "glassfin-carp",
     name: "Glassfin Carp",
     rarity: "uncommon",
+    temperament: "Curious runner",
+    description: "Likes to cruise the middle water, then bolt when the line gets loose.",
     value: 24,
     difficulty: 2,
     barSize: 64,
     speed: 1.15,
+    catchWindow: 10.8,
+    catchRate: 0.16,
+    progressLoss: 0.21,
+    slipRate: 0.36,
+    slipRecover: 0.54,
+    pull: 0.56,
+    spriteHeight: 66,
     destinationId: "stillwater-pond"
   },
   {
     id: "lantern-koi",
     name: "Lantern Koi",
     rarity: "rare",
+    temperament: "Elegant faker",
+    description: "Glides beautifully, then cuts to a new depth the second you relax.",
     value: 46,
     difficulty: 3,
     barSize: 48,
     speed: 1.35,
+    catchWindow: 8.9,
+    catchRate: 0.145,
+    progressLoss: 0.28,
+    slipRate: 0.48,
+    slipRecover: 0.48,
+    pull: 0.72,
+    spriteHeight: 58,
     destinationId: "stillwater-pond"
   },
   {
     id: "moon-eel",
     name: "Moon Eel",
     rarity: "legendary",
+    temperament: "Wild breaker",
+    description: "An all-muscle night terror that darts hard and punishes sloppy tracking.",
     value: 92,
     difficulty: 4,
     barSize: 34,
     speed: 1.6,
+    catchWindow: 7.1,
+    catchRate: 0.125,
+    progressLoss: 0.36,
+    slipRate: 0.64,
+    slipRecover: 0.42,
+    pull: 0.88,
+    spriteHeight: 52,
     destinationId: "stillwater-pond"
   }
 ];
