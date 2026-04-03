@@ -162,15 +162,18 @@ const ZombTrain: React.FC = () => {
       setFishing((current) => {
         if (!current?.active) return current;
         const t = time / 1000;
-        const nextFishY = 50 + Math.sin(t * current.fish.speed * 1.15) * 18 + Math.sin(t * (current.fish.speed + 0.55) * 1.6) * 8;
+        const nextFishY = 50 + Math.sin(t * current.fish.speed * 1.25) * 22 + Math.sin(t * (current.fish.speed + 0.75) * 1.9) * 10;
+        const centerBand = Math.abs(current.barY - 50) < 11;
+        const holdLift = centerBand ? -0.07 : -0.055;
+        const fallLift = centerBand ? 0.052 : 0.04;
         const nextVelocity = Phaser.Math.Clamp(
-          current.velocity + (holdingCastRef.current ? -0.042 : 0.028),
-          -1.25,
-          1.25
+          current.velocity + (holdingCastRef.current ? holdLift : fallLift),
+          -1.45,
+          1.45
         );
-        const nextBarY = Phaser.Math.Clamp(current.barY + nextVelocity, 10, 90);
+        const nextBarY = Phaser.Math.Clamp(current.barY + nextVelocity, 8, 92);
         const distance = Math.abs(nextFishY - nextBarY);
-        const progressDelta = distance < current.fish.barSize / 2 ? 0.08 * delta : -0.055 * delta;
+        const progressDelta = distance < current.fish.barSize / 2 ? 0.045 * delta : -0.07 * delta;
         const nextProgress = Phaser.Math.Clamp(current.progress + progressDelta, 0, 100);
         const nextTimeLeft = Math.max(0, current.timeLeft - delta / 1000);
 
@@ -258,8 +261,8 @@ const ZombTrain: React.FC = () => {
       fishY: 50,
       barY: 50,
       velocity: 0,
-      progress: 14,
-      timeLeft: 20 + (4 - fish.difficulty) * 1.5,
+      progress: 10,
+      timeLeft: 26 + (4 - fish.difficulty) * 2,
       active: true,
       caught: false,
       resolved: false
