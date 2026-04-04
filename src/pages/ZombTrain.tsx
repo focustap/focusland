@@ -135,7 +135,7 @@ const ZombTrain: React.FC = () => {
       setFishing((current) => {
         if (!current?.active) return current;
 
-        const panic = current.slip > 68 || current.timeLeft < 7;
+        const panic = current.slip > 78 || current.timeLeft < 5.5;
         let nextDecisionTimer = current.fishDecisionTimer - delta;
         let nextTargetY = current.fishTargetY;
 
@@ -320,9 +320,9 @@ const ZombTrain: React.FC = () => {
       fishDecisionTimer: getFishDecisionWindow(fish, false),
       barY: 52,
       barVelocity: 0,
-      progress: 18,
+      progress: 24,
       slip: 0,
-      timeLeft: 30 + (4 - fish.difficulty) * 2.75,
+      timeLeft: 34 + (4 - fish.difficulty) * 3,
       contact: false,
       active: true,
       caught: false,
@@ -756,9 +756,9 @@ function rollFish(pool: ZombTrainFishDefinition[]) {
 
 
 function getFishDecisionWindow(fish: ZombTrainFishDefinition, panic: boolean) {
-  const base = 1120 - fish.difficulty * 135 - fish.speed * 80;
-  const jitter = randomBetween(0, 220);
-  return Math.max(panic ? 250 : 360, base + jitter - (panic ? 180 : 0));
+  const base = 1280 - fish.difficulty * 120 - fish.speed * 60;
+  const jitter = randomBetween(0, 260);
+  return Math.max(panic ? 320 : 460, base + jitter - (panic ? 120 : 0));
 }
 
 function pickFishTarget(fish: ZombTrainFishDefinition, currentY: number, panic: boolean) {
@@ -770,20 +770,20 @@ function pickFishTarget(fish: ZombTrainFishDefinition, currentY: number, panic: 
 
   if (fish.id === "glassfin-carp") {
     if (Math.random() < 0.5) nextTarget = randomBetween(40, 62);
-    if (Math.random() < 0.18) nextTarget = nextTarget > currentY ? randomBetween(16, 28) : randomBetween(72, 84);
+    if (Math.random() < 0.12) nextTarget = nextTarget > currentY ? randomBetween(18, 30) : randomBetween(70, 82);
   }
 
   if (fish.id === "lantern-koi") {
-    if (Math.random() < 0.42) nextTarget = currentY < 50 ? randomBetween(62, 84) : randomBetween(16, 38);
+    if (Math.random() < 0.28) nextTarget = currentY < 50 ? randomBetween(60, 80) : randomBetween(20, 40);
   }
 
   if (fish.id === "moon-eel") {
-    if (Math.random() < 0.5) nextTarget = currentY < 50 ? randomBetween(68, 88) : randomBetween(12, 30);
-    if (Math.random() < 0.24) nextTarget = randomBetween(34, 66);
+    if (Math.random() < 0.34) nextTarget = currentY < 50 ? randomBetween(64, 84) : randomBetween(16, 34);
+    if (Math.random() < 0.18) nextTarget = randomBetween(38, 62);
   }
 
   if (panic) {
-    nextTarget = currentY < 50 ? randomBetween(64, 88) : randomBetween(12, 36);
+    nextTarget = currentY < 50 ? randomBetween(60, 84) : randomBetween(16, 40);
   }
 
   return clampValue(nextTarget, 10, 90);
