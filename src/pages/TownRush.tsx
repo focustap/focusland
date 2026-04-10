@@ -18,7 +18,6 @@ type Obstacle = {
 type LaneData = {
   index: number;
   kind: LaneKind;
-  seed: number;
   blockers: number[];
   coinColumn: number | null;
   obstacles: Obstacle[];
@@ -64,6 +63,43 @@ const BOARD_HEIGHT = TILE_SIZE * VISIBLE_ROWS;
 const PLAYER_SIZE = 32;
 const HOP_DURATION_MS = 105;
 const TRAIN_TOTAL_WIDTH = WIDTH + 220;
+const FEVER_CHARGE_MAX = 100;
+const FEVER_DURATION_MS = 6000;
+const TOWN_RUSH_LOCAL_BEST_KEY = "focusland-town-rush-best";
+
+type LocalBest = {
+  score: number;
+  distance: number;
+};
+
+function loadLocalBest(): LocalBest {
+  if (typeof window === "undefined") {
+    return { score: 0, distance: 0 };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(TOWN_RUSH_LOCAL_BEST_KEY);
+    if (!raw) {
+      return { score: 0, distance: 0 };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<LocalBest>;
+    return {
+      score: Number(parsed.score ?? 0),
+      distance: Number(parsed.distance ?? 0)
+    };
+  } catch {
+    return { score: 0, distance: 0 };
+  }
+}
+
+function saveLocalBest(best: LocalBest) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(TOWN_RUSH_LOCAL_BEST_KEY, JSON.stringify(best));
+}
 
 function laneWorldY(row: number, cameraRow: number) {
   return BOARD_TOP + BOARD_HEIGHT - (row - cameraRow + 1) * TILE_SIZE;
@@ -96,6 +132,9 @@ class TownRushRun {
   score = 0;
   rushStreak = 0;
   rushTimerMs = 0;
+  feverCharge = 0;
+  feverMs = 0;
+  closeCallCooldownMs = 0;
   alive = true;
   deathReason = "";
   hopElapsedMs = 0;
@@ -121,7 +160,6 @@ class TownRushRun {
       return {
         index,
         kind: "start",
-        seed: Math.random(),
         blockers: [],
         coinColumn: null,
         obstacles: [],
@@ -148,18 +186,16 @@ class TownRushRun {
       kind = "road";
     }
 
-    const seed = Math.random();
     const lane: LaneData = {
       index,
       kind,
-      seed,
       blockers: [],
       coinColumn: null,
       obstacles: [],
       trainDirection: Math.random() > 0.5 ? 1 : -1,
-      trainSpeed: 420 + Math.random() * 140 + Math.min(120, index * 4),
+      trainSpeed: 420 + Math.random() * 140 + Math.min(180, index * 4.8),
       trainOffset: 0,
-      trainCooldownMs: 2400 + Math.random() * 2000,
+      trainCooldownMs: Math.max(1200, 2500 + Math.random() * 1800 - index * 18),
       trainWarningMs: 850,
       trainActiveMs: 1500,
       trainTimerMs: Math.random() * 3200,
@@ -185,7 +221,7 @@ class TownRushRun {
     }
 
     if (kind === "road") {
-      const obstacleCount = Phaser.Math.Between(2, 4);
+      const obstacleCount = Phaser.Math.Between(2, Math.min(5, 3 + Math.floor(index / 12)));
       const direction: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
       for (let index = 0; index < obstacleCount; index += 1) {
         const width = Math.random() < 0.28 ? TILE_SIZE * 1.6 : TILE_SIZE * 0.92;
@@ -260,7 +296,9 @@ class TownRushRun {
       this.shakeMs = Math.max(0, this.shakeMs - deltaMs);
     }
 
+    this.closeCallCooldownMs = Math.max(0, this.closeCallCooldownMs - deltaMs);
     this.rushTimerMs = Math.max(0, this.rushTimerMs - deltaMs);
+    this.feverMs = Math.max(0, this.feverMs - deltaMs);
     if (this.rushTimerMs === 0 && !this.hopping) {
       this.rushStreak = 0;
     }
@@ -311,11 +349,24 @@ class TownRushRun {
 
         if (this.playerRow > this.furthestRow) {
           this.furthestRow = this.playerRow;
-          this.score += 10;
+          const stepScore = this.feverMs > 0 ? 20 : 10;
+          this.score += stepScore;
           if (this.rushStreak >= 4 && this.rushStreak % 2 === 0) {
             const rushBonus = Math.min(20, this.rushStreak);
             this.score += rushBonus;
             this.addFloatingLabel(cellCenterX(this.playerColumn), this.playerRow, 0, `RUSH +${rushBonus}`, "#fde047");
+          }
+          this.addFeverCharge(6);
+          if (this.playerRow % 15 === 0) {
+            const milestoneBonus = this.feverMs > 0 ? 80 : 40;
+            this.score += milestoneBonus;
+            this.addFloatingLabel(
+              cellCenterX(this.playerColumn),
+              this.playerRow,
+              0,
+              `CHECKPOINT +${milestoneBonus}`,
+              "#c4b5fd"
+            );
           }
         }
 
@@ -323,8 +374,10 @@ class TownRushRun {
         if (lane.coinColumn === this.playerColumn) {
           lane.coinColumn = null;
           this.coins += 1;
-          this.score += 25;
-          this.addFloatingLabel(cellCenterX(this.playerColumn), this.playerRow, 0, "+25", "#86efac");
+          const coinScore = this.feverMs > 0 ? 50 : 25;
+          this.score += coinScore;
+          this.addFeverCharge(10);
+          this.addFloatingLabel(cellCenterX(this.playerColumn), this.playerRow, 0, `+${coinScore}`, "#86efac");
         }
       }
     }
@@ -372,11 +425,37 @@ class TownRushRun {
     this.nextFloatingLabelId += 1;
   }
 
+  addFeverCharge(amount: number) {
+    if (this.feverMs > 0) {
+      this.feverMs = Math.min(FEVER_DURATION_MS, this.feverMs + amount * 18);
+      return;
+    }
+
+    this.feverCharge = Math.min(FEVER_CHARGE_MAX, this.feverCharge + amount);
+    if (this.feverCharge >= FEVER_CHARGE_MAX) {
+      this.feverCharge = 0;
+      this.feverMs = FEVER_DURATION_MS;
+      this.addFloatingLabel(cellCenterX(this.playerColumn), this.playerRow, -4, "FEVER!", "#fb7185");
+    }
+  }
+
+  awardCloseCall(row: number, amount: number, color = "#fca5a5") {
+    if (this.closeCallCooldownMs > 0 || !this.alive) {
+      return;
+    }
+
+    this.closeCallCooldownMs = 320;
+    this.score += amount;
+    this.addFeverCharge(14);
+    this.addFloatingLabel(cellCenterX(this.playerColumn), row, -8, `CLOSE +${amount}`, color);
+  }
+
   checkCollisions() {
     const player = this.getPlayerRenderPosition();
     const playerX = cellCenterX(player.column);
     const lane = this.ensureLane(Math.round(player.row));
     if (lane.kind === "road") {
+      let nearMiss = false;
       const collision = lane.obstacles.some((obstacle) =>
         rectsOverlap(
           playerX,
@@ -389,8 +468,15 @@ class TownRushRun {
           TILE_SIZE * 0.62
         )
       );
+      nearMiss = lane.obstacles.some(
+        (obstacle) =>
+          Math.abs(playerX - obstacle.x) < obstacle.width / 2 + 18
+          && Math.abs(playerX - obstacle.x) > obstacle.width / 2 + 2
+      );
       if (collision) {
         this.kill("Flattened by traffic");
+      } else if (nearMiss) {
+        this.awardCloseCall(lane.index, this.feverMs > 0 ? 24 : 12);
       }
     }
 
@@ -399,6 +485,9 @@ class TownRushRun {
       const activeEnd = activeStart + lane.trainActiveMs;
       if (lane.trainTimerMs >= activeStart && lane.trainTimerMs <= activeEnd) {
         const trainCenter = lane.trainOffset;
+        const nearMiss =
+          Math.abs(playerX - trainCenter) < TRAIN_TOTAL_WIDTH / 2 + 30
+          && Math.abs(playerX - trainCenter) > TRAIN_TOTAL_WIDTH / 2 + 4;
         if (
           rectsOverlap(
             playerX,
@@ -412,6 +501,8 @@ class TownRushRun {
           )
         ) {
           this.kill("Clipped by the express");
+        } else if (nearMiss) {
+          this.awardCloseCall(lane.index, this.feverMs > 0 ? 30 : 15, "#fdba74");
         }
       }
     }
@@ -436,6 +527,7 @@ const TownRush: React.FC = () => {
   const [canRestart, setCanRestart] = useState(false);
   const [restartCount, setRestartCount] = useState(0);
   const [lastRun, setLastRun] = useState<{ score: number; distance: number; coins: number } | null>(null);
+  const [bestRun, setBestRun] = useState<LocalBest>(() => loadLocalBest());
 
   useEffect(() => {
     if (!containerRef.current) {
@@ -471,6 +563,14 @@ const TownRush: React.FC = () => {
           distance: payload.distance,
           coins: payload.coins
         });
+        const nextBest = {
+          score: Math.max(bestRun.score, payload.score),
+          distance: Math.max(bestRun.distance, payload.distance)
+        };
+        if (nextBest.score !== bestRun.score || nextBest.distance !== bestRun.distance) {
+          saveLocalBest(nextBest);
+          setBestRun(nextBest);
+        }
         setStatus(`${payload.reason}. Saving score...`);
 
         void (async () => {
@@ -502,6 +602,8 @@ const TownRush: React.FC = () => {
         scoreText!: Phaser.GameObjects.Text;
         coinText!: Phaser.GameObjects.Text;
         rushText!: Phaser.GameObjects.Text;
+        feverText!: Phaser.GameObjects.Text;
+        bestText!: Phaser.GameObjects.Text;
         floatingTextPool = new Map<number, Phaser.GameObjects.Text>();
         finished = false;
 
@@ -536,10 +638,21 @@ const TownRush: React.FC = () => {
             color: "#86efac"
           }).setOrigin(1, 0).setDepth(40);
 
+          this.bestText = this.add.text(WIDTH - 16, 62, `Best ${bestRun.score}`, {
+            fontSize: "13px",
+            color: "#c4b5fd"
+          }).setOrigin(1, 0).setDepth(40);
+
           this.rushText = this.add.text(16, HEIGHT - 36, "Rush x0", {
             fontSize: "14px",
             color: "#7dd3fc"
           }).setDepth(40);
+
+          this.feverText = this.add.text(WIDTH / 2, HEIGHT - 34, "Fever 0%", {
+            fontSize: "14px",
+            fontStyle: "bold",
+            color: "#fda4af"
+          }).setOrigin(0.5).setDepth(40);
 
           this.cursors = this.input.keyboard?.createCursorKeys();
           if (this.input.keyboard) {
@@ -617,6 +730,10 @@ const TownRush: React.FC = () => {
 
           graphics.fillGradientStyle(0x09101f, 0x09101f, 0x132038, 0x132038, 1);
           graphics.fillRect(0, 0, WIDTH, HEIGHT);
+          if (this.run.feverMs > 0) {
+            graphics.fillStyle(0xfb7185, 0.08 + 0.08 * Math.sin(this.time.now / 120));
+            graphics.fillRect(0, 0, WIDTH, HEIGHT);
+          }
 
           for (let row = Math.floor(cameraRow) - 1; row < Math.floor(cameraRow) + VISIBLE_ROWS + 2; row += 1) {
             const lane = this.run.ensureLane(row);
@@ -717,6 +834,14 @@ const TownRush: React.FC = () => {
           graphics.lineStyle(3, 0xffffff, 0.12);
           graphics.strokeRoundedRect(6, BOARD_TOP - 4, WIDTH - 12, BOARD_HEIGHT + 8, 14);
 
+          graphics.fillStyle(0x0f172a, 0.88);
+          graphics.fillRoundedRect(12, HEIGHT - 62, 176, 12, 999);
+          graphics.fillStyle(this.run.feverMs > 0 ? 0xfb7185 : 0x38bdf8, 0.95);
+          const feverFill = this.run.feverMs > 0
+            ? (this.run.feverMs / FEVER_DURATION_MS) * 176
+            : (this.run.feverCharge / FEVER_CHARGE_MAX) * 176;
+          graphics.fillRoundedRect(12, HEIGHT - 62, feverFill, 12, 999);
+
           const player = this.run.getPlayerRenderPosition();
           const playerX = cellCenterX(player.column);
           const playerY = laneWorldY(player.row, cameraRow) + TILE_SIZE / 2;
@@ -758,10 +883,17 @@ const TownRush: React.FC = () => {
         syncHud() {
           this.scoreText.setText(`Score ${this.run.score}`);
           this.coinText.setText(`Coins ${this.run.coins}`);
+          this.bestText.setText(`Best ${bestRun.score}`);
           this.rushText.setText(
             this.run.rushTimerMs > 0 ? `Rush x${Math.max(1, this.run.rushStreak)}` : "Rush cooling"
           );
           this.rushText.setColor(this.run.rushTimerMs > 0 ? "#7dd3fc" : "#94a3b8");
+          this.feverText.setText(
+            this.run.feverMs > 0
+              ? `FEVER ${Math.ceil(this.run.feverMs / 1000)}s`
+              : `Fever ${Math.round((this.run.feverCharge / FEVER_CHARGE_MAX) * 100)}%`
+          );
+          this.feverText.setColor(this.run.feverMs > 0 ? "#fb7185" : "#93c5fd");
         }
       }
 
@@ -825,6 +957,7 @@ const TownRush: React.FC = () => {
               <div className="info">`WASD` or arrow keys to hop.</div>
               <div className="info">Tap above, below, left, or right of your runner on mobile.</div>
               <div className="info">Chain fast forward moves to build Rush and cash in bonus points.</div>
+              <div className="info">Near-misses charge Fever. Fever doubles row and coin scoring for a short burst.</div>
             </div>
             <div
               style={{
@@ -842,6 +975,9 @@ const TownRush: React.FC = () => {
                   {" "}and <strong>{lastRun.coins}</strong> coins.
                 </p>
               ) : null}
+              <p className="info" style={{ marginBottom: "0.65rem" }}>
+                Best run on this device: <strong>{bestRun.score}</strong> score across <strong>{bestRun.distance}</strong> blocks.
+              </p>
               <button
                 className="primary-button"
                 type="button"
