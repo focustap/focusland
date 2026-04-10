@@ -29,6 +29,7 @@ const ShopRoom = lazy(() => import("./pages/ShopRoom"));
 const Slots = lazy(() => import("./pages/Slots"));
 const SpaceInvaders = lazy(() => import("./pages/SpaceInvaders"));
 const StoryGame = lazy(() => import("./pages/StoryGame"));
+const TownRush = lazy(() => import("./pages/TownRush"));
 const ZombTrain = lazy(() => import("./pages/ZombTrain"));
 
 const RouteFallback = () => (
@@ -83,6 +84,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <CatchGame />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/town-rush"
+            element={
+              <ProtectedRoute>
+                <TownRush />
               </ProtectedRoute>
             }
           />
