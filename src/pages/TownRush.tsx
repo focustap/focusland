@@ -201,9 +201,19 @@ class TownRushRun {
 
     const roll = Math.random();
     const tier = this.districtTier;
+    let consecutiveRoads = 0;
+    for (let previous = index - 1; previous >= Math.max(1, index - 3); previous -= 1) {
+      const priorLane = this.lanes.get(previous);
+      if (!priorLane || priorLane.kind !== "road") {
+        break;
+      }
+      consecutiveRoads += 1;
+    }
     let kind: LaneKind;
     if (index < 3) {
       kind = "park";
+    } else if (consecutiveRoads >= 2) {
+      kind = Math.random() < 0.58 ? "park" : "rail";
     } else if (roll < (tier >= 2 ? 0.14 : 0.18)) {
       kind = "park";
     } else if (roll < (tier >= 1 ? 0.38 : 0.34)) {
@@ -263,26 +273,26 @@ class TownRushRun {
             : "cruiser";
       const speedBase =
         pattern === "sprinter"
-          ? [150, 170, 190, 210]
+          ? [185, 205, 225, 245]
           : pattern === "convoy"
-            ? [105, 120, 135, 150]
-            : [90, 105, 120, 135];
+            ? [135, 150, 165, 180]
+            : [120, 135, 150, 165];
       const speed = speedBase[Math.min(tier, speedBase.length - 1)];
       const width =
         pattern === "sprinter"
-          ? TILE_SIZE * 0.82
+          ? TILE_SIZE * 0.72
           : pattern === "convoy"
-            ? TILE_SIZE * 1.08
-            : TILE_SIZE * 1.45;
+            ? TILE_SIZE * 0.94
+            : TILE_SIZE * 1.16;
       const gapTiles =
         pattern === "sprinter"
-          ? 2.65
+          ? 4.2
           : pattern === "convoy"
-            ? 2.1
-            : 2.8;
+            ? 3.5
+            : 4.6;
       const cycle = width + TILE_SIZE * gapTiles;
-      const startX = Phaser.Math.FloatBetween(-cycle, 0);
-      const obstacleCount = Math.ceil((WIDTH + cycle * 2) / cycle);
+      const startX = Phaser.Math.FloatBetween(-cycle * 0.35, cycle * 0.35);
+      const obstacleCount = Math.max(2, Math.ceil((WIDTH + cycle) / cycle));
       for (let index = 0; index < obstacleCount; index += 1) {
         lane.obstacles.push({
           x: startX + index * cycle,
