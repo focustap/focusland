@@ -728,7 +728,6 @@ const TownRush: React.FC = () => {
           this.graphics = this.add.graphics();
           this.playerShadow = this.add.ellipse(0, 0, 34, 16, 0x020617, 0.45).setDepth(30);
           this.playerBody = this.add.rectangle(0, 0, PLAYER_SIZE, PLAYER_SIZE, playerColor, 1)
-            .setStrokeStyle(3, 0xf8fafc, 0.95)
             .setDepth(31);
           this.playerTrim = this.add.rectangle(0, 0, 16, 8, 0xffffff, 0.9).setDepth(32);
 
@@ -883,21 +882,9 @@ const TownRush: React.FC = () => {
           graphics.fillRect(0, 0, WIDTH, HEIGHT);
           graphics.fillStyle(0x111c33, 1);
           graphics.fillRect(0, BOARD_TOP - 4, WIDTH, BOARD_HEIGHT + 8);
-
-          graphics.fillStyle(0x08101d, 0.94);
+          graphics.fillStyle(0x08101d, 1);
           graphics.fillRect(8, 10, WIDTH - 16, 48);
-          graphics.fillStyle(0x08101d, 0.88);
           graphics.fillRect(8, HEIGHT - 54, WIDTH - 16, 34);
-
-          if (this.run.feverMs > 0) {
-            graphics.fillStyle(0xfb7185, 0.07);
-            graphics.fillRect(8, HEIGHT - 54, WIDTH - 16, 34);
-          }
-
-          if (this.run.focusMs > 0) {
-            graphics.fillStyle(0x38bdf8, 0.06);
-            graphics.fillRect(8, HEIGHT - 54, WIDTH - 16, 34);
-          }
 
           for (let row = Math.floor(cameraRow) - 1; row < Math.floor(cameraRow) + VISIBLE_ROWS + 2; row += 1) {
             const lane = this.run.ensureLane(row);
@@ -910,8 +897,6 @@ const TownRush: React.FC = () => {
             if (lane.kind === "road") {
               graphics.fillStyle(0x1f2937, 1);
               graphics.fillRect(0, laneY, WIDTH, TILE_SIZE);
-              graphics.fillStyle(lane.obstacles[0]?.direction === 1 ? 0x34d399 : 0xf97316, 0.18);
-              graphics.fillRect(0, laneY + 3, WIDTH, 6);
               graphics.fillStyle(0xf8fafc, 0.75);
               for (let x = -TILE_SIZE; x < WIDTH + TILE_SIZE; x += TILE_SIZE * 1.5) {
                 graphics.fillRect(x + lane.stripeOffset, laneY + TILE_SIZE / 2 - 3, 28, 6);
@@ -969,8 +954,6 @@ const TownRush: React.FC = () => {
               const coinX = cellCenterX(lane.coinColumn);
               graphics.fillStyle(0xfacc15, 1);
               graphics.fillCircle(coinX, laneY + TILE_SIZE / 2, 10);
-              graphics.lineStyle(2, 0xfffbeb, 0.9);
-              graphics.strokeCircle(coinX, laneY + TILE_SIZE / 2, 10);
             }
 
             lane.obstacles.forEach((obstacle) => {
@@ -997,27 +980,8 @@ const TownRush: React.FC = () => {
           }
 
           graphics.fillStyle(0xffffff, 0.06);
-          graphics.fillRect(6, BOARD_TOP - 4, WIDTH - 12, 2);
-          graphics.fillRect(6, BOARD_TOP + BOARD_HEIGHT + 2, WIDTH - 12, 2);
-
-          graphics.fillStyle(0x020617, 0.78);
-          graphics.fillRoundedRect(16, HEIGHT - 28, 110, 8, 999);
-          graphics.fillStyle(this.run.rushTimerMs > 0 ? 0x38bdf8 : 0x475569, 0.95);
-          const rushFill = this.run.rushTimerMs > 0 ? (this.run.rushTimerMs / 1350) * 110 : 28;
-          graphics.fillRoundedRect(16, HEIGHT - 28, rushFill, 8, 999);
-
-          graphics.fillStyle(0x020617, 0.78);
-          graphics.fillRoundedRect(WIDTH / 2 - 55, HEIGHT - 28, 110, 8, 999);
-          graphics.fillStyle(this.run.feverMs > 0 ? 0xfb7185 : 0x38bdf8, 0.95);
-          const feverFill = this.run.feverMs > 0
-            ? (this.run.feverMs / FEVER_DURATION_MS) * 110
-            : (this.run.feverCharge / FEVER_CHARGE_MAX) * 110;
-          if (feverFill > 0) {
-            graphics.fillRoundedRect(WIDTH / 2 - 55, HEIGHT - 28, feverFill, 8, 999);
-          }
-
-          graphics.fillStyle(this.run.focusMs > 0 ? 0x38bdf8 : 0x1e293b, 0.92);
-          graphics.fillRect(WIDTH - 112, HEIGHT - 46, 96, 22);
+          graphics.fillRect(8, 58, WIDTH - 16, 1);
+          graphics.fillRect(8, HEIGHT - 54, WIDTH - 16, 1);
 
           const player = this.run.getPlayerRenderPosition();
           const playerX = cellCenterX(player.column);
@@ -1066,13 +1030,13 @@ const TownRush: React.FC = () => {
           this.rushText.setText(
             this.run.rushTimerMs > 0 ? `RUSH x${Math.max(1, this.run.rushStreak)}` : "RUSH READY"
           );
-          this.rushText.setColor(this.run.rushTimerMs > 0 ? "#7dd3fc" : "#94a3b8");
+          this.rushText.setColor(this.run.rushTimerMs > 0 ? "#e2e8f0" : "#94a3b8");
           this.feverText.setText(
             this.run.feverMs > 0
               ? `FEVER ${Math.ceil(this.run.feverMs / 1000)}s`
               : `Fever ${Math.round((this.run.feverCharge / FEVER_CHARGE_MAX) * 100)}%`
           );
-          this.feverText.setColor(this.run.feverMs > 0 ? "#fda4af" : "#e2e8f0");
+          this.feverText.setColor(this.run.feverMs > 0 ? "#fda4af" : "#cbd5e1");
           this.focusText.setText(
             this.run.focusMs > 0
               ? `Focus ${Math.ceil(this.run.focusMs / 1000)}s`
@@ -1080,16 +1044,21 @@ const TownRush: React.FC = () => {
           );
           this.focusText.setColor(this.run.focusCharges > 0 || this.run.focusMs > 0 ? "#e2e8f0" : "#64748b");
           this.focusButtonLabel.setText(this.run.focusMs > 0 ? "ACTIVE" : "SHIFT");
-          this.focusButtonLabel.setColor(this.run.focusMs > 0 ? "#0f172a" : "#e2e8f0");
+          this.focusButtonLabel.setColor("#e2e8f0");
         }
       }
 
       const game = new Phaser.Game({
-        type: Phaser.AUTO,
+        type: Phaser.CANVAS,
         width: WIDTH,
         height: HEIGHT,
         parent: containerRef.current,
         backgroundColor: "#0b1324",
+        render: {
+          antialias: false,
+          pixelArt: true,
+          roundPixels: true
+        },
         scene: TownRushScene
       });
 
