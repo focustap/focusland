@@ -712,7 +712,6 @@ const TownRush: React.FC = () => {
         playerBody!: Phaser.GameObjects.Rectangle;
         playerTrim!: Phaser.GameObjects.Rectangle;
         headerText!: Phaser.GameObjects.Text;
-        subText!: Phaser.GameObjects.Text;
         scoreText!: Phaser.GameObjects.Text;
         coinText!: Phaser.GameObjects.Text;
         rushText!: Phaser.GameObjects.Text;
@@ -720,6 +719,9 @@ const TownRush: React.FC = () => {
         bestText!: Phaser.GameObjects.Text;
         districtText!: Phaser.GameObjects.Text;
         focusText!: Phaser.GameObjects.Text;
+        topHudPanel!: Phaser.GameObjects.Rectangle;
+        bottomHudPanel!: Phaser.GameObjects.Rectangle;
+        focusButtonLabel!: Phaser.GameObjects.Text;
         floatingTextPool = new Map<number, Phaser.GameObjects.Text>();
         finished = false;
 
@@ -732,55 +734,67 @@ const TownRush: React.FC = () => {
             .setDepth(31);
           this.playerTrim = this.add.rectangle(0, 0, 16, 8, 0xffffff, 0.9).setDepth(32);
 
-          this.headerText = this.add.text(16, 16, "Town Rush", {
-            fontSize: "28px",
-            fontStyle: "bold",
-            color: "#f8fafc"
-          }).setDepth(40);
+          this.topHudPanel = this.add.rectangle(WIDTH / 2, 36, WIDTH - 18, 56, 0x09111f, 0.88)
+            .setStrokeStyle(1, 0x334155, 0.9)
+            .setDepth(38);
 
-          this.subText = this.add.text(16, 46, "Cross the district. Park rows are safe. Rail signals are not.", {
-            fontSize: "13px",
-            color: "#cbd5e1"
-          }).setDepth(40);
+          this.bottomHudPanel = this.add.rectangle(WIDTH / 2, HEIGHT - 34, WIDTH - 18, 44, 0x09111f, 0.84)
+            .setStrokeStyle(1, 0x334155, 0.9)
+            .setDepth(38);
 
-          this.scoreText = this.add.text(WIDTH - 16, 16, "Score 0", {
+          this.headerText = this.add.text(20, 22, "TOWN RUSH", {
             fontSize: "20px",
             fontStyle: "bold",
-            color: "#fde68a"
+            color: "#f8fafc",
+            fontFamily: "\"PublicPixel\", monospace"
+          }).setDepth(40);
+
+          this.scoreText = this.add.text(WIDTH - 22, 18, "2234", {
+            fontSize: "24px",
+            fontStyle: "bold",
+            color: "#fde68a",
+            fontFamily: "\"PublicPixel\", monospace"
           }).setOrigin(1, 0).setDepth(40);
 
-          this.coinText = this.add.text(WIDTH - 16, 42, "Coins 0", {
-            fontSize: "14px",
+          this.coinText = this.add.text(WIDTH - 22, 45, "COINS 0", {
+            fontSize: "11px",
             color: "#86efac"
           }).setOrigin(1, 0).setDepth(40);
 
-          this.bestText = this.add.text(WIDTH - 16, 62, `Best ${bestRun.score}`, {
-            fontSize: "13px",
+          this.bestText = this.add.text(20, 46, `BEST ${bestRun.score}`, {
+            fontSize: "11px",
             color: "#c4b5fd"
-          }).setOrigin(1, 0).setDepth(40);
+          }).setDepth(40);
 
-          this.rushText = this.add.text(16, HEIGHT - 36, "Rush x0", {
-            fontSize: "14px",
+          this.rushText = this.add.text(20, HEIGHT - 42, "RUSH READY", {
+            fontSize: "11px",
             color: "#7dd3fc"
           }).setDepth(40);
 
-          this.districtText = this.add.text(WIDTH / 2, 16, DISTRICT_LABELS[0], {
-            fontSize: "16px",
+          this.districtText = this.add.text(WIDTH / 2, 22, DISTRICT_LABELS[0].toUpperCase(), {
+            fontSize: "11px",
             fontStyle: "bold",
-            color: "#93c5fd"
+            color: "#93c5fd",
+            fontFamily: "\"PublicPixel\", monospace"
           }).setOrigin(0.5, 0).setDepth(40);
 
-          this.feverText = this.add.text(WIDTH / 2, HEIGHT - 34, "Fever 0%", {
-            fontSize: "14px",
+          this.feverText = this.add.text(WIDTH / 2, HEIGHT - 42, "FEVER 0%", {
+            fontSize: "11px",
             fontStyle: "bold",
             color: "#fda4af"
           }).setOrigin(0.5).setDepth(40);
 
-          this.focusText = this.add.text(WIDTH - 16, HEIGHT - 34, "Focus 0", {
-            fontSize: "14px",
+          this.focusText = this.add.text(WIDTH - 20, HEIGHT - 42, "FOCUS 0", {
+            fontSize: "11px",
             fontStyle: "bold",
             color: "#bfdbfe"
           }).setOrigin(1, 0.5).setDepth(40);
+
+          this.focusButtonLabel = this.add.text(WIDTH - 64, HEIGHT - 26, "SHIFT", {
+            fontSize: "10px",
+            fontStyle: "bold",
+            color: "#e2e8f0"
+          }).setOrigin(0.5).setDepth(40);
 
           this.cursors = this.input.keyboard?.createCursorKeys();
           if (this.input.keyboard) {
@@ -989,20 +1003,26 @@ const TownRush: React.FC = () => {
           graphics.lineStyle(3, 0xffffff, 0.12);
           graphics.strokeRoundedRect(6, BOARD_TOP - 4, WIDTH - 12, BOARD_HEIGHT + 8, 14);
 
-          graphics.fillStyle(0x0f172a, 0.88);
-          graphics.fillRoundedRect(12, HEIGHT - 62, 176, 12, 6);
+          graphics.fillStyle(0x020617, 0.78);
+          graphics.fillRoundedRect(16, HEIGHT - 28, 110, 8, 999);
+          graphics.fillStyle(this.run.rushTimerMs > 0 ? 0x38bdf8 : 0x475569, 0.95);
+          const rushFill = this.run.rushTimerMs > 0 ? (this.run.rushTimerMs / 1350) * 110 : 28;
+          graphics.fillRoundedRect(16, HEIGHT - 28, rushFill, 8, 999);
+
+          graphics.fillStyle(0x020617, 0.78);
+          graphics.fillRoundedRect(WIDTH / 2 - 55, HEIGHT - 28, 110, 8, 999);
           graphics.fillStyle(this.run.feverMs > 0 ? 0xfb7185 : 0x38bdf8, 0.95);
           const feverFill = this.run.feverMs > 0
-            ? (this.run.feverMs / FEVER_DURATION_MS) * 176
-            : (this.run.feverCharge / FEVER_CHARGE_MAX) * 176;
+            ? (this.run.feverMs / FEVER_DURATION_MS) * 110
+            : (this.run.feverCharge / FEVER_CHARGE_MAX) * 110;
           if (feverFill > 0) {
-            graphics.fillRoundedRect(12, HEIGHT - 62, feverFill, 12, Math.min(6, feverFill / 2));
+            graphics.fillRoundedRect(WIDTH / 2 - 55, HEIGHT - 28, feverFill, 8, 999);
           }
 
           graphics.fillStyle(this.run.focusMs > 0 ? 0x38bdf8 : 0x1e293b, 0.92);
-          graphics.fillRoundedRect(WIDTH - 110, HEIGHT - 64, 98, 36, 12);
+          graphics.fillRoundedRect(WIDTH - 112, HEIGHT - 46, 96, 22, 11);
           graphics.lineStyle(2, 0xbfdbfe, this.run.focusCharges > 0 ? 0.95 : 0.28);
-          graphics.strokeRoundedRect(WIDTH - 110, HEIGHT - 64, 98, 36, 12);
+          graphics.strokeRoundedRect(WIDTH - 112, HEIGHT - 46, 96, 22, 11);
 
           const player = this.run.getPlayerRenderPosition();
           const playerX = cellCenterX(player.column);
@@ -1046,10 +1066,10 @@ const TownRush: React.FC = () => {
           this.scoreText.setText(`Score ${this.run.score}`);
           this.coinText.setText(`Coins ${this.run.coins}`);
           this.bestText.setText(`Best ${bestRun.score}`);
-          this.districtText.setText(DISTRICT_LABELS[this.run.districtTier]);
+          this.districtText.setText(DISTRICT_LABELS[this.run.districtTier].toUpperCase());
           this.districtText.setColor(this.run.districtTier >= 3 ? "#fb7185" : "#93c5fd");
           this.rushText.setText(
-            this.run.rushTimerMs > 0 ? `Rush x${Math.max(1, this.run.rushStreak)}` : "Rush cooling"
+            this.run.rushTimerMs > 0 ? `RUSH x${Math.max(1, this.run.rushStreak)}` : "RUSH READY"
           );
           this.rushText.setColor(this.run.rushTimerMs > 0 ? "#7dd3fc" : "#94a3b8");
           this.feverText.setText(
@@ -1064,6 +1084,8 @@ const TownRush: React.FC = () => {
               : `Focus ${this.run.focusCharges}`
           );
           this.focusText.setColor(this.run.focusCharges > 0 || this.run.focusMs > 0 ? "#dbeafe" : "#64748b");
+          this.focusButtonLabel.setText(this.run.focusMs > 0 ? "ACTIVE" : "SHIFT");
+          this.focusButtonLabel.setColor(this.run.focusMs > 0 ? "#0f172a" : "#e2e8f0");
         }
       }
 
@@ -1094,36 +1116,39 @@ const TownRush: React.FC = () => {
   return (
     <div className="page">
       <NavBar />
-      <div className="content card" style={{ maxWidth: 860 }}>
+      <div className="content card townrush-shell" style={{ maxWidth: 940 }}>
         <h2>Town Rush</h2>
-        <p>
+        <p className="townrush-copy">
           Push deeper into town one block at a time. Roads are pure timing, park rows give you a breather,
           and rail crossings will absolutely punish greedy hops.
         </p>
         <div
+          className="townrush-layout"
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0, 520px) minmax(220px, 1fr)",
+            gridTemplateColumns: "minmax(0, 520px) minmax(260px, 1fr)",
             gap: "1rem",
             alignItems: "start"
           }}
         >
-          <div ref={containerRef} style={{ width: "100%", maxWidth: WIDTH, margin: "0 auto" }} />
+          <div className="townrush-stage">
+            <div ref={containerRef} style={{ width: "100%", maxWidth: WIDTH, margin: "0 auto" }} />
+          </div>
           <div
+            className="townrush-sidepanel"
             style={{
               display: "grid",
               gap: "0.85rem"
             }}
           >
             <div
+              className="townrush-panel"
               style={{
                 padding: "0.95rem",
-                borderRadius: 16,
-                background: "linear-gradient(180deg, rgba(15,23,42,0.95), rgba(15,23,42,0.8))",
-                border: "1px solid rgba(148,163,184,0.2)"
+                paddingTop: "1.1rem"
               }}
             >
-              <strong style={{ display: "block", marginBottom: 8 }}>Controls</strong>
+              <strong className="townrush-panel-title">Controls</strong>
               <div className="info">`WASD` or arrow keys to hop.</div>
               <div className="info">Tap above, below, left, or right of your runner on mobile.</div>
               <div className="info">Press `Shift` or `Space` to spend Focus and slow the city for a clutch escape.</div>
@@ -1132,14 +1157,13 @@ const TownRush: React.FC = () => {
               <div className="info">Districts unlock at 500, 1000, and 1500 score with new traffic patterns and extra Focus charges.</div>
             </div>
             <div
+              className="townrush-panel townrush-status-panel"
               style={{
                 padding: "0.95rem",
-                borderRadius: 16,
-                background: "rgba(8, 15, 28, 0.9)",
-                border: "1px solid rgba(56,189,248,0.2)"
+                paddingTop: "1.1rem"
               }}
             >
-              <strong style={{ display: "block", marginBottom: 8 }}>Run Status</strong>
+              <strong className="townrush-panel-title">Run Status</strong>
               <p className="info" style={{ marginBottom: "0.65rem" }}>{status}</p>
               {lastRun ? (
                 <p className="info" style={{ marginBottom: "0.65rem" }}>
