@@ -728,8 +728,10 @@ const TownRush: React.FC = () => {
           const graphics = this.graphics;
           graphics.clear();
 
-          graphics.fillGradientStyle(0x09101f, 0x09101f, 0x132038, 0x132038, 1);
+          graphics.fillStyle(0x0b1324, 1);
           graphics.fillRect(0, 0, WIDTH, HEIGHT);
+          graphics.fillStyle(0x111c33, 1);
+          graphics.fillRect(0, BOARD_TOP - 4, WIDTH, BOARD_HEIGHT + 8);
           if (this.run.feverMs > 0) {
             graphics.fillStyle(0xfb7185, 0.08 + 0.08 * Math.sin(this.time.now / 120));
             graphics.fillRect(0, 0, WIDTH, HEIGHT);
