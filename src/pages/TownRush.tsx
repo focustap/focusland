@@ -719,8 +719,6 @@ const TownRush: React.FC = () => {
         bestText!: Phaser.GameObjects.Text;
         districtText!: Phaser.GameObjects.Text;
         focusText!: Phaser.GameObjects.Text;
-        topHudPanel!: Phaser.GameObjects.Rectangle;
-        bottomHudPanel!: Phaser.GameObjects.Rectangle;
         focusButtonLabel!: Phaser.GameObjects.Text;
         floatingTextPool = new Map<number, Phaser.GameObjects.Text>();
         finished = false;
@@ -733,14 +731,6 @@ const TownRush: React.FC = () => {
             .setStrokeStyle(3, 0xf8fafc, 0.95)
             .setDepth(31);
           this.playerTrim = this.add.rectangle(0, 0, 16, 8, 0xffffff, 0.9).setDepth(32);
-
-          this.topHudPanel = this.add.rectangle(WIDTH / 2, 36, WIDTH - 18, 56, 0x09111f, 0.88)
-            .setStrokeStyle(1, 0x334155, 0.9)
-            .setDepth(38);
-
-          this.bottomHudPanel = this.add.rectangle(WIDTH / 2, HEIGHT - 34, WIDTH - 18, 44, 0x09111f, 0.84)
-            .setStrokeStyle(1, 0x334155, 0.9)
-            .setDepth(38);
 
           this.headerText = this.add.text(20, 22, "TOWN RUSH", {
             fontSize: "20px",
@@ -763,7 +753,7 @@ const TownRush: React.FC = () => {
 
           this.bestText = this.add.text(20, 46, `BEST ${bestRun.score}`, {
             fontSize: "11px",
-            color: "#c4b5fd"
+            color: "#cbd5e1"
           }).setDepth(40);
 
           this.rushText = this.add.text(20, HEIGHT - 42, "RUSH READY", {
@@ -781,13 +771,13 @@ const TownRush: React.FC = () => {
           this.feverText = this.add.text(WIDTH / 2, HEIGHT - 42, "FEVER 0%", {
             fontSize: "11px",
             fontStyle: "bold",
-            color: "#fda4af"
+            color: "#e2e8f0"
           }).setOrigin(0.5).setDepth(40);
 
           this.focusText = this.add.text(WIDTH - 20, HEIGHT - 42, "FOCUS 0", {
             fontSize: "11px",
             fontStyle: "bold",
-            color: "#bfdbfe"
+            color: "#e2e8f0"
           }).setOrigin(1, 0.5).setDepth(40);
 
           this.focusButtonLabel = this.add.text(WIDTH - 64, HEIGHT - 26, "SHIFT", {
@@ -893,14 +883,20 @@ const TownRush: React.FC = () => {
           graphics.fillRect(0, 0, WIDTH, HEIGHT);
           graphics.fillStyle(0x111c33, 1);
           graphics.fillRect(0, BOARD_TOP - 4, WIDTH, BOARD_HEIGHT + 8);
+
+          graphics.fillStyle(0x08101d, 0.94);
+          graphics.fillRect(8, 10, WIDTH - 16, 48);
+          graphics.fillStyle(0x08101d, 0.88);
+          graphics.fillRect(8, HEIGHT - 54, WIDTH - 16, 34);
+
           if (this.run.feverMs > 0) {
-            graphics.fillStyle(0xfb7185, 0.08 + 0.08 * Math.sin(this.time.now / 120));
-            graphics.fillRect(0, 0, WIDTH, HEIGHT);
+            graphics.fillStyle(0xfb7185, 0.07);
+            graphics.fillRect(8, HEIGHT - 54, WIDTH - 16, 34);
           }
 
           if (this.run.focusMs > 0) {
-            graphics.fillStyle(0x38bdf8, 0.06 + 0.04 * Math.sin(this.time.now / 110));
-            graphics.fillRect(0, BOARD_TOP - 4, WIDTH, BOARD_HEIGHT + 8);
+            graphics.fillStyle(0x38bdf8, 0.06);
+            graphics.fillRect(8, HEIGHT - 54, WIDTH - 16, 34);
           }
 
           for (let row = Math.floor(cameraRow) - 1; row < Math.floor(cameraRow) + VISIBLE_ROWS + 2; row += 1) {
@@ -1000,8 +996,9 @@ const TownRush: React.FC = () => {
             });
           }
 
-          graphics.lineStyle(3, 0xffffff, 0.12);
-          graphics.strokeRoundedRect(6, BOARD_TOP - 4, WIDTH - 12, BOARD_HEIGHT + 8, 14);
+          graphics.fillStyle(0xffffff, 0.06);
+          graphics.fillRect(6, BOARD_TOP - 4, WIDTH - 12, 2);
+          graphics.fillRect(6, BOARD_TOP + BOARD_HEIGHT + 2, WIDTH - 12, 2);
 
           graphics.fillStyle(0x020617, 0.78);
           graphics.fillRoundedRect(16, HEIGHT - 28, 110, 8, 999);
@@ -1020,9 +1017,7 @@ const TownRush: React.FC = () => {
           }
 
           graphics.fillStyle(this.run.focusMs > 0 ? 0x38bdf8 : 0x1e293b, 0.92);
-          graphics.fillRoundedRect(WIDTH - 112, HEIGHT - 46, 96, 22, 11);
-          graphics.lineStyle(2, 0xbfdbfe, this.run.focusCharges > 0 ? 0.95 : 0.28);
-          graphics.strokeRoundedRect(WIDTH - 112, HEIGHT - 46, 96, 22, 11);
+          graphics.fillRect(WIDTH - 112, HEIGHT - 46, 96, 22);
 
           const player = this.run.getPlayerRenderPosition();
           const playerX = cellCenterX(player.column);
@@ -1077,13 +1072,13 @@ const TownRush: React.FC = () => {
               ? `FEVER ${Math.ceil(this.run.feverMs / 1000)}s`
               : `Fever ${Math.round((this.run.feverCharge / FEVER_CHARGE_MAX) * 100)}%`
           );
-          this.feverText.setColor(this.run.feverMs > 0 ? "#fb7185" : "#93c5fd");
+          this.feverText.setColor(this.run.feverMs > 0 ? "#fda4af" : "#e2e8f0");
           this.focusText.setText(
             this.run.focusMs > 0
               ? `Focus ${Math.ceil(this.run.focusMs / 1000)}s`
               : `Focus ${this.run.focusCharges}`
           );
-          this.focusText.setColor(this.run.focusCharges > 0 || this.run.focusMs > 0 ? "#dbeafe" : "#64748b");
+          this.focusText.setColor(this.run.focusCharges > 0 || this.run.focusMs > 0 ? "#e2e8f0" : "#64748b");
           this.focusButtonLabel.setText(this.run.focusMs > 0 ? "ACTIVE" : "SHIFT");
           this.focusButtonLabel.setColor(this.run.focusMs > 0 ? "#0f172a" : "#e2e8f0");
         }
