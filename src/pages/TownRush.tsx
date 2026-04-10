@@ -842,12 +842,14 @@ const TownRush: React.FC = () => {
           graphics.strokeRoundedRect(6, BOARD_TOP - 4, WIDTH - 12, BOARD_HEIGHT + 8, 14);
 
           graphics.fillStyle(0x0f172a, 0.88);
-          graphics.fillRoundedRect(12, HEIGHT - 62, 176, 12, 999);
+          graphics.fillRoundedRect(12, HEIGHT - 62, 176, 12, 6);
           graphics.fillStyle(this.run.feverMs > 0 ? 0xfb7185 : 0x38bdf8, 0.95);
           const feverFill = this.run.feverMs > 0
             ? (this.run.feverMs / FEVER_DURATION_MS) * 176
             : (this.run.feverCharge / FEVER_CHARGE_MAX) * 176;
-          graphics.fillRoundedRect(12, HEIGHT - 62, feverFill, 12, 999);
+          if (feverFill > 0) {
+            graphics.fillRoundedRect(12, HEIGHT - 62, feverFill, 12, Math.min(6, feverFill / 2));
+          }
 
           const player = this.run.getPlayerRenderPosition();
           const playerX = cellCenterX(player.column);
