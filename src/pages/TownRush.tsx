@@ -146,6 +146,8 @@ class TownRushRun {
   floatingLabels: FloatingLabel[] = [];
   nextFloatingLabelId = 1;
   shakeMs = 0;
+  minActiveRow = -8;
+  maxActiveRow = 20;
 
   ensureLane(index: number) {
     if (!this.lanes.has(index)) {
@@ -303,7 +305,15 @@ class TownRushRun {
       this.rushStreak = 0;
     }
 
-    this.lanes.forEach((lane) => {
+    const minRow = this.playerRow + this.minActiveRow;
+    const maxRow = this.playerRow + this.maxActiveRow;
+
+    this.lanes.forEach((lane, key) => {
+      if (key < minRow || key > maxRow) {
+        this.lanes.delete(key);
+        return;
+      }
+
       if (lane.kind === "road") {
         lane.obstacles.forEach((obstacle) => {
           obstacle.x += obstacle.speed * obstacle.direction * (deltaMs / 1000);
@@ -394,7 +404,7 @@ class TownRushRun {
       this.checkCollisions();
     }
 
-    for (let row = this.playerRow - 4; row <= this.playerRow + 18; row += 1) {
+    for (let row = minRow; row <= maxRow; row += 1) {
       this.ensureLane(row);
     }
   }
@@ -789,11 +799,6 @@ const TownRush: React.FC = () => {
               const grassColor = lane.kind === "start" ? 0x166534 : 0x15803d;
               graphics.fillStyle(grassColor, 1);
               graphics.fillRect(0, laneY, WIDTH, TILE_SIZE);
-
-              graphics.fillStyle(0xffffff, 0.06);
-              for (let x = 0; x < WIDTH; x += TILE_SIZE) {
-                graphics.fillRect(x, laneY, 2, TILE_SIZE);
-              }
 
               lane.blockers.forEach((column) => {
                 const centerX = cellCenterX(column);
