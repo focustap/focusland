@@ -1,11 +1,66 @@
-import React, { useEffect, useRef, useState } from "react";
-import Phaser from "phaser";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
 import { recordArcadeResult } from "../lib/progression";
 
 type GamePhase = "title" | "playing" | "gameOver";
 type DistrictTier = 0 | 1 | 2 | 3;
-type ObstacleKind = "gap" | "crate" | "sign" | "wall";
+type ObstacleType = "chimney" | "crate" | "clothesline";
+
+type BuildingObstacle = {
+  id: string;
+  x: number;
+  width: number;
+  height: number;
+  type: ObstacleType;
+};
+
+type Pickup = {
+  id: string;
+  x: number;
+  y: number;
+  collected: boolean;
+};
+
+type Building = {
+  id: number;
+  x: number;
+  width: number;
+  top: number;
+  height: number;
+  anchorX: number;
+  anchorY: number;
+  seed: number;
+  obstacles: BuildingObstacle[];
+  pickups: Pickup[];
+};
+
+type HookState = {
+  anchorX: number;
+  anchorY: number;
+  timeMs: number;
+};
+
+type RunnerState = {
+  playerX: number;
+  playerY: number;
+  previousY: number;
+  velocityX: number;
+  velocityY: number;
+  grounded: boolean;
+  ducking: boolean;
+  coyoteMs: number;
+  hookCooldownMs: number;
+  hook: HookState | null;
+  buildings: Building[];
+  score: number;
+  distance: number;
+  coins: number;
+  tier: DistrictTier;
+  gameOver: boolean;
+  reason: string;
+  milestoneText: string;
+  styleBonus: number;
+};
 
 type HudState = {
   score: number;
@@ -13,8 +68,8 @@ type HudState = {
   coins: number;
   speed: number;
   districtTier: DistrictTier;
-  focusCharges: number;
-  focusActive: boolean;
+  hookReady: boolean;
+  hookCooldownPct: number;
 };
 
 type RunSummary = {
@@ -25,51 +80,39 @@ type RunSummary = {
   reason: string;
 };
 
-type PatternEvent =
-  | { kind: ObstacleKind; gap: number }
-  | { kind: "coin"; gap: number; y?: number };
-
-type RunnerObstacle = Phaser.Physics.Arcade.Image & {
-  kind: ObstacleKind;
-  cleared?: boolean;
+type InputState = {
+  jumpQueued: boolean;
+  duckHeld: boolean;
+  hookQueued: boolean;
 };
-
-type RunnerCoin = Phaser.Physics.Arcade.Image;
 
 const WIDTH = 960;
 const HEIGHT = 540;
-const FLOOR_Y = 414;
-const PLAYER_X = 188;
+const PLAYER_SCREEN_X = 220;
+const PLAYER_WIDTH = 28;
+const PLAYER_STAND_HEIGHT = 64;
+const PLAYER_DUCK_HEIGHT = 38;
+const FAIL_Y = HEIGHT + 160;
 const LOCAL_BEST_KEY = "focusland-rooftop-runner-best";
 const DISTRICT_THRESHOLDS = [500, 1000, 1500] as const;
-const DISTRICT_NAMES = ["Sketch Block", "Studio Heights", "Inkline Mile", "Moonlight Reel"] as const;
+const DISTRICT_NAMES = ["Sketch Block", "Pencil Plaza", "Hookline Heights", "Midnight Margin"] as const;
 
-const PATTERNS: Record<DistrictTier, PatternEvent[][]> = {
-  0: [
-    [{ kind: "coin", gap: 0, y: FLOOR_Y - 120 }, { kind: "crate", gap: 230 }],
-    [{ kind: "sign", gap: 0 }],
-    [{ kind: "gap", gap: 0 }],
-    [{ kind: "crate", gap: 0 }, { kind: "coin", gap: 130, y: FLOOR_Y - 112 }]
-  ],
-  1: [
-    [{ kind: "gap", gap: 0 }, { kind: "sign", gap: 290 }],
-    [{ kind: "crate", gap: 0 }, { kind: "gap", gap: 285 }],
-    [{ kind: "sign", gap: 0 }, { kind: "coin", gap: 125, y: FLOOR_Y - 146 }, { kind: "crate", gap: 235 }],
-    [{ kind: "coin", gap: 0, y: FLOOR_Y - 155 }, { kind: "coin", gap: 72, y: FLOOR_Y - 122 }, { kind: "coin", gap: 72, y: FLOOR_Y - 92 }]
-  ],
-  2: [
-    [{ kind: "wall", gap: 0 }, { kind: "coin", gap: 130, y: FLOOR_Y - 176 }],
-    [{ kind: "gap", gap: 0 }, { kind: "crate", gap: 255 }, { kind: "sign", gap: 265 }],
-    [{ kind: "crate", gap: 0 }, { kind: "wall", gap: 345 }],
-    [{ kind: "sign", gap: 0 }, { kind: "gap", gap: 295 }]
-  ],
-  3: [
-    [{ kind: "gap", gap: 0 }, { kind: "wall", gap: 285 }, { kind: "sign", gap: 275 }],
-    [{ kind: "crate", gap: 0 }, { kind: "sign", gap: 260 }, { kind: "gap", gap: 260 }],
-    [{ kind: "wall", gap: 0 }, { kind: "coin", gap: 118, y: FLOOR_Y - 168 }, { kind: "gap", gap: 250 }],
-    [{ kind: "sign", gap: 0 }, { kind: "wall", gap: 285 }, { kind: "crate", gap: 240 }]
-  ]
-};
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function lerp(from: number, to: number, amount: number) {
+  return from + (to - from) * amount;
+}
+
+function noise(seed: number) {
+  const value = Math.sin(seed * 12.9898) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function between(seed: number, min: number, max: number) {
+  return min + noise(seed) * (max - min);
+}
 
 function getDistrictTier(score: number): DistrictTier {
   if (score >= DISTRICT_THRESHOLDS[2]) return 3;
@@ -93,6 +136,508 @@ function saveLocalBest(score: number) {
   }
 }
 
+function getRunSpeed(tier: DistrictTier) {
+  return 250 + tier * 28;
+}
+
+function getPlayerHeight(state: RunnerState) {
+  return state.ducking ? PLAYER_DUCK_HEIGHT : PLAYER_STAND_HEIGHT;
+}
+
+function getPlayerBounds(state: RunnerState) {
+  const height = getPlayerHeight(state);
+  return {
+    left: state.playerX - PLAYER_WIDTH / 2,
+    right: state.playerX + PLAYER_WIDTH / 2,
+    top: state.playerY - height,
+    bottom: state.playerY
+  };
+}
+
+function buildObstacle(seedBase: number, x: number, tier: DistrictTier, index: number): BuildingObstacle {
+  const roll = noise(seedBase + index * 11);
+  if (tier >= 1 && roll > 0.62) {
+    return { id: `${seedBase}-line-${index}`, x, width: 66, height: 20, type: "clothesline" };
+  }
+  if (roll > 0.3) {
+    return { id: `${seedBase}-chimney-${index}`, x, width: 34, height: 52, type: "chimney" };
+  }
+  return { id: `${seedBase}-crate-${index}`, x, width: 46, height: 28, type: "crate" };
+}
+
+function createBuilding(prev: Building, id: number, tier: DistrictTier): Building {
+  const gap = between(id * 13, 76, 126) + (tier >= 2 && noise(id * 17) > 0.58 ? between(id * 29, 30, 72) : 0);
+  const width = Math.round(between(id * 7, 180, 320));
+  const top = clamp(prev.top + Math.round(between(id * 19, -48, 48)), 274, 390);
+  const x = prev.x + prev.width + gap;
+  const height = HEIGHT - top + 90 + Math.round(between(id * 37, 12, 54));
+  const anchorX = x + width * between(id * 41, 0.52, 0.8);
+  const anchorY = top - between(id * 43, 70, 122);
+
+  const obstacleCount =
+    width > 240
+      ? tier >= 2
+        ? 2
+        : noise(id * 47) > 0.48
+          ? 2
+          : 1
+      : noise(id * 53) > 0.56
+        ? 1
+        : 0;
+
+  const obstacles: BuildingObstacle[] = [];
+  for (let i = 0; i < obstacleCount; i += 1) {
+    const obstacleX = x + 54 + (i + 1) * ((width - 112) / (obstacleCount + 1));
+    obstacles.push(buildObstacle(id * 59, obstacleX, tier, i));
+  }
+
+  const pickups: Pickup[] = [];
+  if (noise(id * 61) > 0.32) {
+    pickups.push({
+      id: `${id}-coin-0`,
+      x: x + width * between(id * 67, 0.28, 0.72),
+      y: top - between(id * 71, 46, 98),
+      collected: false
+    });
+  }
+
+  if (tier >= 2 && noise(id * 73) > 0.68) {
+    pickups.push({
+      id: `${id}-coin-1`,
+      x: x + width * between(id * 79, 0.56, 0.86),
+      y: top - between(id * 83, 58, 122),
+      collected: false
+    });
+  }
+
+  return { id, x, width, top, height, anchorX, anchorY, seed: id * 97, obstacles, pickups };
+}
+
+function createInitialBuildings() {
+  const first: Building = {
+    id: 0,
+    x: 0,
+    width: 280,
+    top: 360,
+    height: HEIGHT - 360 + 110,
+    anchorX: 176,
+    anchorY: 276,
+    seed: 1,
+    obstacles: [],
+    pickups: [{ id: "0-coin-0", x: 186, y: 308, collected: false }]
+  };
+
+  const buildings = [first, createBuilding(first, 1, 0)];
+  while (buildings[buildings.length - 1].x < 1500) {
+    buildings.push(createBuilding(buildings[buildings.length - 1], buildings.length, 0));
+  }
+
+  return buildings;
+}
+
+function createInitialState(): RunnerState {
+  const buildings = createInitialBuildings();
+  const firstRoof = buildings[0].top;
+  return {
+    playerX: 84,
+    playerY: firstRoof,
+    previousY: firstRoof,
+    velocityX: getRunSpeed(0),
+    velocityY: 0,
+    grounded: true,
+    ducking: false,
+    coyoteMs: 0,
+    hookCooldownMs: 0,
+    hook: null,
+    buildings,
+    score: 0,
+    distance: 0,
+    coins: 0,
+    tier: 0,
+    gameOver: false,
+    reason: "",
+    milestoneText: "Sketch Block is live. Run the roofline and learn the hook rhythm.",
+    styleBonus: 0
+  };
+}
+
+function findBuildingUnder(state: RunnerState, x: number) {
+  return state.buildings.find((building) => x >= building.x && x <= building.x + building.width) ?? null;
+}
+
+function findHookTarget(state: RunnerState) {
+  return (
+    state.buildings.find(
+      (building) =>
+        building.anchorX > state.playerX + 46 &&
+        building.anchorX < state.playerX + 280 &&
+        building.anchorY < state.playerY - 26
+    ) ?? null
+  );
+}
+
+function ensureWorldAhead(state: RunnerState) {
+  while (state.buildings[state.buildings.length - 1].x < state.playerX + 1700) {
+    state.buildings.push(createBuilding(state.buildings[state.buildings.length - 1], state.buildings.length, state.tier));
+  }
+
+  state.buildings = state.buildings.filter((building) => building.x + building.width > state.playerX - 420);
+}
+
+function intersectsPlayer(state: RunnerState, obstacle: BuildingObstacle, building: Building) {
+  const player = getPlayerBounds(state);
+  const obstacleRect =
+    obstacle.type === "clothesline"
+      ? {
+          left: obstacle.x - obstacle.width / 2,
+          right: obstacle.x + obstacle.width / 2,
+          top: building.top - 54,
+          bottom: building.top - 12
+        }
+      : {
+          left: obstacle.x - obstacle.width / 2,
+          right: obstacle.x + obstacle.width / 2,
+          top: building.top - obstacle.height,
+          bottom: building.top
+        };
+
+  return (
+    player.left < obstacleRect.right &&
+    player.right > obstacleRect.left &&
+    player.top < obstacleRect.bottom &&
+    player.bottom > obstacleRect.top
+  );
+}
+
+function awardMilestoneText(tier: DistrictTier) {
+  if (tier === 1) {
+    return "Pencil Plaza unlocked. Roof heights swing harder and clotheslines start showing up.";
+  }
+  if (tier === 2) {
+    return "Hookline Heights unlocked. Gaps get wider and grapple routes matter.";
+  }
+  return "Midnight Margin unlocked. The skyline gets denser and the tempo kicks up.";
+}
+
+function updateRunnerState(
+  state: RunnerState,
+  input: InputState,
+  dtMs: number,
+  onMilestone: (message: string) => void
+) {
+  if (state.gameOver) {
+    return;
+  }
+
+  const dt = dtMs / 1000;
+  const targetRunSpeed = getRunSpeed(state.tier);
+
+  state.previousY = state.playerY;
+  state.hookCooldownMs = Math.max(0, state.hookCooldownMs - dtMs);
+  state.coyoteMs = Math.max(0, state.coyoteMs - dtMs);
+  state.ducking = input.duckHeld && state.grounded;
+
+  if (input.jumpQueued && (state.grounded || state.coyoteMs > 0)) {
+    state.velocityY = -690;
+    state.grounded = false;
+    state.coyoteMs = 0;
+  }
+
+  if (input.hookQueued && state.hookCooldownMs <= 0) {
+    const target = findHookTarget(state);
+    if (target) {
+      state.hook = { anchorX: target.anchorX, anchorY: target.anchorY, timeMs: 0 };
+      state.hookCooldownMs = 1100;
+      if (state.grounded) {
+        state.velocityY = -380;
+        state.grounded = false;
+      }
+    }
+  }
+
+  if (state.hook) {
+    state.hook.timeMs += dtMs;
+    const dx = state.hook.anchorX - state.playerX;
+    const dy = state.hook.anchorY - state.playerY;
+    const distance = Math.max(1, Math.hypot(dx, dy));
+    const pull = clamp((320 - distance) / 320, 0.15, 1);
+    state.velocityX += (dx / distance) * 1700 * pull * dt;
+    state.velocityY += (dy / distance) * 1400 * pull * dt;
+    state.velocityY += 480 * dt;
+
+    if (distance < 34 || state.hook.timeMs > 540 || state.playerX > state.hook.anchorX + 12) {
+      state.styleBonus += 60;
+      state.velocityX = Math.max(state.velocityX, targetRunSpeed + 110);
+      state.hook = null;
+    }
+  } else {
+    state.velocityY += 1750 * dt;
+  }
+
+  state.velocityX = state.grounded ? lerp(state.velocityX, targetRunSpeed, 0.18) : Math.max(state.velocityX, targetRunSpeed * 0.9);
+  state.playerX += state.velocityX * dt;
+  state.playerY += state.velocityY * dt;
+
+  const buildingUnder = findBuildingUnder(state, state.playerX);
+  if (buildingUnder) {
+    if (state.velocityY >= 0 && state.previousY <= buildingUnder.top && state.playerY >= buildingUnder.top) {
+      state.playerY = buildingUnder.top;
+      state.velocityY = 0;
+      state.grounded = true;
+      state.coyoteMs = 90;
+      state.hook = null;
+    } else if (state.grounded) {
+      state.playerY = buildingUnder.top;
+    }
+  } else if (state.grounded) {
+    state.grounded = false;
+    state.coyoteMs = 130;
+  }
+
+  state.buildings.forEach((building) => {
+    building.pickups.forEach((pickup) => {
+      if (pickup.collected) {
+        return;
+      }
+
+      const player = getPlayerBounds(state);
+      if (
+        player.left < pickup.x + 12 &&
+        player.right > pickup.x - 12 &&
+        player.top < pickup.y + 12 &&
+        player.bottom > pickup.y - 12
+      ) {
+        pickup.collected = true;
+        state.coins += 1;
+        state.styleBonus += 18;
+      }
+    });
+
+    if (state.playerX < building.x - 80 || state.playerX > building.x + building.width + 80) {
+      return;
+    }
+
+    if (building.obstacles.some((obstacle) => intersectsPlayer(state, obstacle, building))) {
+      state.gameOver = true;
+      state.reason = "You wiped out on rooftop junk.";
+    }
+  });
+
+  ensureWorldAhead(state);
+
+  state.distance = Math.max(0, Math.floor((state.playerX - 84) / 10));
+  state.score = Math.max(0, Math.floor(state.distance * 1.18 + state.coins * 26 + state.styleBonus));
+
+  const nextTier = getDistrictTier(state.score);
+  if (nextTier !== state.tier) {
+    state.tier = nextTier;
+    state.styleBonus += 45;
+    state.milestoneText = awardMilestoneText(nextTier);
+    onMilestone(state.milestoneText);
+  }
+
+  if (state.playerY > FAIL_Y) {
+    state.gameOver = true;
+    state.reason = "You missed the next building and ate concrete.";
+  }
+}
+
+function drawSketchLine(
+  ctx: CanvasRenderingContext2D,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  wobble: number
+) {
+  ctx.beginPath();
+  ctx.moveTo(x1 + wobble * 0.4, y1 - wobble * 0.3);
+  ctx.lineTo(x2 - wobble * 0.3, y2 + wobble * 0.4);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x1 - wobble * 0.25, y1 + wobble * 0.2);
+  ctx.lineTo(x2 + wobble * 0.2, y2 - wobble * 0.25);
+  ctx.stroke();
+}
+
+function drawSketchRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  wobble: number
+) {
+  drawSketchLine(ctx, x, y, x + width, y, wobble);
+  drawSketchLine(ctx, x + width, y, x + width, y + height, wobble);
+  drawSketchLine(ctx, x + width, y + height, x, y + height, wobble);
+  drawSketchLine(ctx, x, y + height, x, y, wobble);
+}
+
+function renderBackground(ctx: CanvasRenderingContext2D, score: number) {
+  ctx.clearRect(0, 0, WIDTH, HEIGHT);
+  ctx.fillStyle = "#f7f1de";
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  ctx.strokeStyle = "rgba(86, 150, 212, 0.24)";
+  ctx.lineWidth = 1;
+  for (let y = 44; y < HEIGHT; y += 32) {
+    drawSketchLine(ctx, 0, y, WIDTH, y, 0.8);
+  }
+
+  ctx.strokeStyle = "rgba(224, 86, 86, 0.18)";
+  drawSketchLine(ctx, 46, 0, 46, HEIGHT, 0.4);
+
+  ctx.fillStyle =
+    score >= DISTRICT_THRESHOLDS[2]
+      ? "rgba(29, 78, 216, 0.06)"
+      : score >= DISTRICT_THRESHOLDS[1]
+        ? "rgba(180, 83, 9, 0.05)"
+        : "rgba(15, 23, 42, 0.03)";
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+}
+
+function renderWorld(ctx: CanvasRenderingContext2D, state: RunnerState) {
+  renderBackground(ctx, state.score);
+  const cameraX = Math.max(0, state.playerX - PLAYER_SCREEN_X);
+  const visibleBuildings = state.buildings.filter(
+    (building) => building.x + building.width >= cameraX - 120 && building.x <= cameraX + WIDTH + 160
+  );
+
+  ctx.strokeStyle = "#151515";
+  ctx.lineWidth = 2;
+
+  for (let i = 0; i < 8; i += 1) {
+    const worldX = cameraX + i * 180 + ((cameraX * 0.25) % 180);
+    const screenX = worldX - cameraX;
+    const skylineWidth = 60 + (i % 3) * 26;
+    const skylineHeight = 100 + (i % 4) * 30;
+    ctx.globalAlpha = 0.16;
+    drawSketchRect(ctx, screenX, 250 - skylineHeight, skylineWidth, skylineHeight, 1.2);
+    ctx.globalAlpha = 1;
+  }
+
+  visibleBuildings.forEach((building) => {
+    const x = building.x - cameraX;
+    const wobble = 1 + noise(building.seed) * 1.6;
+
+    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.fillRect(x, building.top, building.width, building.height);
+    ctx.strokeStyle = "#171717";
+    drawSketchRect(ctx, x, building.top, building.width, building.height, wobble);
+    drawSketchLine(ctx, x, building.top + 8, x + building.width, building.top + 8, wobble);
+
+    for (let i = 0; i < Math.floor(building.width / 48); i += 1) {
+      const windowX = x + 18 + i * 42;
+      const windowY = building.top + 28 + (i % 2) * 22;
+      drawSketchRect(ctx, windowX, windowY, 16, 22, 0.7);
+    }
+
+    drawSketchLine(ctx, building.anchorX - cameraX, building.anchorY, building.anchorX - cameraX, building.top, 0.9);
+    ctx.beginPath();
+    ctx.arc(building.anchorX - cameraX, building.anchorY, 6, 0, Math.PI * 2);
+    ctx.stroke();
+
+    building.obstacles.forEach((obstacle) => {
+      const obstacleX = obstacle.x - cameraX;
+      if (obstacle.type === "clothesline") {
+        drawSketchLine(ctx, obstacleX - 26, building.top - 52, obstacleX + 26, building.top - 52, 0.7);
+        drawSketchLine(ctx, obstacleX - 24, building.top - 52, obstacleX - 24, building.top - 10, 0.7);
+        drawSketchLine(ctx, obstacleX + 24, building.top - 52, obstacleX + 24, building.top - 10, 0.7);
+        drawSketchLine(ctx, obstacleX - 12, building.top - 43, obstacleX - 6, building.top - 24, 0.6);
+        drawSketchLine(ctx, obstacleX + 2, building.top - 43, obstacleX + 8, building.top - 24, 0.6);
+      } else {
+        const obstacleY = building.top - obstacle.height;
+        drawSketchRect(ctx, obstacleX - obstacle.width / 2, obstacleY, obstacle.width, obstacle.height, 0.9);
+        if (obstacle.type === "chimney") {
+          drawSketchLine(ctx, obstacleX - 10, obstacleY + 8, obstacleX + 10, obstacleY + 8, 0.6);
+        }
+      }
+    });
+
+    building.pickups.forEach((pickup) => {
+      if (pickup.collected) {
+        return;
+      }
+
+      const pickupX = pickup.x - cameraX;
+      ctx.beginPath();
+      ctx.arc(pickupX, pickup.y, 10, 0, Math.PI * 2);
+      ctx.stroke();
+      drawSketchLine(ctx, pickupX - 8, pickup.y, pickupX + 8, pickup.y, 0.5);
+      drawSketchLine(ctx, pickupX, pickup.y - 8, pickupX, pickup.y + 8, 0.5);
+    });
+  });
+
+  if (state.hook) {
+    ctx.strokeStyle = "#1d4ed8";
+    drawSketchLine(
+      ctx,
+      state.playerX - cameraX,
+      state.playerY - getPlayerHeight(state) + 14,
+      state.hook.anchorX - cameraX,
+      state.hook.anchorY,
+      1
+    );
+  }
+
+  const playerScreenX = state.playerX - cameraX;
+  const playerTop = state.playerY - getPlayerHeight(state);
+  const runCycle = (state.distance * 0.085) % (Math.PI * 2);
+  const legSwing = state.grounded ? Math.sin(runCycle) * 12 : 4;
+  const armSwing = state.grounded ? Math.cos(runCycle) * 10 : -10;
+
+  ctx.strokeStyle = "#101010";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(playerScreenX, playerTop + 12, 11, 0, Math.PI * 2);
+  ctx.stroke();
+  drawSketchLine(ctx, playerScreenX, playerTop + 24, playerScreenX, playerTop + 47, 0.6);
+  drawSketchLine(ctx, playerScreenX, playerTop + 30, playerScreenX - 14 + armSwing * 0.2, playerTop + 40, 0.6);
+  drawSketchLine(ctx, playerScreenX, playerTop + 30, playerScreenX + 14 - armSwing * 0.2, playerTop + 38, 0.6);
+
+  if (state.ducking) {
+    drawSketchLine(ctx, playerScreenX, playerTop + 47, playerScreenX - 12, playerTop + 57, 0.6);
+    drawSketchLine(ctx, playerScreenX, playerTop + 47, playerScreenX + 14, playerTop + 55, 0.6);
+  } else {
+    drawSketchLine(ctx, playerScreenX, playerTop + 47, playerScreenX - 11 + legSwing, playerTop + 63, 0.6);
+    drawSketchLine(ctx, playerScreenX, playerTop + 47, playerScreenX + 11 - legSwing, playerTop + 63, 0.6);
+  }
+
+  drawSketchLine(ctx, playerScreenX - 3, playerTop + 9, playerScreenX - 3, playerTop + 13, 0.3);
+  drawSketchLine(ctx, playerScreenX + 3, playerTop + 9, playerScreenX + 3, playerTop + 13, 0.3);
+}
+
+function renderPoster(ctx: CanvasRenderingContext2D, bestScore: number, lastRun: RunSummary | null, phase: GamePhase) {
+  const preview = createInitialState();
+  preview.playerX = 116;
+  preview.distance = 18;
+  preview.styleBonus = 40;
+  preview.buildings = preview.buildings.slice(0, 4);
+  renderWorld(ctx, preview);
+
+  ctx.fillStyle = "rgba(247, 241, 222, 0.78)";
+  ctx.fillRect(86, 82, WIDTH - 172, HEIGHT - 164);
+  ctx.strokeStyle = "#171717";
+  ctx.lineWidth = 2;
+  drawSketchRect(ctx, 86, 82, WIDTH - 172, HEIGHT - 164, 1.2);
+
+  ctx.fillStyle = "#111827";
+  ctx.font = "bold 38px PublicPixel, monospace";
+  ctx.fillText("Rooftop Runner", 118, 146);
+  ctx.font = "18px system-ui";
+  ctx.fillText("Stick figure parkour across hand-drawn rooftops.", 118, 188);
+  ctx.fillText("Jump gaps, duck roof junk, and sling forward with the grappling hook.", 118, 216);
+  ctx.fillText("Best score on this device: " + bestScore, 118, 268);
+
+  if (phase === "gameOver" && lastRun) {
+    ctx.fillText(`Last run: ${lastRun.score} score, ${lastRun.distance}m, ${lastRun.coins} coins.`, 118, 306);
+    ctx.fillText(lastRun.reason, 118, 334);
+  } else {
+    ctx.fillText("Press Start Run to hit the skyline.", 118, 306);
+  }
+}
+
 function playAudio(audio: HTMLAudioElement | null, reset = false) {
   if (!audio) {
     return;
@@ -111,8 +656,7 @@ function pauseAudio(audio: HTMLAudioElement | null) {
 
 const RooftopRunner: React.FC = () => {
   const assetBase = import.meta.env.BASE_URL;
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const gameRef = useRef<Phaser.Game | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const bestScoreRef = useRef(loadLocalBest());
   const titleAudioRef = useRef<HTMLAudioElement | null>(null);
   const gameplayAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -122,26 +666,22 @@ const RooftopRunner: React.FC = () => {
   const [phase, setPhase] = useState<GamePhase>("title");
   const [runSeed, setRunSeed] = useState(0);
   const [bestScore, setBestScore] = useState(() => loadLocalBest());
-  const [status, setStatus] = useState("Sprint across rooftops, read the obstacle strings, and stay ahead of the skyline.");
+  const [status, setStatus] = useState("Build momentum, read the rooftops, and use the hook to save greedy jumps.");
   const [hud, setHud] = useState<HudState>({
     score: 0,
     distance: 0,
     coins: 0,
-    speed: 0,
+    speed: getRunSpeed(0),
     districtTier: 0,
-    focusCharges: 1,
-    focusActive: false
+    hookReady: true,
+    hookCooldownPct: 100
   });
   const [lastRun, setLastRun] = useState<RunSummary | null>(null);
 
-  const runSheet = `${assetBase}assets/town-rush/runner-expressive-run-sheet.png`;
-  const jumpSheet = `${assetBase}assets/town-rush/runner-expressive-jump-sheet.png`;
-  const slideSheet = `${assetBase}assets/town-rush/runner-expressive-slide-sheet.png`;
-  const wallrunSheet = `${assetBase}assets/town-rush/runner-expressive-wallrun-sheet.png`;
-  const titleTrackPath = `${assetBase}assets/music/town-rush/SwinginSafari.wav`;
-  const gameplayTrackPath = `${assetBase}assets/music/town-rush/BourbonBlues.wav`;
-  const bonusTrackPath = `${assetBase}assets/music/town-rush/BoogieWonderland.wav`;
-  const resultsTrackPath = `${assetBase}assets/music/town-rush/CoolCatCaper.wav`;
+  const titleTrackPath = useMemo(() => `${assetBase}assets/music/town-rush/SwinginSafari.wav`, [assetBase]);
+  const gameplayTrackPath = useMemo(() => `${assetBase}assets/music/town-rush/BourbonBlues.wav`, [assetBase]);
+  const bonusTrackPath = useMemo(() => `${assetBase}assets/music/town-rush/BoogieWonderland.wav`, [assetBase]);
+  const resultsTrackPath = useMemo(() => `${assetBase}assets/music/town-rush/CoolCatCaper.wav`, [assetBase]);
 
   useEffect(() => {
     bestScoreRef.current = bestScore;
@@ -150,17 +690,17 @@ const RooftopRunner: React.FC = () => {
   useEffect(() => {
     const titleTrack = new Audio(titleTrackPath);
     titleTrack.loop = true;
-    titleTrack.volume = 0.34;
+    titleTrack.volume = 0.26;
 
     const gameplayTrack = new Audio(gameplayTrackPath);
     gameplayTrack.loop = true;
-    gameplayTrack.volume = 0.25;
+    gameplayTrack.volume = 0.22;
 
     const bonusTrack = new Audio(bonusTrackPath);
-    bonusTrack.volume = 0.5;
+    bonusTrack.volume = 0.48;
 
     const resultsTrack = new Audio(resultsTrackPath);
-    resultsTrack.volume = 0.4;
+    resultsTrack.volume = 0.34;
 
     titleAudioRef.current = titleTrack;
     gameplayAudioRef.current = gameplayTrack;
@@ -192,544 +732,170 @@ const RooftopRunner: React.FC = () => {
   }, [phase]);
 
   useEffect(() => {
-    if (phase !== "playing" || !containerRef.current) {
-      if (gameRef.current) {
-        gameRef.current.destroy(true);
-        gameRef.current = null;
-      }
+    const canvas = canvasRef.current;
+    if (!canvas) {
       return;
     }
 
-    let cancelled = false;
-    let finished = false;
-
-    class RooftopRunnerScene extends Phaser.Scene {
-      cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-      jumpKey!: Phaser.Input.Keyboard.Key;
-      slideKey!: Phaser.Input.Keyboard.Key;
-      focusKey!: Phaser.Input.Keyboard.Key;
-      player!: Phaser.Physics.Arcade.Sprite;
-      obstacles!: Phaser.Physics.Arcade.Group;
-      coins!: Phaser.Physics.Arcade.Group;
-      skyline: Phaser.GameObjects.Rectangle[] = [];
-      clouds: Phaser.GameObjects.Ellipse[] = [];
-      rooftopMarks: Phaser.GameObjects.Rectangle[] = [];
-      score = 0;
-      distance = 0;
-      coinCount = 0;
-      worldSpeed = 360;
-      focusCharges = 1;
-      focusMs = 0;
-      slideMs = 0;
-      wallrunMs = 0;
-      districtTier: DistrictTier = 0;
-      nextPatternDistance = 280;
-      lastHudPush = 0;
-      rooftopHeight = 0;
-
-      preload() {
-        this.load.spritesheet("runner-run", runSheet, { frameWidth: 96, frameHeight: 96 });
-        this.load.spritesheet("runner-jump", jumpSheet, { frameWidth: 96, frameHeight: 96 });
-        this.load.spritesheet("runner-slide", slideSheet, { frameWidth: 96, frameHeight: 96 });
-        this.load.spritesheet("runner-wallrun", wallrunSheet, { frameWidth: 96, frameHeight: 96 });
-      }
-
-      create() {
-        this.cameras.main.setBackgroundColor("#e9dcc2");
-        this.physics.world.gravity.y = 1750;
-        this.physics.world.setBounds(0, 0, WIDTH, HEIGHT + 200);
-
-        this.makeTextures();
-        this.drawWorld();
-        this.createAnimations();
-
-        this.player = this.physics.add.sprite(PLAYER_X, FLOOR_Y - 60, "runner-run", 0);
-        this.player.setScale(1.5);
-        this.player.setCollideWorldBounds(false);
-        this.player.setDepth(7);
-        this.player.body.setSize(42, 62).setOffset(28, 24);
-        this.player.play("runner-run");
-
-        this.obstacles = this.physics.add.group({ allowGravity: false, immovable: true });
-        this.coins = this.physics.add.group({ allowGravity: false, immovable: true });
-
-        this.cursors = this.input.keyboard!.createCursorKeys();
-        this.jumpKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W);
-        this.slideKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S);
-        this.focusKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
-
-        this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-          if (pointer.x > WIDTH * 0.77) {
-            this.tryFocus();
-          } else if (pointer.y < HEIGHT * 0.58) {
-            this.tryJump();
-          } else {
-            this.trySlide();
-          }
-        });
-
-        this.physics.add.overlap(this.player, this.coins, (_player, coin) => {
-          coin.destroy();
-          this.coinCount += 1;
-          this.score += 35;
-        });
-
-        this.physics.add.overlap(this.player, this.obstacles, (_player, obstacle) => {
-          const target = obstacle as RunnerObstacle;
-          if (target.cleared) {
-            return;
-          }
-
-          if (target.kind === "wall" && this.canWallRun()) {
-            this.triggerWallRun(target);
-            return;
-          }
-
-          this.finishRun(
-            target.kind === "gap"
-              ? "Did not clear the rooftop gap."
-              : target.kind === "sign"
-                ? "Smacked into a hanging billboard."
-                : target.kind === "wall"
-                  ? "A brick wall shut the scene down."
-                  : "Clipped an ink crate and lost momentum."
-          );
-        });
-
-        this.spawnPattern();
-        this.spawnPattern();
-        this.pushHud(true);
-      }
-
-      makeTextures() {
-        const g = this.add.graphics();
-
-        g.fillStyle(0x171717, 1);
-        g.fillRoundedRect(0, 0, 66, 54, 14);
-        g.fillStyle(0xffffff, 0.15);
-        g.fillRoundedRect(8, 8, 18, 18, 4);
-        g.fillRoundedRect(38, 12, 12, 12, 4);
-        g.generateTexture("roof-crate", 66, 54);
-        g.clear();
-
-        g.fillStyle(0x121212, 1);
-        g.fillRoundedRect(0, 10, 110, 30, 12);
-        g.fillStyle(0xffffff, 0.13);
-        g.fillRoundedRect(12, 18, 36, 8, 4);
-        g.generateTexture("roof-sign", 110, 50);
-        g.clear();
-
-        g.fillStyle(0x101010, 1);
-        g.fillRoundedRect(8, 0, 52, 138, 18);
-        g.fillStyle(0xffffff, 0.1);
-        g.fillRoundedRect(18, 18, 18, 94, 8);
-        g.generateTexture("roof-wall", 68, 138);
-        g.clear();
-
-        g.fillStyle(0xf4c542, 1);
-        g.fillCircle(14, 14, 12);
-        g.fillStyle(0xfff5ba, 0.5);
-        g.fillCircle(10, 10, 4);
-        g.generateTexture("roof-coin", 28, 28);
-        g.clear();
-
-        g.fillStyle(0x2a221a, 1);
-        g.fillRect(0, 0, 180, 28);
-        g.fillStyle(0x48382a, 1);
-        g.fillRect(0, 24, 180, 8);
-        g.generateTexture("roof-segment", 180, 32);
-        g.clear();
-
-        g.fillStyle(0x111111, 1);
-        g.fillRect(0, 0, 80, 14);
-        g.generateTexture("gap-shadow", 80, 14);
-        g.destroy();
-      }
-
-      drawWorld() {
-        this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0xe9dcc2).setDepth(0);
-        this.add.rectangle(WIDTH / 2, 110, WIDTH, 180, 0xf4ebd2).setDepth(0);
-        this.add.rectangle(WIDTH / 2, HEIGHT - 38, WIDTH, 120, 0xc8b08c, 0.25).setDepth(0);
-
-        for (let i = 0; i < 5; i += 1) {
-          const cloud = this.add.ellipse(
-            100 + i * 200,
-            104 + Phaser.Math.Between(-12, 16),
-            Phaser.Math.Between(90, 130),
-            Phaser.Math.Between(28, 42),
-            0xffffff,
-            0.35
-          ).setDepth(0);
-          this.clouds.push(cloud);
-        }
-
-        for (let i = 0; i < 6; i += 1) {
-          const skyline = this.add.rectangle(
-            80 + i * 170,
-            278 + Phaser.Math.Between(-16, 28),
-            Phaser.Math.Between(70, 120),
-            Phaser.Math.Between(150, 230),
-            0x241d16,
-            0.18
-          ).setOrigin(0.5, 1).setDepth(1);
-          this.skyline.push(skyline);
-        }
-
-        for (let i = 0; i < 9; i += 1) {
-          const mark = this.add.rectangle(90 + i * 120, FLOOR_Y + 14, 52, 4, 0xf8f4e5, 0.42).setDepth(3);
-          this.rooftopMarks.push(mark);
-        }
-
-        for (let i = 0; i < 7; i += 1) {
-          this.add.image(40 + i * 160, FLOOR_Y + 4, "roof-segment").setOrigin(0, 0).setDepth(2);
-        }
-      }
-
-      createAnimations() {
-        if (!this.anims.exists("roof-run")) {
-          this.anims.create({
-            key: "roof-run",
-            frames: this.anims.generateFrameNumbers("runner-run", { start: 0, end: 7 }),
-            frameRate: 14,
-            repeat: -1
-          });
-        }
-
-        if (!this.anims.exists("roof-jump")) {
-          this.anims.create({
-            key: "roof-jump",
-            frames: this.anims.generateFrameNumbers("runner-jump", { start: 0, end: 4 }),
-            frameRate: 12,
-            repeat: -1
-          });
-        }
-
-        if (!this.anims.exists("roof-slide")) {
-          this.anims.create({
-            key: "roof-slide",
-            frames: this.anims.generateFrameNumbers("runner-slide", { start: 0, end: 3 }),
-            frameRate: 16,
-            repeat: -1
-          });
-        }
-
-        if (!this.anims.exists("roof-wallrun")) {
-          this.anims.create({
-            key: "roof-wallrun",
-            frames: this.anims.generateFrameNumbers("runner-wallrun", { start: 0, end: 5 }),
-            frameRate: 16,
-            repeat: -1
-          });
-        }
-      }
-
-      tryJump() {
-        const body = this.player.body as Phaser.Physics.Arcade.Body;
-        if ((body.blocked.down || this.player.y >= FLOOR_Y - 61) && this.slideMs <= 0) {
-          body.setVelocityY(-790);
-          this.player.play("roof-jump", true);
-        }
-      }
-
-      trySlide() {
-        const body = this.player.body as Phaser.Physics.Arcade.Body;
-        if (!(body.blocked.down || this.player.y >= FLOOR_Y - 61) || this.slideMs > 0) {
-          return;
-        }
-
-        this.slideMs = 430;
-        body.setSize(56, 36).setOffset(20, 52);
-        this.player.y = FLOOR_Y - 34;
-        this.player.play("roof-slide", true);
-      }
-
-      tryFocus() {
-        if (this.focusCharges <= 0 || this.focusMs > 0) {
-          return;
-        }
-
-        this.focusCharges -= 1;
-        this.focusMs = 1700;
-      }
-
-      canWallRun() {
-        const body = this.player.body as Phaser.Physics.Arcade.Body;
-        return this.player.y < FLOOR_Y - 10 && body.velocity.y > -180;
-      }
-
-      triggerWallRun(obstacle: RunnerObstacle) {
-        obstacle.cleared = true;
-        obstacle.disableBody(true, false);
-        this.wallrunMs = 170;
-        this.player.play("roof-wallrun", true);
-        (this.player.body as Phaser.Physics.Arcade.Body).setVelocityY(-820);
-        this.score += 85;
-      }
-
-      spawnPattern() {
-        const pattern = Phaser.Utils.Array.GetRandom(PATTERNS[this.districtTier]);
-        let spawnX = WIDTH + 120;
-
-        pattern.forEach((entry) => {
-          spawnX += entry.gap;
-          if (entry.kind === "coin") {
-            this.spawnCoin(spawnX, entry.y ?? FLOOR_Y - 120);
-          } else {
-            this.spawnObstacle(entry.kind, spawnX);
-          }
-        });
-
-        this.nextPatternDistance = Phaser.Math.Between(300, 420) + this.districtTier * 24;
-      }
-
-      spawnObstacle(kind: ObstacleKind, x: number) {
-        if (kind === "gap") {
-          const gap = this.obstacles.create(x, FLOOR_Y + 10, "gap-shadow") as RunnerObstacle;
-          gap.kind = kind;
-          gap.setDepth(4);
-          gap.body.setAllowGravity(false);
-          gap.body.setSize(74, 120).setOffset(3, -106);
-          return;
-        }
-
-        const texture =
-          kind === "crate" ? "roof-crate" : kind === "sign" ? "roof-sign" : "roof-wall";
-        const y =
-          kind === "crate" ? FLOOR_Y - 26 : kind === "sign" ? FLOOR_Y - 108 : FLOOR_Y - 68;
-        const obstacle = this.obstacles.create(x, y, texture) as RunnerObstacle;
-        obstacle.kind = kind;
-        obstacle.setDepth(5);
-        obstacle.body.setAllowGravity(false);
-
-        if (kind === "crate") {
-          obstacle.body.setSize(54, 42).setOffset(6, 8);
-        } else if (kind === "sign") {
-          obstacle.body.setSize(100, 22).setOffset(5, 14);
-        } else {
-          obstacle.body.setSize(42, 124).setOffset(13, 8);
-        }
-      }
-
-      spawnCoin(x: number, y: number) {
-        const coin = this.coins.create(x, y, "roof-coin") as RunnerCoin;
-        coin.setDepth(6);
-        coin.body.setAllowGravity(false);
-        coin.body.setCircle(12, 2, 2);
-      }
-
-      pushHud(force = false) {
-        const now = this.time.now;
-        if (!force && now - this.lastHudPush < 90) {
-          return;
-        }
-
-        this.lastHudPush = now;
-        setHud({
-          score: Math.floor(this.score),
-          distance: Math.floor(this.distance),
-          coins: this.coinCount,
-          speed: Math.round(this.worldSpeed),
-          districtTier: this.districtTier,
-          focusCharges: this.focusCharges,
-          focusActive: this.focusMs > 0
-        });
-      }
-
-      finishRun(reason: string) {
-        if (finished) {
-          return;
-        }
-
-        finished = true;
-        const finalScore = Math.floor(this.score);
-        const distance = Math.floor(this.distance);
-        const goldEarned = Math.max(24, Math.floor(finalScore / 18) + this.coinCount * 8);
-        const nextBest = Math.max(bestScoreRef.current, finalScore);
-
-        setStatus(reason);
-        setLastRun({
-          score: finalScore,
-          distance,
-          coins: this.coinCount,
-          goldEarned,
-          reason
-        });
-        setBestScore(nextBest);
-        saveLocalBest(nextBest);
-        pauseAudio(gameplayAudioRef.current);
-        this.cameras.main.shake(180, 0.008);
-
-        void recordArcadeResult({
-          scoreGameName: "rooftop_runner",
-          score: finalScore,
-          goldEarned
-        }).catch(() => undefined);
-
-        this.time.delayedCall(280, () => {
-          if (!cancelled) {
-            setPhase("gameOver");
-          }
-        });
-      }
-
-      update(_time: number, delta: number) {
-        if (finished) {
-          return;
-        }
-
-        const dt = delta / 1000;
-        const body = this.player.body as Phaser.Physics.Arcade.Body;
-        const wantsJump =
-          Phaser.Input.Keyboard.JustDown(this.cursors.up!) ||
-          Phaser.Input.Keyboard.JustDown(this.jumpKey) ||
-          Phaser.Input.Keyboard.JustDown(this.cursors.space!);
-        const wantsSlide =
-          Phaser.Input.Keyboard.JustDown(this.cursors.down!) ||
-          Phaser.Input.Keyboard.JustDown(this.slideKey);
-        const wantsFocus = Phaser.Input.Keyboard.JustDown(this.focusKey);
-
-        if (wantsJump) {
-          this.tryJump();
-        }
-        if (wantsSlide) {
-          this.trySlide();
-        }
-        if (wantsFocus) {
-          this.tryFocus();
-        }
-
-        if (this.focusMs > 0) {
-          this.focusMs -= delta;
-        }
-
-        if (this.slideMs > 0) {
-          this.slideMs -= delta;
-          if (this.slideMs <= 0) {
-            body.setSize(42, 62).setOffset(28, 24);
-            this.player.y = FLOOR_Y - 60;
-          }
-        }
-
-        if (this.wallrunMs > 0) {
-          this.wallrunMs -= delta;
-        }
-
-        const speedMultiplier = this.focusMs > 0 ? 0.68 : 1;
-        const effectiveSpeed = this.worldSpeed * speedMultiplier;
-
-        this.score += dt * (effectiveSpeed * 0.45);
-        this.distance += dt * (effectiveSpeed * 0.115);
-        this.worldSpeed = Math.min(620, this.worldSpeed + dt * 5.5);
-
-        const nextTier = getDistrictTier(this.score);
-        if (nextTier !== this.districtTier) {
-          this.districtTier = nextTier;
-          this.focusCharges = Math.min(3, this.focusCharges + 1);
-          this.score += 80;
-          setStatus(`${DISTRICT_NAMES[nextTier]} unlocked. The rooftops get meaner, but you earned another Focus.`);
-          playAudio(bonusAudioRef.current, true);
-        }
-
-        this.nextPatternDistance -= effectiveSpeed * dt;
-        if (this.nextPatternDistance <= 0) {
-          this.spawnPattern();
-        }
-
-        this.clouds.forEach((cloud, index) => {
-          cloud.x -= dt * (18 + index * 3);
-          if (cloud.x < -80) {
-            cloud.x = WIDTH + 100;
-            cloud.y = 104 + Phaser.Math.Between(-12, 16);
-          }
-        });
-
-        this.skyline.forEach((shape, index) => {
-          shape.x -= dt * (50 + index * 6);
-          if (shape.x < -80) {
-            shape.x = WIDTH + 100;
-            shape.height = Phaser.Math.Between(150, 230);
-            shape.y = 278 + Phaser.Math.Between(-16, 28);
-          }
-        });
-
-        this.rooftopMarks.forEach((mark) => {
-          mark.x -= effectiveSpeed * dt;
-          if (mark.x < -40) {
-            mark.x = WIDTH + 50;
-          }
-        });
-
-        this.obstacles.children.each((child) => {
-          const obstacle = child as RunnerObstacle;
-          obstacle.setVelocityX(-effectiveSpeed);
-          if (obstacle.x < -160) {
-            obstacle.destroy();
-          }
-        });
-
-        this.coins.children.each((child) => {
-          const coin = child as RunnerCoin;
-          coin.setVelocityX(-effectiveSpeed);
-          if (coin.x < -40) {
-            coin.destroy();
-          }
-        });
-
-        if (this.player.y >= FLOOR_Y - 60 && body.velocity.y >= 0) {
-          this.player.y = this.slideMs > 0 ? FLOOR_Y - 34 : FLOOR_Y - 60;
-          body.setVelocityY(0);
-        }
-
-        if (this.wallrunMs > 0) {
-          this.player.play("roof-wallrun", true);
-        } else if (this.slideMs > 0) {
-          this.player.play("roof-slide", true);
-        } else if (this.player.y < FLOOR_Y - 61 || body.velocity.y < 0) {
-          this.player.play("roof-jump", true);
-        } else {
-          this.player.play("roof-run", true);
-        }
-
-        if (this.player.y > HEIGHT + 80) {
-          this.finishRun("Missed the rooftop landing and vanished into the alley.");
-          return;
-        }
-
-        this.pushHud();
-      }
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return;
     }
 
-    const game = new Phaser.Game({
-      type: Phaser.CANVAS,
-      width: WIDTH,
-      height: HEIGHT,
-      parent: containerRef.current,
-      backgroundColor: "#e9dcc2",
-      pixelArt: true,
-      roundPixels: true,
-      render: {
-        antialias: false,
-        pixelArt: true,
-        roundPixels: true
-      },
-      physics: {
-        default: "arcade",
-        arcade: {
-          debug: false,
-          gravity: { x: 0, y: 0 }
-        }
-      },
-      scene: RooftopRunnerScene
-    });
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+    renderPoster(context, bestScore, lastRun, phase);
+  }, [bestScore, lastRun, phase]);
 
-    gameRef.current = game;
+  useEffect(() => {
+    if (phase !== "playing") {
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return;
+    }
+
+    const input: InputState = { jumpQueued: false, duckHeld: false, hookQueued: false };
+    const state = createInitialState();
+    let animationFrame = 0;
+    let lastTime = performance.now();
+    let hudAccumulator = 0;
+    let finalised = false;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "ArrowUp" || event.code === "KeyW" || event.code === "Space") {
+        input.jumpQueued = true;
+        event.preventDefault();
+      }
+      if (event.code === "ArrowDown" || event.code === "KeyS") {
+        input.duckHeld = true;
+        event.preventDefault();
+      }
+      if (event.code === "KeyE" || event.code === "ShiftLeft" || event.code === "ShiftRight") {
+        input.hookQueued = true;
+        event.preventDefault();
+      }
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "ArrowDown" || event.code === "KeyS") {
+        input.duckHeld = false;
+      }
+    };
+
+    const pointerToAction = (clientX: number, clientY: number) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = ((clientX - rect.left) / rect.width) * WIDTH;
+      const y = ((clientY - rect.top) / rect.height) * HEIGHT;
+      if (x > WIDTH * 0.76) {
+        input.hookQueued = true;
+      } else if (y < HEIGHT * 0.58) {
+        input.jumpQueued = true;
+      } else {
+        input.duckHeld = true;
+      }
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      pointerToAction(event.clientX, event.clientY);
+    };
+
+    const onPointerUp = () => {
+      input.duckHeld = false;
+    };
+
+    const finishRun = () => {
+      if (finalised) {
+        return;
+      }
+
+      finalised = true;
+      const finalScore = state.score;
+      const distance = state.distance;
+      const goldEarned = Math.max(26, Math.floor(finalScore / 18) + state.coins * 8);
+      const nextBest = Math.max(bestScoreRef.current, finalScore);
+
+      setStatus(state.reason);
+      setLastRun({
+        score: finalScore,
+        distance,
+        coins: state.coins,
+        goldEarned,
+        reason: state.reason
+      });
+      setBestScore(nextBest);
+      saveLocalBest(nextBest);
+      pauseAudio(gameplayAudioRef.current);
+
+      void recordArcadeResult({
+        scoreGameName: "rooftop_runner",
+        score: finalScore,
+        goldEarned
+      }).catch(() => undefined);
+
+      window.setTimeout(() => {
+        setPhase("gameOver");
+      }, 220);
+    };
+
+    const tick = (time: number) => {
+      const deltaMs = Math.min(33, time - lastTime);
+      lastTime = time;
+
+      updateRunnerState(state, input, deltaMs, (message) => {
+        setStatus(message);
+        playAudio(bonusAudioRef.current, true);
+      });
+
+      renderWorld(context, state);
+
+      hudAccumulator += deltaMs;
+      if (hudAccumulator >= 90) {
+        hudAccumulator = 0;
+        setHud({
+          score: state.score,
+          distance: state.distance,
+          coins: state.coins,
+          speed: Math.round(state.velocityX),
+          districtTier: state.tier,
+          hookReady: state.hookCooldownMs <= 0,
+          hookCooldownPct: Math.round(100 - (state.hookCooldownMs / 1100) * 100)
+        });
+      }
+
+      input.jumpQueued = false;
+      input.hookQueued = false;
+
+      if (state.gameOver) {
+        finishRun();
+        return;
+      }
+
+      animationFrame = window.requestAnimationFrame(tick);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    canvas.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerUp);
+
+    animationFrame = window.requestAnimationFrame(tick);
 
     return () => {
-      cancelled = true;
-      game.destroy(true);
-      gameRef.current = null;
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
     };
-  }, [jumpSheet, phase, runSeed, runSheet, slideSheet, wallrunSheet]);
+  }, [phase, runSeed]);
 
   const districtName = DISTRICT_NAMES[hud.districtTier];
 
@@ -738,13 +904,13 @@ const RooftopRunner: React.FC = () => {
       score: 0,
       distance: 0,
       coins: 0,
-      speed: 360,
+      speed: getRunSpeed(0),
       districtTier: 0,
-      focusCharges: 1,
-      focusActive: false
+      hookReady: true,
+      hookCooldownPct: 100
     });
     setLastRun(null);
-    setStatus("Sketch Block is live. Jump gaps, slide under signs, and late-jump into walls to vault them.");
+    setStatus("Sketch Block is live. Jump gaps, duck clotheslines, and hook across greedy gaps.");
     setRunSeed((value) => value + 1);
     setPhase("playing");
   };
@@ -756,14 +922,14 @@ const RooftopRunner: React.FC = () => {
         <div className="rooftop-copy">
           <h1>Rooftop Runner</h1>
           <p>
-            A side-scrolling rooftop dash in a rubber-hose cartoon city. Clear readable obstacle strings,
-            bank coins, and hit milestones at 500, 1000, and 1500 without stepping on Town Rush&apos;s toes.
+            A stick-figure rooftop parkour game drawn like it belongs on notebook paper.
+            Jump between buildings, duck roof junk, and use a grappling hook to keep runs alive.
           </p>
         </div>
 
         <div className="rooftop-layout">
-          <section className="rooftop-stage">
-            <div ref={containerRef} className="rooftop-canvas" />
+          <section className="rooftop-stage rooftop-stage--paper">
+            <canvas ref={canvasRef} className="rooftop-canvas" />
 
             <div className="rooftop-hud rooftop-hud--top">
               <div className="rooftop-marquee">
@@ -772,28 +938,28 @@ const RooftopRunner: React.FC = () => {
               </div>
               <div className="rooftop-scoreboard">
                 <span>Score {hud.score}</span>
-                <span>{Math.round(hud.distance)}m</span>
+                <span>{hud.distance}m</span>
                 <span>Coins {hud.coins}</span>
               </div>
             </div>
 
             <div className="rooftop-hud rooftop-hud--bottom">
               <span>Jump `W` / `Up` / tap top</span>
-              <span>Slide `S` / `Down` / tap bottom</span>
-              <span>Focus `Shift` {hud.focusCharges}</span>
-              <span>{hud.focusActive ? "Focus live" : `Speed ${hud.speed}`}</span>
+              <span>Duck `S` / `Down` / hold bottom</span>
+              <span>Hook `E` / `Shift` / tap right</span>
+              <span>{hud.hookReady ? "Hook ready" : `Hook ${Math.max(0, hud.hookCooldownPct)}%`}</span>
             </div>
 
             {phase !== "playing" ? (
               <div className="rooftop-overlay">
-                <div className="rooftop-overlay-card">
+                <div className="rooftop-overlay-card rooftop-overlay-card--paper">
                   <p className="rooftop-overlay-kicker">
-                    {phase === "title" ? "Rubber-Hose Rooftops" : "Another Take"}
+                    {phase === "title" ? "Notebook Parkour" : "Another Take"}
                   </p>
                   <h2>{phase === "title" ? "Hit the skyline" : `Score ${lastRun?.score ?? 0}`}</h2>
                   <p>
                     {phase === "title"
-                      ? "Run left to right, jump rooftop gaps, and wall-vault past billboard stacks."
+                      ? "This one is built around rooftop jumps, readable gaps, and a grappling hook that creates comeback moments."
                       : `${lastRun?.reason ?? "Run over."} ${lastRun ? `Banked ${lastRun.goldEarned} gold and ${lastRun.coins} coins.` : ""}`}
                   </p>
                   <button className="primary-button" type="button" onClick={beginRun}>
@@ -805,22 +971,21 @@ const RooftopRunner: React.FC = () => {
           </section>
 
           <aside className="rooftop-sidepanel">
-            <div className="rooftop-panel">
+            <div className="rooftop-panel rooftop-panel--paper">
               <span className="rooftop-panel-title">Controls</span>
-              <p>Jump over rooftop gaps and crates.</p>
-              <p>Slide under hanging signs.</p>
-              <p>Late-jump into walls to vault them and pocket bonus score.</p>
-              <p>Focus slows the whole skyline for clutch recoveries.</p>
+              <p>Jump between individual rooftops and clear chimneys and crates.</p>
+              <p>Duck under clotheslines when the roof gets crowded.</p>
+              <p>Use the grappling hook to bail yourself out of wide gaps or keep momentum through the city.</p>
             </div>
 
-            <div className="rooftop-panel">
+            <div className="rooftop-panel rooftop-panel--paper">
               <span className="rooftop-panel-title">Progression</span>
-              <p>500 score: Studio Heights adds tighter gap-and-sign combos.</p>
-              <p>1000 score: Inkline Mile introduces wall vault strings.</p>
-              <p>1500 score: Moonlight Reel stacks patterns faster without becoming unreadable.</p>
+              <p>500 score: Pencil Plaza adds bigger roof swings and more duck checks.</p>
+              <p>1000 score: Hookline Heights brings wider gaps that reward smart hook timing.</p>
+              <p>1500 score: Midnight Margin speeds the city up and stacks denser rooftops.</p>
             </div>
 
-            <div className="rooftop-panel">
+            <div className="rooftop-panel rooftop-panel--paper">
               <span className="rooftop-panel-title">Run Status</span>
               <p>{status}</p>
               <p>Best score on this device: {bestScore}</p>
@@ -829,7 +994,7 @@ const RooftopRunner: React.FC = () => {
                   Last run: {lastRun.score} score, {lastRun.distance}m, {lastRun.coins} coins.
                 </p>
               ) : (
-                <p>No clean take yet. Start a run and chase the skyline.</p>
+                <p>No clean take yet. Start a run and sketch a better line through the city.</p>
               )}
               <button className="primary-button" type="button" onClick={beginRun}>
                 {phase === "playing" ? "Restart Run" : phase === "gameOver" ? "Run It Back" : "Start Run"}
