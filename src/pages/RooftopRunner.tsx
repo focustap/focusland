@@ -21,6 +21,22 @@ type Pickup = {
   collected: boolean;
 };
 
+type HookPoint = {
+  id: string;
+  x: number;
+  y: number;
+  kind: "pole" | "antenna" | "wire";
+};
+
+type AirObstacle = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  kind: "bird" | "kite" | "wire-cluster";
+};
+
 type Building = {
   id: number;
   x: number;
@@ -32,6 +48,8 @@ type Building = {
   seed: number;
   obstacles: BuildingObstacle[];
   pickups: Pickup[];
+  hookPoints: HookPoint[];
+  airObstacles: AirObstacle[];
 };
 
 type HookState = {
@@ -84,6 +102,10 @@ type InputState = {
   jumpQueued: boolean;
   duckHeld: boolean;
   hookQueued: boolean;
+  aimScreenX: number;
+  aimScreenY: number;
+  aimWorldX: number;
+  aimWorldY: number;
 };
 
 const WIDTH = 960;
@@ -210,7 +232,61 @@ function createBuilding(prev: Building, id: number, tier: DistrictTier): Buildin
     });
   }
 
-  return { id, x, width, top, height, anchorX, anchorY, seed: id * 97, obstacles, pickups };
+  const hookPoints: HookPoint[] = [
+    {
+      id: `${id}-hook-primary`,
+      x: anchorX,
+      y: anchorY,
+      kind: noise(id * 89) > 0.62 ? "antenna" : "pole"
+    }
+  ];
+
+  if (width > 220 && noise(id * 101) > 0.5) {
+    hookPoints.push({
+      id: `${id}-hook-secondary`,
+      x: x + width * between(id * 103, 0.28, 0.48),
+      y: top - between(id * 107, 82, 132),
+      kind: "wire"
+    });
+  }
+
+  const airObstacles: AirObstacle[] = [];
+  if (noise(id * 109) > 0.48) {
+    airObstacles.push({
+      id: `${id}-air-0`,
+      x: x + width * between(id * 113, 0.24, 0.78),
+      y: top - between(id * 127, 88, 146),
+      width: 34,
+      height: 18,
+      kind: noise(id * 131) > 0.45 ? "bird" : "kite"
+    });
+  }
+
+  if (tier >= 2 && noise(id * 137) > 0.7) {
+    airObstacles.push({
+      id: `${id}-air-1`,
+      x: x + width * between(id * 139, 0.42, 0.88),
+      y: top - between(id * 149, 120, 176),
+      width: 46,
+      height: 20,
+      kind: "wire-cluster"
+    });
+  }
+
+  return {
+    id,
+    x,
+    width,
+    top,
+    height,
+    anchorX,
+    anchorY,
+    seed: id * 97,
+    obstacles,
+    pickups,
+    hookPoints,
+    airObstacles
+  };
 }
 
 function createInitialBuildings() {
@@ -224,7 +300,12 @@ function createInitialBuildings() {
     anchorY: 276,
     seed: 1,
     obstacles: [],
-    pickups: [{ id: "0-coin-0", x: 186, y: 308, collected: false }]
+    pickups: [{ id: "0-coin-0", x: 186, y: 308, collected: false }],
+    hookPoints: [
+      { id: "0-hook-primary", x: 176, y: 276, kind: "pole" },
+      { id: "0-hook-secondary", x: 224, y: 248, kind: "wire" }
+    ],
+    airObstacles: []
   };
 
   const buildings = [first, createBuilding(first, 1, 0)];
@@ -265,15 +346,31 @@ function findBuildingUnder(state: RunnerState, x: number) {
   return state.buildings.find((building) => x >= building.x && x <= building.x + building.width) ?? null;
 }
 
-function findHookTarget(state: RunnerState) {
-  return (
-    state.buildings.find(
-      (building) =>
-        building.anchorX > state.playerX + 46 &&
-        building.anchorX < state.playerX + 280 &&
-        building.anchorY < state.playerY - 26
-    ) ?? null
+function findHookTarget(state: RunnerState, aimWorldX: number, aimWorldY: number) {
+  const candidates = state.buildings.flatMap((building) =>
+    building.hookPoints
+      .filter(
+        (point) =>
+          point.x > state.playerX + 30 &&
+          point.x < state.playerX + 340 &&
+          point.y < state.playerY - 16
+      )
+      .map((point) => ({
+        point,
+        score: Math.hypot(point.x - aimWorldX, point.y - aimWorldY)
+      }))
   );
+
+  if (!candidates.length) {
+    return null;
+  }
+
+  candidates.sort((a, b) => a.score - b.score);
+  if (candidates[0].score > 110) {
+    return null;
+  }
+
+  return candidates[0].point;
 }
 
 function ensureWorldAhead(state: RunnerState) {
@@ -306,6 +403,16 @@ function intersectsPlayer(state: RunnerState, obstacle: BuildingObstacle, buildi
     player.right > obstacleRect.left &&
     player.top < obstacleRect.bottom &&
     player.bottom > obstacleRect.top
+  );
+}
+
+function intersectsAirObstacle(state: RunnerState, obstacle: AirObstacle) {
+  const player = getPlayerBounds(state);
+  return (
+    player.left < obstacle.x + obstacle.width / 2 &&
+    player.right > obstacle.x - obstacle.width / 2 &&
+    player.top < obstacle.y + obstacle.height / 2 &&
+    player.bottom > obstacle.y - obstacle.height / 2
   );
 }
 
@@ -344,9 +451,9 @@ function updateRunnerState(
   }
 
   if (input.hookQueued && state.hookCooldownMs <= 0) {
-    const target = findHookTarget(state);
+    const target = findHookTarget(state, input.aimWorldX, input.aimWorldY);
     if (target) {
-      state.hook = { anchorX: target.anchorX, anchorY: target.anchorY, timeMs: 0 };
+      state.hook = { anchorX: target.x, anchorY: target.y, timeMs: 0 };
       state.hookCooldownMs = 1100;
       if (state.grounded) {
         state.velocityY = -380;
@@ -365,7 +472,7 @@ function updateRunnerState(
     state.velocityY += (dy / distance) * 1400 * pull * dt;
     state.velocityY += 480 * dt;
 
-    if (distance < 34 || state.hook.timeMs > 540 || state.playerX > state.hook.anchorX + 12) {
+    if (distance < 34 || state.hook.timeMs > 620 || state.playerX > state.hook.anchorX + 18) {
       state.styleBonus += 60;
       state.velocityX = Math.max(state.velocityX, targetRunSpeed + 110);
       state.hook = null;
@@ -420,6 +527,11 @@ function updateRunnerState(
     if (building.obstacles.some((obstacle) => intersectsPlayer(state, obstacle, building))) {
       state.gameOver = true;
       state.reason = "You wiped out on rooftop junk.";
+    }
+
+    if (building.airObstacles.some((obstacle) => intersectsAirObstacle(state, obstacle))) {
+      state.gameOver = true;
+      state.reason = "You clipped something nasty in the air.";
     }
   });
 
@@ -497,7 +609,11 @@ function renderBackground(ctx: CanvasRenderingContext2D, score: number) {
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 }
 
-function renderWorld(ctx: CanvasRenderingContext2D, state: RunnerState) {
+function renderWorld(
+  ctx: CanvasRenderingContext2D,
+  state: RunnerState,
+  aim?: { screenX: number; screenY: number }
+) {
   renderBackground(ctx, state.score);
   const cameraX = Math.max(0, state.playerX - PLAYER_SCREEN_X);
   const visibleBuildings = state.buildings.filter(
@@ -533,10 +649,21 @@ function renderWorld(ctx: CanvasRenderingContext2D, state: RunnerState) {
       drawSketchRect(ctx, windowX, windowY, 16, 22, 0.7);
     }
 
-    drawSketchLine(ctx, building.anchorX - cameraX, building.anchorY, building.anchorX - cameraX, building.top, 0.9);
-    ctx.beginPath();
-    ctx.arc(building.anchorX - cameraX, building.anchorY, 6, 0, Math.PI * 2);
-    ctx.stroke();
+    building.hookPoints.forEach((point) => {
+      const pointX = point.x - cameraX;
+      ctx.strokeStyle = point.kind === "pole" ? "#7c2d12" : point.kind === "antenna" ? "#334155" : "#1f2937";
+      if (point.kind === "wire") {
+        drawSketchLine(ctx, pointX - 12, point.y + 6, pointX + 12, point.y + 6, 0.5);
+        drawSketchLine(ctx, pointX, point.y + 6, pointX, building.top, 0.5);
+      } else {
+        drawSketchLine(ctx, pointX, point.y, pointX, building.top, 0.9);
+        drawSketchLine(ctx, pointX - 14, point.y + 10, pointX + 14, point.y + 10, 0.5);
+      }
+      ctx.strokeStyle = "#1d4ed8";
+      ctx.beginPath();
+      ctx.arc(pointX, point.y, 6, 0, Math.PI * 2);
+      ctx.stroke();
+    });
 
     building.obstacles.forEach((obstacle) => {
       const obstacleX = obstacle.x - cameraX;
@@ -567,6 +694,26 @@ function renderWorld(ctx: CanvasRenderingContext2D, state: RunnerState) {
       drawSketchLine(ctx, pickupX - 8, pickup.y, pickupX + 8, pickup.y, 0.5);
       drawSketchLine(ctx, pickupX, pickup.y - 8, pickupX, pickup.y + 8, 0.5);
     });
+
+    building.airObstacles.forEach((obstacle) => {
+      const obstacleX = obstacle.x - cameraX;
+      ctx.strokeStyle = "#111827";
+      if (obstacle.kind === "bird") {
+        drawSketchLine(ctx, obstacleX - 14, obstacle.y, obstacleX - 2, obstacle.y - 8, 0.5);
+        drawSketchLine(ctx, obstacleX - 2, obstacle.y - 8, obstacleX + 12, obstacle.y, 0.5);
+        drawSketchLine(ctx, obstacleX - 2, obstacle.y - 6, obstacleX + 8, obstacle.y - 12, 0.4);
+      } else if (obstacle.kind === "kite") {
+        drawSketchLine(ctx, obstacleX, obstacle.y - 12, obstacleX + 12, obstacle.y, 0.5);
+        drawSketchLine(ctx, obstacleX + 12, obstacle.y, obstacleX, obstacle.y + 12, 0.5);
+        drawSketchLine(ctx, obstacleX, obstacle.y + 12, obstacleX - 12, obstacle.y, 0.5);
+        drawSketchLine(ctx, obstacleX - 12, obstacle.y, obstacleX, obstacle.y - 12, 0.5);
+        drawSketchLine(ctx, obstacleX, obstacle.y + 12, obstacleX + 10, obstacle.y + 26, 0.5);
+      } else {
+        drawSketchLine(ctx, obstacleX - 20, obstacle.y, obstacleX + 20, obstacle.y, 0.5);
+        drawSketchLine(ctx, obstacleX - 12, obstacle.y - 8, obstacleX - 12, obstacle.y + 8, 0.5);
+        drawSketchLine(ctx, obstacleX + 4, obstacle.y - 10, obstacleX + 4, obstacle.y + 10, 0.5);
+      }
+    });
   });
 
   if (state.hook) {
@@ -584,28 +731,47 @@ function renderWorld(ctx: CanvasRenderingContext2D, state: RunnerState) {
   const playerScreenX = state.playerX - cameraX;
   const playerTop = state.playerY - getPlayerHeight(state);
   const runCycle = (state.distance * 0.085) % (Math.PI * 2);
-  const legSwing = state.grounded ? Math.sin(runCycle) * 12 : 4;
-  const armSwing = state.grounded ? Math.cos(runCycle) * 10 : -10;
+  const legSwing = state.grounded ? Math.sin(runCycle) * 12 : Math.max(-8, Math.min(8, state.velocityY * 0.02));
+  const armSwing = state.grounded ? Math.cos(runCycle) * 10 : -12;
+  const torsoLean = state.hook ? 10 : state.grounded ? Math.sin(runCycle) * 2 : -8;
+  const headOffsetY = state.grounded ? Math.sin(runCycle * 2) * 1.5 : 0;
 
   ctx.strokeStyle = "#101010";
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.arc(playerScreenX, playerTop + 12, 11, 0, Math.PI * 2);
+  ctx.arc(playerScreenX, playerTop + 12 + headOffsetY, 11, 0, Math.PI * 2);
   ctx.stroke();
-  drawSketchLine(ctx, playerScreenX, playerTop + 24, playerScreenX, playerTop + 47, 0.6);
-  drawSketchLine(ctx, playerScreenX, playerTop + 30, playerScreenX - 14 + armSwing * 0.2, playerTop + 40, 0.6);
-  drawSketchLine(ctx, playerScreenX, playerTop + 30, playerScreenX + 14 - armSwing * 0.2, playerTop + 38, 0.6);
+  drawSketchLine(ctx, playerScreenX, playerTop + 24, playerScreenX + torsoLean * 0.25, playerTop + 47, 0.6);
 
-  if (state.ducking) {
-    drawSketchLine(ctx, playerScreenX, playerTop + 47, playerScreenX - 12, playerTop + 57, 0.6);
-    drawSketchLine(ctx, playerScreenX, playerTop + 47, playerScreenX + 14, playerTop + 55, 0.6);
+  if (state.hook) {
+    const hookScreenX = state.hook.anchorX - cameraX;
+    const hookDx = clamp(hookScreenX - playerScreenX, -36, 36);
+    drawSketchLine(ctx, playerScreenX, playerTop + 30, playerScreenX + hookDx * 0.7, playerTop + 18, 0.5);
+    drawSketchLine(ctx, playerScreenX, playerTop + 30, playerScreenX - 12, playerTop + 44, 0.5);
   } else {
-    drawSketchLine(ctx, playerScreenX, playerTop + 47, playerScreenX - 11 + legSwing, playerTop + 63, 0.6);
-    drawSketchLine(ctx, playerScreenX, playerTop + 47, playerScreenX + 11 - legSwing, playerTop + 63, 0.6);
+    drawSketchLine(ctx, playerScreenX, playerTop + 30, playerScreenX - 14 + armSwing * 0.2, playerTop + 40, 0.6);
+    drawSketchLine(ctx, playerScreenX, playerTop + 30, playerScreenX + 14 - armSwing * 0.2, playerTop + 38, 0.6);
   }
 
-  drawSketchLine(ctx, playerScreenX - 3, playerTop + 9, playerScreenX - 3, playerTop + 13, 0.3);
-  drawSketchLine(ctx, playerScreenX + 3, playerTop + 9, playerScreenX + 3, playerTop + 13, 0.3);
+  if (state.ducking) {
+    drawSketchLine(ctx, playerScreenX + torsoLean * 0.25, playerTop + 47, playerScreenX - 12, playerTop + 57, 0.6);
+    drawSketchLine(ctx, playerScreenX + torsoLean * 0.25, playerTop + 47, playerScreenX + 14, playerTop + 55, 0.6);
+  } else if (!state.grounded) {
+    drawSketchLine(ctx, playerScreenX + torsoLean * 0.25, playerTop + 47, playerScreenX - 10, playerTop + 58 - legSwing * 0.2, 0.6);
+    drawSketchLine(ctx, playerScreenX + torsoLean * 0.25, playerTop + 47, playerScreenX + 12, playerTop + 54 + legSwing * 0.2, 0.6);
+  } else {
+    drawSketchLine(ctx, playerScreenX + torsoLean * 0.25, playerTop + 47, playerScreenX - 11 + legSwing, playerTop + 63, 0.6);
+    drawSketchLine(ctx, playerScreenX + torsoLean * 0.25, playerTop + 47, playerScreenX + 11 - legSwing, playerTop + 63, 0.6);
+  }
+
+  drawSketchLine(ctx, playerScreenX - 3, playerTop + 8 + headOffsetY, playerScreenX - 3, playerTop + 14 + headOffsetY, 0.2);
+  drawSketchLine(ctx, playerScreenX + 3, playerTop + 8 + headOffsetY, playerScreenX + 3, playerTop + 14 + headOffsetY, 0.2);
+
+  if (aim) {
+    ctx.strokeStyle = "rgba(29, 78, 216, 0.6)";
+    drawSketchLine(ctx, aim.screenX - 10, aim.screenY, aim.screenX + 10, aim.screenY, 0.2);
+    drawSketchLine(ctx, aim.screenX, aim.screenY - 10, aim.screenX, aim.screenY + 10, 0.2);
+  }
 }
 
 function renderPoster(ctx: CanvasRenderingContext2D, bestScore: number, lastRun: RunSummary | null, phase: GamePhase) {
@@ -762,8 +928,18 @@ const RooftopRunner: React.FC = () => {
       return;
     }
 
-    const input: InputState = { jumpQueued: false, duckHeld: false, hookQueued: false };
+    const input: InputState = {
+      jumpQueued: false,
+      duckHeld: false,
+      hookQueued: false,
+      aimScreenX: WIDTH * 0.68,
+      aimScreenY: HEIGHT * 0.28,
+      aimWorldX: 0,
+      aimWorldY: 0
+    };
     const state = createInitialState();
+    input.aimWorldX = state.playerX + 180;
+    input.aimWorldY = state.playerY - 110;
     let animationFrame = 0;
     let lastTime = performance.now();
     let hudAccumulator = 0;
@@ -790,13 +966,22 @@ const RooftopRunner: React.FC = () => {
       }
     };
 
-    const pointerToAction = (clientX: number, clientY: number) => {
+    const syncAimFromPointer = (clientX: number, clientY: number) => {
       const rect = canvas.getBoundingClientRect();
       const x = ((clientX - rect.left) / rect.width) * WIDTH;
       const y = ((clientY - rect.top) / rect.height) * HEIGHT;
-      if (x > WIDTH * 0.76) {
+
+      input.aimScreenX = x;
+      input.aimScreenY = y;
+      input.aimWorldX = Math.max(0, state.playerX - PLAYER_SCREEN_X) + x;
+      input.aimWorldY = y;
+    };
+
+    const pointerToAction = (clientX: number, clientY: number, pointerType: string) => {
+      syncAimFromPointer(clientX, clientY);
+      if (pointerType === "mouse") {
         input.hookQueued = true;
-      } else if (y < HEIGHT * 0.58) {
+      } else if (input.aimScreenY < HEIGHT * 0.58) {
         input.jumpQueued = true;
       } else {
         input.duckHeld = true;
@@ -804,7 +989,11 @@ const RooftopRunner: React.FC = () => {
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      pointerToAction(event.clientX, event.clientY);
+      pointerToAction(event.clientX, event.clientY, event.pointerType);
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      syncAimFromPointer(event.clientX, event.clientY);
     };
 
     const onPointerUp = () => {
@@ -854,7 +1043,10 @@ const RooftopRunner: React.FC = () => {
         playAudio(bonusAudioRef.current, true);
       });
 
-      renderWorld(context, state);
+      renderWorld(context, state, {
+        screenX: input.aimScreenX,
+        screenY: input.aimScreenY
+      });
 
       hudAccumulator += deltaMs;
       if (hudAccumulator >= 90) {
@@ -884,6 +1076,7 @@ const RooftopRunner: React.FC = () => {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
     window.addEventListener("pointerup", onPointerUp);
 
     animationFrame = window.requestAnimationFrame(tick);
@@ -893,6 +1086,7 @@ const RooftopRunner: React.FC = () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
     };
   }, [phase, runSeed]);
@@ -910,7 +1104,7 @@ const RooftopRunner: React.FC = () => {
       hookCooldownPct: 100
     });
     setLastRun(null);
-    setStatus("Sketch Block is live. Jump gaps, duck clotheslines, and hook across greedy gaps.");
+    setStatus("Sketch Block is live. Jump gaps, duck clotheslines, and click to hook across greedy gaps.");
     setRunSeed((value) => value + 1);
     setPhase("playing");
   };
@@ -946,7 +1140,7 @@ const RooftopRunner: React.FC = () => {
             <div className="rooftop-hud rooftop-hud--bottom">
               <span>Jump `W` / `Up` / tap top</span>
               <span>Duck `S` / `Down` / hold bottom</span>
-              <span>Hook `E` / `Shift` / tap right</span>
+              <span>Hook click mouse / `E` / `Shift`</span>
               <span>{hud.hookReady ? "Hook ready" : `Hook ${Math.max(0, hud.hookCooldownPct)}%`}</span>
             </div>
 
@@ -975,14 +1169,14 @@ const RooftopRunner: React.FC = () => {
               <span className="rooftop-panel-title">Controls</span>
               <p>Jump between individual rooftops and clear chimneys and crates.</p>
               <p>Duck under clotheslines when the roof gets crowded.</p>
-              <p>Use the grappling hook to bail yourself out of wide gaps or keep momentum through the city.</p>
+              <p>Aim with the mouse and click to fire the grappling hook at poles, wires, and anchors above the skyline.</p>
             </div>
 
             <div className="rooftop-panel rooftop-panel--paper">
               <span className="rooftop-panel-title">Progression</span>
               <p>500 score: Pencil Plaza adds bigger roof swings and more duck checks.</p>
-              <p>1000 score: Hookline Heights brings wider gaps that reward smart hook timing.</p>
-              <p>1500 score: Midnight Margin speeds the city up and stacks denser rooftops.</p>
+              <p>1000 score: Hookline Heights brings wider gaps, higher anchors, and air hazards.</p>
+              <p>1500 score: Midnight Margin speeds the city up and stacks denser rooftops and overhead clutter.</p>
             </div>
 
             <div className="rooftop-panel rooftop-panel--paper">
