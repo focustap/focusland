@@ -25,6 +25,7 @@ const Pong = lazy(() => import("./pages/Pong"));
 const Pool = lazy(() => import("./pages/Pool"));
 const Profile = lazy(() => import("./pages/Profile"));
 const RideTheBus = lazy(() => import("./pages/RideTheBus"));
+const RooftopRunner = lazy(() => import("./pages/RooftopRunner"));
 const ShopRoom = lazy(() => import("./pages/ShopRoom"));
 const Slots = lazy(() => import("./pages/Slots"));
 const SpaceInvaders = lazy(() => import("./pages/SpaceInvaders"));
@@ -92,6 +93,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <TownRush />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/rooftop-runner"
+            element={
+              <ProtectedRoute>
+                <RooftopRunner />
               </ProtectedRoute>
             }
           />

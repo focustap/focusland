@@ -1,23 +1,52 @@
 import React, { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 import NavBar from "../components/NavBar";
+import { profileColorToNumber } from "../lib/profileColor";
 import { recordArcadeResult } from "../lib/progression";
+import { supabase } from "../lib/supabase";
 
-type GamePhase = "title" | "playing" | "gameOver";
+type LaneKind = "start" | "road" | "park" | "rail";
 type DistrictTier = 0 | 1 | 2 | 3;
-type ObstacleKind = "low" | "high" | "wall";
 
-type HudState = {
-  score: number;
-  distance: number;
-  coins: number;
+type Obstacle = {
+  x: number;
+  width: number;
   speed: number;
-  districtTier: DistrictTier;
-  focusCharges: number;
-  focusActive: boolean;
+  direction: 1 | -1;
+  color: number;
+  pattern: "cruiser" | "convoy" | "sprinter";
 };
 
-type RunSummary = {
+type LaneData = {
+  index: number;
+  kind: LaneKind;
+  tier: DistrictTier;
+  blockers: number[];
+  coinColumn: number | null;
+  obstacles: Obstacle[];
+  trainDirection: 1 | -1;
+  trainSpeed: number;
+  trainOffset: number;
+  trainCooldownMs: number;
+  trainWarningMs: number;
+  trainActiveMs: number;
+  trainTimerMs: number;
+  stripeOffset: number;
+};
+
+type MoveDirection = "up" | "down" | "left" | "right";
+
+type FloatingLabel = {
+  id: number;
+  x: number;
+  row: number;
+  y: number;
+  text: string;
+  color: string;
+  ttlMs: number;
+};
+
+type GameOverPayload = {
   score: number;
   distance: number;
   coins: number;
@@ -25,66 +54,63 @@ type RunSummary = {
   reason: string;
 };
 
-type PatternEvent =
-  | { kind: "low" | "high" | "wall"; gap: number }
-  | { kind: "coin"; gap: number; y?: number };
-
-type PhaserObstacle = Phaser.Physics.Arcade.Image & {
-  kind: ObstacleKind;
-  cleared?: boolean;
-};
-
-type PhaserCoin = Phaser.Physics.Arcade.Image;
-
-const WIDTH = 960;
-const HEIGHT = 540;
-const FLOOR_Y = 420;
-const PLAYER_X = 188;
-const LOCAL_BEST_KEY = "focusland-town-rush-runner-best";
+const WIDTH = 520;
+const HEIGHT = 720;
+const COLS = 9;
+const TILE_SIZE = 56;
+const VISIBLE_ROWS = 12;
+const PLAYER_BASELINE_ROW = 2;
+const BOARD_PADDING_X = 8;
+const BOARD_TOP = 68;
+const BOARD_HEIGHT = TILE_SIZE * VISIBLE_ROWS;
+const PLAYER_SIZE = 32;
+const HOP_DURATION_MS = 105;
+const TRAIN_TOTAL_WIDTH = WIDTH + 220;
+const FEVER_CHARGE_MAX = 100;
+const FEVER_DURATION_MS = 6000;
+const FOCUS_DURATION_MS = 2600;
+const TOWN_RUSH_LOCAL_BEST_KEY = "focusland-town-rush-best";
 const DISTRICT_THRESHOLDS = [500, 1000, 1500] as const;
-const DISTRICT_NAMES = [
+const DISTRICT_LABELS = [
   "Starter Strip",
-  "Studio Row",
-  "Ink Works",
-  "Final Reel"
+  "Market Mile",
+  "Signal Core",
+  "Night Rush"
 ] as const;
 
-const RUN_SHEET = "/assets/town-rush/runner-expressive-run-sheet.png";
-const JUMP_SHEET = "/assets/town-rush/runner-expressive-jump-sheet.png";
-const SLIDE_SHEET = "/assets/town-rush/runner-expressive-slide-sheet.png";
-const WALLRUN_SHEET = "/assets/town-rush/runner-expressive-wallrun-sheet.png";
-
-const TITLE_TRACK = "/assets/music/town-rush/SwinginSafari.wav";
-const GAMEPLAY_TRACK = "/assets/music/town-rush/BourbonBlues.wav";
-const BONUS_TRACK = "/assets/music/town-rush/BoogieWonderland.wav";
-const RESULTS_TRACK = "/assets/music/town-rush/CoolCatCaper.wav";
-
-const PATTERNS: Record<DistrictTier, PatternEvent[][]> = {
-  0: [
-    [{ kind: "coin", gap: 0, y: FLOOR_Y - 110 }, { kind: "low", gap: 240 }],
-    [{ kind: "high", gap: 0 }],
-    [{ kind: "coin", gap: 0, y: FLOOR_Y - 130 }, { kind: "coin", gap: 85, y: FLOOR_Y - 96 }],
-    [{ kind: "low", gap: 0 }]
-  ],
-  1: [
-    [{ kind: "low", gap: 0 }, { kind: "high", gap: 290 }],
-    [{ kind: "high", gap: 0 }, { kind: "coin", gap: 145, y: FLOOR_Y - 145 }],
-    [{ kind: "low", gap: 0 }, { kind: "coin", gap: 120, y: FLOOR_Y - 105 }, { kind: "low", gap: 240 }],
-    [{ kind: "coin", gap: 0, y: FLOOR_Y - 160 }, { kind: "coin", gap: 76, y: FLOOR_Y - 120 }, { kind: "coin", gap: 76, y: FLOOR_Y - 88 }]
-  ],
-  2: [
-    [{ kind: "wall", gap: 0 }, { kind: "coin", gap: 125, y: FLOOR_Y - 176 }],
-    [{ kind: "high", gap: 0 }, { kind: "low", gap: 300 }],
-    [{ kind: "low", gap: 0 }, { kind: "wall", gap: 340 }],
-    [{ kind: "coin", gap: 0, y: FLOOR_Y - 170 }, { kind: "wall", gap: 210 }]
-  ],
-  3: [
-    [{ kind: "low", gap: 0 }, { kind: "high", gap: 285 }, { kind: "wall", gap: 330 }],
-    [{ kind: "wall", gap: 0 }, { kind: "high", gap: 275 }],
-    [{ kind: "high", gap: 0 }, { kind: "coin", gap: 115, y: FLOOR_Y - 150 }, { kind: "wall", gap: 250 }],
-    [{ kind: "low", gap: 0 }, { kind: "coin", gap: 105, y: FLOOR_Y - 110 }, { kind: "high", gap: 245 }]
-  ]
+type LocalBest = {
+  score: number;
+  distance: number;
 };
+
+function loadLocalBest(): LocalBest {
+  if (typeof window === "undefined") {
+    return { score: 0, distance: 0 };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(TOWN_RUSH_LOCAL_BEST_KEY);
+    if (!raw) {
+      return { score: 0, distance: 0 };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<LocalBest>;
+    return {
+      score: Number(parsed.score ?? 0),
+      distance: Number(parsed.distance ?? 0)
+    };
+  } catch {
+    return { score: 0, distance: 0 };
+  }
+}
+
+function saveLocalBest(best: LocalBest) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(TOWN_RUSH_LOCAL_BEST_KEY, JSON.stringify(best));
+}
 
 function getDistrictTier(score: number): DistrictTier {
   if (score >= DISTRICT_THRESHOLDS[2]) return 3;
@@ -93,688 +119,1041 @@ function getDistrictTier(score: number): DistrictTier {
   return 0;
 }
 
-function loadLocalBest() {
-  if (typeof window === "undefined") {
-    return 0;
-  }
-
-  const raw = window.localStorage.getItem(LOCAL_BEST_KEY);
-  return raw ? Number(raw) || 0 : 0;
+function laneWorldY(row: number, cameraRow: number) {
+  return BOARD_TOP + BOARD_HEIGHT - (row - cameraRow + 1) * TILE_SIZE;
 }
 
-function saveLocalBest(score: number) {
-  if (typeof window !== "undefined") {
-    window.localStorage.setItem(LOCAL_BEST_KEY, String(score));
-  }
+function cellCenterX(column: number) {
+  return BOARD_PADDING_X + column * TILE_SIZE + TILE_SIZE / 2;
 }
 
-function playAudio(audio: HTMLAudioElement | null, reset = false) {
-  if (!audio) {
-    return;
-  }
-
-  if (reset) {
-    audio.currentTime = 0;
-  }
-
-  void audio.play().catch(() => undefined);
+function rectsOverlap(
+  ax: number,
+  ay: number,
+  aw: number,
+  ah: number,
+  bx: number,
+  by: number,
+  bw: number,
+  bh: number
+) {
+  return Math.abs(ax - bx) * 2 < aw + bw && Math.abs(ay - by) * 2 < ah + bh;
 }
 
-function pauseAudio(audio: HTMLAudioElement | null) {
-  audio?.pause();
+class TownRushRun {
+  lanes = new Map<number, LaneData>();
+  playerColumn = Math.floor(COLS / 2);
+  playerRow = 0;
+  startColumn = Math.floor(COLS / 2);
+  furthestRow = 0;
+  coins = 0;
+  score = 0;
+  rushStreak = 0;
+  rushTimerMs = 0;
+  feverCharge = 0;
+  feverMs = 0;
+  closeCallCooldownMs = 0;
+  focusCharges = 0;
+  focusMs = 0;
+  districtTier: DistrictTier = 0;
+  lastMilestoneScore = 0;
+  alive = true;
+  deathReason = "";
+  hopElapsedMs = 0;
+  hopFromColumn = this.playerColumn;
+  hopFromRow = this.playerRow;
+  hopToColumn = this.playerColumn;
+  hopToRow = this.playerRow;
+  hopping = false;
+  floatingLabels: FloatingLabel[] = [];
+  nextFloatingLabelId = 1;
+  shakeMs = 0;
+  minActiveRow = -8;
+  maxActiveRow = 20;
+
+  ensureLane(index: number) {
+    if (!this.lanes.has(index)) {
+      this.lanes.set(index, this.createLane(index));
+    }
+
+    return this.lanes.get(index)!;
+  }
+
+  createLane(index: number): LaneData {
+    if (index <= 0) {
+      return {
+        index,
+        kind: "start",
+        tier: 0,
+        blockers: [],
+        coinColumn: null,
+        obstacles: [],
+        trainDirection: 1,
+        trainSpeed: 0,
+        trainOffset: 0,
+        trainCooldownMs: 0,
+        trainWarningMs: 0,
+        trainActiveMs: 0,
+        trainTimerMs: 0,
+        stripeOffset: 0
+      };
+    }
+
+    const roll = Math.random();
+    const tier = this.districtTier;
+    let consecutiveRoads = 0;
+    for (let previous = index - 1; previous >= Math.max(1, index - 3); previous -= 1) {
+      const priorLane = this.lanes.get(previous);
+      if (!priorLane || priorLane.kind !== "road") {
+        break;
+      }
+      consecutiveRoads += 1;
+    }
+    let kind: LaneKind;
+    if (index < 3) {
+      kind = "park";
+    } else if (consecutiveRoads >= 2) {
+      kind = Math.random() < 0.58 ? "park" : "rail";
+    } else if (roll < (tier >= 2 ? 0.14 : 0.18)) {
+      kind = "park";
+    } else if (roll < (tier >= 1 ? 0.38 : 0.34)) {
+      kind = "rail";
+    } else {
+      kind = "road";
+    }
+
+    const lane: LaneData = {
+      index,
+      kind,
+      tier,
+      blockers: [],
+      coinColumn: null,
+      obstacles: [],
+      trainDirection: Math.random() > 0.5 ? 1 : -1,
+      trainSpeed: 420 + Math.random() * 140 + Math.min(180, index * 4.8),
+      trainOffset: 0,
+      trainCooldownMs: Math.max(1200, 2500 + Math.random() * 1800 - index * 18),
+      trainWarningMs: 850,
+      trainActiveMs: 1500,
+      trainTimerMs: Math.random() * 3200,
+      stripeOffset: Math.random() * TILE_SIZE
+    };
+
+    if (kind === "park") {
+      const blockers = new Set<number>();
+      const blockerCount =
+        tier >= 3
+          ? Phaser.Math.Between(2, 3)
+          : Math.random() < 0.55
+            ? 1
+            : 2;
+      while (blockers.size < blockerCount) {
+        const value = Phaser.Math.Between(0, COLS - 1);
+        if (value !== this.startColumn) {
+          blockers.add(value);
+        }
+      }
+      lane.blockers = Array.from(blockers.values());
+      if (Math.random() < (tier >= 2 ? 0.72 : 0.55)) {
+        const candidates = Array.from({ length: COLS }, (_, column) => column).filter(
+          (column) => !blockers.has(column)
+        );
+        lane.coinColumn = Phaser.Utils.Array.GetRandom(candidates);
+      }
+    }
+
+    if (kind === "road") {
+      const direction: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
+      const patternRoll = Math.random();
+      const pattern =
+        tier >= 2 && patternRoll > 0.62
+          ? "sprinter"
+          : tier >= 1 && patternRoll > 0.3
+            ? "convoy"
+            : "cruiser";
+      const speedBase =
+        pattern === "sprinter"
+          ? [185, 205, 225, 245]
+          : pattern === "convoy"
+            ? [135, 150, 165, 180]
+            : [120, 135, 150, 165];
+      const speed = speedBase[Math.min(tier, speedBase.length - 1)];
+      const width =
+        pattern === "sprinter"
+          ? TILE_SIZE * 0.72
+          : pattern === "convoy"
+            ? TILE_SIZE * 0.94
+            : TILE_SIZE * 1.16;
+      const gapTiles =
+        pattern === "sprinter"
+          ? 4.2
+          : pattern === "convoy"
+            ? 3.5
+            : 4.6;
+      const cycle = width + TILE_SIZE * gapTiles;
+      const startX = Phaser.Math.FloatBetween(-cycle * 0.35, cycle * 0.35);
+      const obstacleCount = Math.max(2, Math.ceil((WIDTH + cycle) / cycle));
+      for (let index = 0; index < obstacleCount; index += 1) {
+        lane.obstacles.push({
+          x: startX + index * cycle,
+          width,
+          speed,
+          direction,
+          color: Phaser.Display.Color.GetColor(
+            Phaser.Math.Between(110, 255),
+            Phaser.Math.Between(80, 180),
+            Phaser.Math.Between(70, 120)
+          ),
+          pattern
+        });
+      }
+    }
+
+    return lane;
+  }
+
+  tryMove(direction: MoveDirection) {
+    if (!this.alive || this.hopping) {
+      return false;
+    }
+
+    const nextColumn =
+      direction === "left"
+        ? this.playerColumn - 1
+        : direction === "right"
+          ? this.playerColumn + 1
+          : this.playerColumn;
+    const nextRow =
+      direction === "up"
+        ? this.playerRow + 1
+        : direction === "down"
+          ? Math.max(0, this.playerRow - 1)
+          : this.playerRow;
+
+    if (nextColumn < 0 || nextColumn >= COLS) {
+      return false;
+    }
+
+    const lane = this.ensureLane(nextRow);
+    if (lane.blockers.includes(nextColumn)) {
+      return false;
+    }
+
+    this.hopping = true;
+    this.hopElapsedMs = 0;
+    this.hopFromColumn = this.playerColumn;
+    this.hopFromRow = this.playerRow;
+    this.hopToColumn = nextColumn;
+    this.hopToRow = nextRow;
+
+    if (direction === "up") {
+      if (this.rushTimerMs > 0) {
+        this.rushStreak += 1;
+      } else {
+        this.rushStreak = 1;
+      }
+      this.rushTimerMs = 1350;
+    } else if (direction === "down") {
+      this.rushStreak = 0;
+      this.rushTimerMs = 0;
+    }
+
+    return true;
+  }
+
+  activateFocus() {
+    if (!this.alive || this.focusCharges <= 0 || this.focusMs > 0) {
+      return false;
+    }
+
+    this.focusCharges -= 1;
+    this.focusMs = FOCUS_DURATION_MS + this.districtTier * 250;
+    this.addFloatingLabel(cellCenterX(this.playerColumn), this.playerRow, -8, "FOCUS", "#93c5fd");
+    return true;
+  }
+
+  update(deltaMs: number) {
+    if (this.shakeMs > 0) {
+      this.shakeMs = Math.max(0, this.shakeMs - deltaMs);
+    }
+
+    this.focusMs = Math.max(0, this.focusMs - deltaMs);
+    this.closeCallCooldownMs = Math.max(0, this.closeCallCooldownMs - deltaMs);
+    this.rushTimerMs = Math.max(0, this.rushTimerMs - deltaMs);
+    this.feverMs = Math.max(0, this.feverMs - deltaMs);
+    const worldDelta = this.focusMs > 0 ? deltaMs * 0.42 : deltaMs;
+    if (this.rushTimerMs === 0 && !this.hopping) {
+      this.rushStreak = 0;
+    }
+
+    const minRow = this.playerRow + this.minActiveRow;
+    const maxRow = this.playerRow + this.maxActiveRow;
+
+    this.lanes.forEach((lane, key) => {
+      if (key < minRow || key > maxRow) {
+        this.lanes.delete(key);
+        return;
+      }
+
+      if (lane.kind === "road") {
+        lane.obstacles.forEach((obstacle) => {
+          obstacle.x += obstacle.speed * obstacle.direction * (worldDelta / 1000);
+          const wrapBuffer = 90;
+          if (obstacle.direction === 1 && obstacle.x - obstacle.width / 2 > WIDTH + wrapBuffer) {
+            obstacle.x = -obstacle.width / 2 - wrapBuffer;
+          } else if (obstacle.direction === -1 && obstacle.x + obstacle.width / 2 < -wrapBuffer) {
+            obstacle.x = WIDTH + obstacle.width / 2 + wrapBuffer;
+          }
+        });
+        lane.stripeOffset = (lane.stripeOffset + worldDelta * 0.08) % TILE_SIZE;
+      }
+
+      if (lane.kind === "rail") {
+        lane.trainTimerMs += worldDelta;
+        const cycle = lane.trainCooldownMs + lane.trainWarningMs + lane.trainActiveMs;
+        if (lane.trainTimerMs > cycle) {
+          lane.trainTimerMs -= cycle;
+        }
+        const activeStart = lane.trainCooldownMs + lane.trainWarningMs;
+        if (lane.trainTimerMs < activeStart) {
+          lane.trainOffset =
+            lane.trainDirection === 1
+              ? -TRAIN_TOTAL_WIDTH
+              : WIDTH + TRAIN_TOTAL_WIDTH;
+        } else {
+          const progress = (lane.trainTimerMs - activeStart) / lane.trainActiveMs;
+          lane.trainOffset =
+            lane.trainDirection === 1
+              ? -TRAIN_TOTAL_WIDTH + progress * (WIDTH + TRAIN_TOTAL_WIDTH * 2)
+              : WIDTH + TRAIN_TOTAL_WIDTH - progress * (WIDTH + TRAIN_TOTAL_WIDTH * 2);
+        }
+      }
+    });
+
+    if (this.hopping) {
+      this.hopElapsedMs += deltaMs;
+      if (this.hopElapsedMs >= HOP_DURATION_MS) {
+        this.playerColumn = this.hopToColumn;
+        this.playerRow = this.hopToRow;
+        this.hopping = false;
+        this.hopElapsedMs = 0;
+
+        if (this.playerRow > this.furthestRow) {
+          this.furthestRow = this.playerRow;
+          const stepScore = this.feverMs > 0 ? 20 : 10;
+          this.score += stepScore;
+          if (this.rushStreak >= 4 && this.rushStreak % 2 === 0) {
+            const rushBonus = Math.min(20, this.rushStreak);
+            this.score += rushBonus;
+            this.addFloatingLabel(cellCenterX(this.playerColumn), this.playerRow, 0, `RUSH +${rushBonus}`, "#fde047");
+          }
+          this.addFeverCharge(6);
+          if (this.playerRow % 15 === 0) {
+            const milestoneBonus = this.feverMs > 0 ? 80 : 40;
+            this.score += milestoneBonus;
+            this.addFloatingLabel(
+              cellCenterX(this.playerColumn),
+              this.playerRow,
+              0,
+              `CHECKPOINT +${milestoneBonus}`,
+              "#c4b5fd"
+            );
+          }
+        }
+
+        const lane = this.ensureLane(this.playerRow);
+        if (lane.coinColumn === this.playerColumn) {
+          lane.coinColumn = null;
+          this.coins += 1;
+          const coinScore = this.feverMs > 0 ? 50 : 25;
+          this.score += coinScore;
+          this.addFeverCharge(10);
+          this.addFloatingLabel(cellCenterX(this.playerColumn), this.playerRow, 0, `+${coinScore}`, "#86efac");
+        }
+
+        this.checkDistrictMilestones();
+      }
+    }
+
+    this.floatingLabels = this.floatingLabels
+      .map((label) => ({
+        ...label,
+        ttlMs: label.ttlMs - deltaMs,
+        y: label.y - deltaMs * 0.04
+      }))
+      .filter((label) => label.ttlMs > 0);
+
+    if (this.alive) {
+      this.checkCollisions();
+    }
+
+    for (let row = minRow; row <= maxRow; row += 1) {
+      this.ensureLane(row);
+    }
+  }
+
+  getPlayerRenderPosition() {
+    const progress = this.hopping ? this.hopElapsedMs / HOP_DURATION_MS : 1;
+    const eased = this.hopping ? Phaser.Math.Easing.Cubic.Out(progress) : 1;
+    const column = Phaser.Math.Linear(this.hopFromColumn, this.hopToColumn, eased);
+    const row = Phaser.Math.Linear(this.hopFromRow, this.hopToRow, eased);
+    return { column, row };
+  }
+
+  getCameraRow() {
+    const player = this.getPlayerRenderPosition();
+    return Math.max(0, player.row - PLAYER_BASELINE_ROW);
+  }
+
+  addFloatingLabel(x: number, row: number, y: number, text: string, color: string) {
+    this.floatingLabels.push({
+      id: this.nextFloatingLabelId,
+      x,
+      row,
+      y,
+      text,
+      color,
+      ttlMs: 760
+    });
+    this.nextFloatingLabelId += 1;
+  }
+
+  addFeverCharge(amount: number) {
+    if (this.feverMs > 0) {
+      this.feverMs = Math.min(FEVER_DURATION_MS, this.feverMs + amount * 18);
+      return;
+    }
+
+    this.feverCharge = Math.min(FEVER_CHARGE_MAX, this.feverCharge + amount);
+    if (this.feverCharge >= FEVER_CHARGE_MAX) {
+      this.feverCharge = 0;
+      this.feverMs = FEVER_DURATION_MS;
+      this.addFloatingLabel(cellCenterX(this.playerColumn), this.playerRow, -4, "FEVER!", "#fb7185");
+    }
+  }
+
+  checkDistrictMilestones() {
+    const nextTier = getDistrictTier(this.score);
+    if (nextTier <= this.districtTier) {
+      return;
+    }
+
+    for (let tier = this.districtTier + 1; tier <= nextTier; tier += 1) {
+      this.districtTier = tier as DistrictTier;
+      this.focusCharges += 1;
+      this.addFeverCharge(18);
+      this.addFloatingLabel(
+        cellCenterX(this.playerColumn),
+        this.playerRow,
+        -16,
+        DISTRICT_LABELS[tier as DistrictTier].toUpperCase(),
+        tier >= 3 ? "#fb7185" : "#93c5fd"
+      );
+      this.lastMilestoneScore = DISTRICT_THRESHOLDS[tier - 1];
+    }
+  }
+
+  awardCloseCall(row: number, amount: number, color = "#fca5a5") {
+    if (this.closeCallCooldownMs > 0 || !this.alive) {
+      return;
+    }
+
+    this.closeCallCooldownMs = 320;
+    this.score += amount;
+    this.addFeverCharge(14);
+    this.addFloatingLabel(cellCenterX(this.playerColumn), row, -8, `CLOSE +${amount}`, color);
+  }
+
+  checkCollisions() {
+    const player = this.getPlayerRenderPosition();
+    const playerX = cellCenterX(player.column);
+    const lane = this.ensureLane(Math.round(player.row));
+    if (lane.kind === "road") {
+      let nearMiss = false;
+      const collision = lane.obstacles.some((obstacle) =>
+        rectsOverlap(
+          playerX,
+          0,
+          PLAYER_SIZE,
+          PLAYER_SIZE,
+          obstacle.x,
+          0,
+          obstacle.width,
+          TILE_SIZE * 0.62
+        )
+      );
+      nearMiss = lane.obstacles.some(
+        (obstacle) =>
+          Math.abs(playerX - obstacle.x) < obstacle.width / 2 + 18
+          && Math.abs(playerX - obstacle.x) > obstacle.width / 2 + 2
+      );
+      if (collision) {
+        this.kill("Flattened by traffic");
+      } else if (nearMiss) {
+        this.awardCloseCall(lane.index, this.feverMs > 0 ? 24 : 12);
+      }
+    }
+
+    if (lane.kind === "rail") {
+      const activeStart = lane.trainCooldownMs + lane.trainWarningMs;
+      const activeEnd = activeStart + lane.trainActiveMs;
+      if (lane.trainTimerMs >= activeStart && lane.trainTimerMs <= activeEnd) {
+        const trainCenter = lane.trainOffset;
+        const nearMiss =
+          Math.abs(playerX - trainCenter) < TRAIN_TOTAL_WIDTH / 2 + 30
+          && Math.abs(playerX - trainCenter) > TRAIN_TOTAL_WIDTH / 2 + 4;
+        if (
+          rectsOverlap(
+            playerX,
+            0,
+            PLAYER_SIZE,
+            PLAYER_SIZE,
+            trainCenter,
+            0,
+            TRAIN_TOTAL_WIDTH,
+            TILE_SIZE * 0.72
+          )
+        ) {
+          this.kill("Clipped by the express");
+        } else if (nearMiss) {
+          this.awardCloseCall(lane.index, this.feverMs > 0 ? 30 : 15, "#fdba74");
+        }
+      }
+    }
+  }
+
+  kill(reason: string) {
+    if (!this.alive) {
+      return;
+    }
+    this.alive = false;
+    this.deathReason = reason;
+    this.rushStreak = 0;
+    this.rushTimerMs = 0;
+    this.shakeMs = 260;
+  }
 }
 
 const TownRush: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
-  const bestScoreRef = useRef(loadLocalBest());
-  const titleAudioRef = useRef<HTMLAudioElement | null>(null);
-  const gameplayAudioRef = useRef<HTMLAudioElement | null>(null);
-  const bonusAudioRef = useRef<HTMLAudioElement | null>(null);
-  const resultsAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  const [phase, setPhase] = useState<GamePhase>("title");
-  const [runSeed, setRunSeed] = useState(0);
-  const [bestScore, setBestScore] = useState(() => loadLocalBest());
-  const [status, setStatus] = useState("Build speed, clear patterns, and vault paper walls.");
-  const [hud, setHud] = useState<HudState>({
-    score: 0,
-    distance: 0,
-    coins: 0,
-    speed: 0,
-    districtTier: 0,
-    focusCharges: 1,
-    focusActive: false
-  });
-  const [lastRun, setLastRun] = useState<RunSummary | null>(null);
+  const [status, setStatus] = useState("Dash forward, dodge traffic, and beat your best run.");
+  const [canRestart, setCanRestart] = useState(false);
+  const [restartCount, setRestartCount] = useState(0);
+  const [lastRun, setLastRun] = useState<{ score: number; distance: number; coins: number } | null>(null);
+  const [bestRun, setBestRun] = useState<LocalBest>(() => loadLocalBest());
 
   useEffect(() => {
-    bestScoreRef.current = bestScore;
-  }, [bestScore]);
-
-  useEffect(() => {
-    const titleTrack = new Audio(TITLE_TRACK);
-    titleTrack.loop = true;
-    titleTrack.volume = 0.34;
-
-    const gameplayTrack = new Audio(GAMEPLAY_TRACK);
-    gameplayTrack.loop = true;
-    gameplayTrack.volume = 0.26;
-
-    const bonusTrack = new Audio(BONUS_TRACK);
-    bonusTrack.volume = 0.5;
-
-    const resultsTrack = new Audio(RESULTS_TRACK);
-    resultsTrack.volume = 0.38;
-
-    titleAudioRef.current = titleTrack;
-    gameplayAudioRef.current = gameplayTrack;
-    bonusAudioRef.current = bonusTrack;
-    resultsAudioRef.current = resultsTrack;
-
-    return () => {
-      [titleTrack, gameplayTrack, bonusTrack, resultsTrack].forEach((audio) => {
-        audio.pause();
-        audio.src = "";
-      });
-    };
-  }, []);
-
-  useEffect(() => {
-    if (phase === "title") {
-      pauseAudio(gameplayAudioRef.current);
-      pauseAudio(resultsAudioRef.current);
-      playAudio(titleAudioRef.current);
-    } else if (phase === "playing") {
-      pauseAudio(titleAudioRef.current);
-      pauseAudio(resultsAudioRef.current);
-      playAudio(gameplayAudioRef.current);
-    } else {
-      pauseAudio(gameplayAudioRef.current);
-      pauseAudio(titleAudioRef.current);
-      playAudio(resultsAudioRef.current, true);
-    }
-  }, [phase]);
-
-  useEffect(() => {
-    if (phase !== "playing" || !containerRef.current) {
-      if (gameRef.current) {
-        gameRef.current.destroy(true);
-        gameRef.current = null;
-      }
+    if (!containerRef.current) {
       return;
     }
 
-    let cancelled = false;
-    let finished = false;
+    let isUnmounted = false;
+    let cleanup: (() => void) | undefined;
 
-    class TownRushScene extends Phaser.Scene {
-      cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-      jumpKey!: Phaser.Input.Keyboard.Key;
-      slideKey!: Phaser.Input.Keyboard.Key;
-      focusKey!: Phaser.Input.Keyboard.Key;
-      player!: Phaser.Physics.Arcade.Sprite;
-      obstacles!: Phaser.Physics.Arcade.Group;
-      coins!: Phaser.Physics.Arcade.Group;
-      skyline: Phaser.GameObjects.Rectangle[] = [];
-      trackMarks: Phaser.GameObjects.Rectangle[] = [];
-      score = 0;
-      distance = 0;
-      coinCount = 0;
-      worldSpeed = 360;
-      focusCharges = 1;
-      focusMs = 0;
-      slideMs = 0;
-      wallrunMs = 0;
-      districtTier: DistrictTier = 0;
-      nextPatternDistance = 300;
-      lastHudPush = 0;
+    const setup = async () => {
+      let playerColor = profileColorToNumber(null);
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
 
-      preload() {
-        this.load.spritesheet("runner-run", RUN_SHEET, { frameWidth: 96, frameHeight: 96 });
-        this.load.spritesheet("runner-jump", JUMP_SHEET, { frameWidth: 96, frameHeight: 96 });
-        this.load.spritesheet("runner-slide", SLIDE_SHEET, { frameWidth: 96, frameHeight: 96 });
-        this.load.spritesheet("runner-wallrun", WALLRUN_SHEET, { frameWidth: 96, frameHeight: 96 });
+      if (session) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("color")
+          .eq("id", session.user.id)
+          .maybeSingle();
+        playerColor = profileColorToNumber((profile?.color as string | null) ?? null);
       }
 
-      create() {
-        this.cameras.main.setBackgroundColor("#f3ecd7");
-        this.physics.world.gravity.y = 1700;
-
-        this.makeTextures();
-        this.drawWorld();
-        this.createAnimations();
-
-        this.player = this.physics.add.sprite(PLAYER_X, FLOOR_Y - 58, "runner-run", 0);
-        this.player.setScale(1.5);
-        this.player.setCollideWorldBounds(true);
-        this.player.setDepth(4);
-        this.player.body.setSize(42, 62).setOffset(28, 24);
-        this.player.play("runner-run");
-
-        this.obstacles = this.physics.add.group({ allowGravity: false, immovable: true });
-        this.coins = this.physics.add.group({ allowGravity: false, immovable: true });
-
-        this.cursors = this.input.keyboard!.createCursorKeys();
-        this.jumpKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W);
-        this.slideKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S);
-        this.focusKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
-
-        this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-          if (pointer.x > WIDTH * 0.76) {
-            this.tryFocus();
-          } else if (pointer.y < HEIGHT * 0.58) {
-            this.tryJump();
-          } else {
-            this.trySlide();
-          }
-        });
-
-        this.physics.add.overlap(this.player, this.coins, (_player, coin) => {
-          coin.destroy();
-          this.coinCount += 1;
-          this.score += 30;
-        });
-
-        this.physics.add.overlap(this.player, this.obstacles, (_player, obstacle) => {
-          const target = obstacle as PhaserObstacle;
-          if (target.cleared) {
-            return;
-          }
-
-          if (target.kind === "wall" && this.canWallRun()) {
-            this.triggerWallRun(target);
-            return;
-          }
-
-          this.finishRun(`Face-planted into a ${target.kind === "high" ? "hanging sign" : target.kind === "wall" ? "paper wall" : "ink crate"}.`);
-        });
-
-        this.pushHud(true);
+      if (isUnmounted || !containerRef.current) {
+        return;
       }
 
-      makeTextures() {
-        const g = this.add.graphics();
-
-        g.fillStyle(0x171717, 1);
-        g.fillRoundedRect(0, 0, 66, 54, 14);
-        g.fillStyle(0xffffff, 0.18);
-        g.fillRoundedRect(10, 10, 16, 16, 4);
-        g.fillRoundedRect(38, 8, 10, 20, 4);
-        g.generateTexture("ink-crate", 66, 54);
-        g.clear();
-
-        g.fillStyle(0x111111, 1);
-        g.fillRoundedRect(0, 12, 96, 28, 12);
-        g.fillStyle(0xffffff, 0.14);
-        g.fillRoundedRect(10, 18, 30, 8, 4);
-        g.generateTexture("ink-sign", 96, 52);
-        g.clear();
-
-        g.fillStyle(0x101010, 1);
-        g.fillRoundedRect(8, 0, 48, 138, 20);
-        g.fillStyle(0xffffff, 0.1);
-        g.fillRoundedRect(18, 18, 16, 96, 8);
-        g.generateTexture("ink-wall", 64, 138);
-        g.clear();
-
-        g.fillStyle(0xf5c542, 1);
-        g.fillCircle(14, 14, 12);
-        g.fillStyle(0xfff5ba, 0.5);
-        g.fillCircle(10, 10, 4);
-        g.generateTexture("ink-coin", 28, 28);
-        g.destroy();
-      }
-
-      drawWorld() {
-        this.add.rectangle(WIDTH / 2, HEIGHT / 2, WIDTH, HEIGHT, 0xf3ecd7).setDepth(0);
-        this.add.rectangle(WIDTH / 2, HEIGHT * 0.28, WIDTH, HEIGHT * 0.4, 0xe8debe).setDepth(0);
-        this.add.rectangle(WIDTH / 2, FLOOR_Y + 38, WIDTH, HEIGHT - FLOOR_Y + 80, 0x2b241b).setDepth(0);
-        this.add.rectangle(WIDTH / 2, FLOOR_Y + 2, WIDTH, 8, 0x131313).setDepth(1);
-
-        for (let i = 0; i < 6; i += 1) {
-          const skyline = this.add.rectangle(
-            120 + i * 170,
-            220 + Phaser.Math.Between(-18, 30),
-            Phaser.Math.Between(70, 110),
-            Phaser.Math.Between(140, 220),
-            0x1f1a15,
-            0.12
-          ).setOrigin(0.5, 1).setDepth(0);
-          this.skyline.push(skyline);
-        }
-
-        for (let i = 0; i < 9; i += 1) {
-          const dash = this.add.rectangle(120 + i * 110, FLOOR_Y + 44, 64, 8, 0xf6f1df, 0.75).setDepth(1);
-          this.trackMarks.push(dash);
-        }
-      }
-
-      createAnimations() {
-        if (!this.anims.exists("runner-run")) {
-          this.anims.create({
-            key: "runner-run",
-            frames: this.anims.generateFrameNumbers("runner-run", { start: 0, end: 7 }),
-            frameRate: 14,
-            repeat: -1
-          });
-        }
-
-        if (!this.anims.exists("runner-jump")) {
-          this.anims.create({
-            key: "runner-jump",
-            frames: this.anims.generateFrameNumbers("runner-jump", { start: 0, end: 4 }),
-            frameRate: 12,
-            repeat: -1
-          });
-        }
-
-        if (!this.anims.exists("runner-slide")) {
-          this.anims.create({
-            key: "runner-slide",
-            frames: this.anims.generateFrameNumbers("runner-slide", { start: 0, end: 3 }),
-            frameRate: 16,
-            repeat: -1
-          });
-        }
-
-        if (!this.anims.exists("runner-wallrun")) {
-          this.anims.create({
-            key: "runner-wallrun",
-            frames: this.anims.generateFrameNumbers("runner-wallrun", { start: 0, end: 5 }),
-            frameRate: 16,
-            repeat: -1
-          });
-        }
-      }
-
-      tryJump() {
-        const body = this.player.body as Phaser.Physics.Arcade.Body;
-        if (body.blocked.down && this.slideMs <= 0) {
-          body.setVelocityY(-760);
-          this.player.play("runner-jump", true);
-        }
-      }
-
-      trySlide() {
-        const body = this.player.body as Phaser.Physics.Arcade.Body;
-        if (!body.blocked.down || this.slideMs > 0) {
-          return;
-        }
-
-        this.slideMs = 430;
-        body.setSize(56, 36).setOffset(20, 52);
-        this.player.y = FLOOR_Y - 34;
-        this.player.play("runner-slide", true);
-      }
-
-      tryFocus() {
-        if (this.focusCharges <= 0 || this.focusMs > 0) {
-          return;
-        }
-
-        this.focusCharges -= 1;
-        this.focusMs = 1700;
-      }
-
-      canWallRun() {
-        const body = this.player.body as Phaser.Physics.Arcade.Body;
-        return !body.blocked.down && body.velocity.y > -120 && this.player.y < FLOOR_Y - 8;
-      }
-
-      triggerWallRun(obstacle: PhaserObstacle) {
-        obstacle.cleared = true;
-        obstacle.disableBody(true, false);
-        this.wallrunMs = 180;
-        this.player.play("runner-wallrun", true);
-        (this.player.body as Phaser.Physics.Arcade.Body).setVelocityY(-820);
-        this.score += 70;
-      }
-
-      spawnPattern() {
-        const source = PATTERNS[this.districtTier];
-        const pattern = Phaser.Utils.Array.GetRandom(source);
-        let spawnX = WIDTH + 120;
-
-        pattern.forEach((event) => {
-          spawnX += event.gap;
-          if (event.kind === "coin") {
-            this.spawnCoin(spawnX, event.y ?? FLOOR_Y - 110);
-            return;
-          }
-
-          this.spawnObstacle(event.kind, spawnX);
-        });
-
-        this.nextPatternDistance = Phaser.Math.Between(300, 420) + this.districtTier * 26;
-      }
-
-      spawnObstacle(kind: ObstacleKind, x: number) {
-        const texture = kind === "low" ? "ink-crate" : kind === "high" ? "ink-sign" : "ink-wall";
-        const y = kind === "low" ? FLOOR_Y - 26 : kind === "high" ? FLOOR_Y - 106 : FLOOR_Y - 68;
-        const obstacle = this.obstacles.create(x, y, texture) as PhaserObstacle;
-        obstacle.kind = kind;
-        obstacle.setDepth(3);
-        obstacle.body.setAllowGravity(false);
-
-        if (kind === "low") {
-          obstacle.body.setSize(54, 42).setOffset(6, 8);
-        } else if (kind === "high") {
-          obstacle.body.setSize(88, 22).setOffset(4, 15);
-        } else {
-          obstacle.body.setSize(40, 124).setOffset(12, 8);
-        }
-      }
-
-      spawnCoin(x: number, y: number) {
-        const coin = this.coins.create(x, y, "ink-coin") as PhaserCoin;
-        coin.setDepth(2);
-        coin.body.setAllowGravity(false);
-        coin.body.setCircle(12, 2, 2);
-      }
-
-      pushHud(force = false) {
-        const now = this.time.now;
-        if (!force && now - this.lastHudPush < 90) {
-          return;
-        }
-
-        this.lastHudPush = now;
-        setHud({
-          score: Math.floor(this.score),
-          distance: Math.floor(this.distance),
-          coins: this.coinCount,
-          speed: Math.round(this.worldSpeed),
-          districtTier: this.districtTier,
-          focusCharges: this.focusCharges,
-          focusActive: this.focusMs > 0
-        });
-      }
-
-      finishRun(reason: string) {
-        if (finished) {
-          return;
-        }
-
-        finished = true;
-        const finalScore = Math.floor(this.score);
-        const distance = Math.floor(this.distance);
-        const goldEarned = Math.max(24, Math.floor(finalScore / 18) + this.coinCount * 8);
-        const nextBest = Math.max(bestScoreRef.current, finalScore);
-
-        setStatus(reason);
+      const handleGameOver = (payload: GameOverPayload) => {
+        setCanRestart(true);
         setLastRun({
-          score: finalScore,
-          distance,
-          coins: this.coinCount,
-          goldEarned,
-          reason
+          score: payload.score,
+          distance: payload.distance,
+          coins: payload.coins
         });
-        setBestScore(nextBest);
-        saveLocalBest(nextBest);
-        pauseAudio(gameplayAudioRef.current);
-        this.cameras.main.shake(180, 0.008);
+        const nextBest = {
+          score: Math.max(bestRun.score, payload.score),
+          distance: Math.max(bestRun.distance, payload.distance)
+        };
+        if (nextBest.score !== bestRun.score || nextBest.distance !== bestRun.distance) {
+          saveLocalBest(nextBest);
+          setBestRun(nextBest);
+        }
+        setStatus(`${payload.reason}. Saving score...`);
 
-        void recordArcadeResult({
-          scoreGameName: "town_rush",
-          score: finalScore,
-          goldEarned
-        }).catch(() => undefined);
-
-        this.time.delayedCall(280, () => {
-          if (!cancelled) {
-            setPhase("gameOver");
+        void (async () => {
+          try {
+            await recordArcadeResult({
+              scoreGameName: "town_rush",
+              score: payload.score,
+              goldEarned: payload.goldEarned
+            });
+            setStatus(
+              `${payload.reason}. Score saved at ${payload.score}. +${payload.goldEarned} gold.`
+            );
+          } catch {
+            setStatus(`${payload.reason}. Local run finished, but score could not be saved.`);
           }
-        });
+        })();
+      };
+
+      class TownRushScene extends Phaser.Scene {
+        run = new TownRushRun();
+        cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
+        wasd?: Record<"up" | "down" | "left" | "right", Phaser.Input.Keyboard.Key>;
+        graphics!: Phaser.GameObjects.Graphics;
+        playerShadow!: Phaser.GameObjects.Ellipse;
+        playerBody!: Phaser.GameObjects.Rectangle;
+        playerTrim!: Phaser.GameObjects.Rectangle;
+        headerText!: Phaser.GameObjects.Text;
+        scoreText!: Phaser.GameObjects.Text;
+        coinText!: Phaser.GameObjects.Text;
+        rushText!: Phaser.GameObjects.Text;
+        feverText!: Phaser.GameObjects.Text;
+        bestText!: Phaser.GameObjects.Text;
+        districtText!: Phaser.GameObjects.Text;
+        focusText!: Phaser.GameObjects.Text;
+        focusButtonLabel!: Phaser.GameObjects.Text;
+        floatingTextPool = new Map<number, Phaser.GameObjects.Text>();
+        finished = false;
+
+        create() {
+          this.cameras.main.setBackgroundColor("#0b1324");
+          this.graphics = this.add.graphics();
+          this.playerShadow = this.add.ellipse(0, 0, 34, 16, 0x020617, 0.45).setDepth(30);
+          this.playerBody = this.add.rectangle(0, 0, PLAYER_SIZE, PLAYER_SIZE, playerColor, 1)
+            .setDepth(31);
+          this.playerTrim = this.add.rectangle(0, 0, 16, 8, 0xffffff, 0.9).setDepth(32);
+
+          this.headerText = this.add.text(20, 22, "TOWN RUSH", {
+            fontSize: "20px",
+            fontStyle: "bold",
+            color: "#f8fafc",
+            fontFamily: "\"PublicPixel\", monospace"
+          }).setDepth(40);
+
+          this.scoreText = this.add.text(WIDTH - 22, 18, "2234", {
+            fontSize: "24px",
+            fontStyle: "bold",
+            color: "#fde68a",
+            fontFamily: "\"PublicPixel\", monospace"
+          }).setOrigin(1, 0).setDepth(40);
+
+          this.coinText = this.add.text(WIDTH - 22, 45, "COINS 0", {
+            fontSize: "11px",
+            color: "#86efac"
+          }).setOrigin(1, 0).setDepth(40);
+
+          this.bestText = this.add.text(20, 46, `BEST ${bestRun.score}`, {
+            fontSize: "11px",
+            color: "#cbd5e1"
+          }).setDepth(40);
+
+          this.rushText = this.add.text(20, HEIGHT - 42, "RUSH READY", {
+            fontSize: "11px",
+            color: "#7dd3fc"
+          }).setDepth(40);
+
+          this.districtText = this.add.text(WIDTH / 2, 22, DISTRICT_LABELS[0].toUpperCase(), {
+            fontSize: "11px",
+            fontStyle: "bold",
+            color: "#93c5fd",
+            fontFamily: "\"PublicPixel\", monospace"
+          }).setOrigin(0.5, 0).setDepth(40);
+
+          this.feverText = this.add.text(WIDTH / 2, HEIGHT - 42, "FEVER 0%", {
+            fontSize: "11px",
+            fontStyle: "bold",
+            color: "#e2e8f0"
+          }).setOrigin(0.5).setDepth(40);
+
+          this.focusText = this.add.text(WIDTH - 20, HEIGHT - 42, "FOCUS 0", {
+            fontSize: "11px",
+            fontStyle: "bold",
+            color: "#e2e8f0"
+          }).setOrigin(1, 0.5).setDepth(40);
+
+          this.focusButtonLabel = this.add.text(WIDTH - 64, HEIGHT - 26, "SHIFT", {
+            fontSize: "10px",
+            fontStyle: "bold",
+            color: "#e2e8f0"
+          }).setOrigin(0.5).setDepth(40);
+
+          this.cursors = this.input.keyboard?.createCursorKeys();
+          if (this.input.keyboard) {
+            this.wasd = {
+              up: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+              down: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+              left: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+              right: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D)
+            };
+          }
+
+          this.input.keyboard?.on("keydown-UP", () => this.handleMove("up"));
+          this.input.keyboard?.on("keydown-DOWN", () => this.handleMove("down"));
+          this.input.keyboard?.on("keydown-LEFT", () => this.handleMove("left"));
+          this.input.keyboard?.on("keydown-RIGHT", () => this.handleMove("right"));
+          this.input.keyboard?.on("keydown-W", () => this.handleMove("up"));
+          this.input.keyboard?.on("keydown-S", () => this.handleMove("down"));
+          this.input.keyboard?.on("keydown-A", () => this.handleMove("left"));
+          this.input.keyboard?.on("keydown-D", () => this.handleMove("right"));
+          this.input.keyboard?.on("keydown-SHIFT", () => this.handleFocus());
+          this.input.keyboard?.on("keydown-SPACE", () => this.handleFocus());
+
+          this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+            if (!this.run.alive) {
+              return;
+            }
+
+            if (pointer.y > HEIGHT - 88 && pointer.x > WIDTH - 128) {
+              this.handleFocus();
+              return;
+            }
+
+            const playerPosition = this.run.getPlayerRenderPosition();
+            const playerCenterX = cellCenterX(playerPosition.column);
+            const playerCenterY = laneWorldY(playerPosition.row, this.run.getCameraRow()) + TILE_SIZE / 2 - 2;
+            const dx = pointer.x - playerCenterX;
+            const dy = pointer.y - playerCenterY;
+            if (Math.abs(dx) > Math.abs(dy)) {
+              this.handleMove(dx < 0 ? "left" : "right");
+            } else {
+              this.handleMove(dy < 0 ? "up" : "down");
+            }
+          });
+        }
+
+        handleMove(direction: MoveDirection) {
+          const moved = this.run.tryMove(direction);
+          if (moved) {
+            this.tweens.add({
+              targets: this.playerBody,
+              scaleX: { from: 1.04, to: 1 },
+              scaleY: { from: 0.92, to: 1 },
+              duration: 110
+            });
+          }
+        }
+
+        handleFocus() {
+          const activated = this.run.activateFocus();
+          if (activated) {
+            this.tweens.add({
+              targets: this.playerBody,
+              scaleX: { from: 1.18, to: 1 },
+              scaleY: { from: 1.18, to: 1 },
+              duration: 220
+            });
+          }
+        }
+
+        update(_time: number, delta: number) {
+          this.run.update(delta);
+
+          if (!this.run.alive && !this.finished) {
+            this.finished = true;
+            this.cameras.main.shake(180, 0.008);
+            const goldEarned = Math.max(3, Math.min(36, Math.floor(this.run.score / 35) + this.run.coins));
+            handleGameOver({
+              score: this.run.score,
+              distance: this.run.furthestRow,
+              coins: this.run.coins,
+              goldEarned,
+              reason: this.run.deathReason
+            });
+          }
+
+          this.renderBoard();
+          this.syncHud();
+        }
+
+        renderBoard() {
+          const cameraRow = this.run.getCameraRow();
+          const graphics = this.graphics;
+          graphics.clear();
+
+          graphics.fillStyle(0x0b1324, 1);
+          graphics.fillRect(0, 0, WIDTH, HEIGHT);
+          graphics.fillStyle(0x111c33, 1);
+          graphics.fillRect(0, BOARD_TOP - 4, WIDTH, BOARD_HEIGHT + 8);
+          graphics.fillStyle(0x08101d, 1);
+          graphics.fillRect(8, 10, WIDTH - 16, 48);
+          graphics.fillRect(8, HEIGHT - 54, WIDTH - 16, 34);
+
+          for (let row = Math.floor(cameraRow) - 1; row < Math.floor(cameraRow) + VISIBLE_ROWS + 2; row += 1) {
+            const lane = this.run.ensureLane(row);
+            const laneY = laneWorldY(row, cameraRow);
+
+            if (laneY < BOARD_TOP - TILE_SIZE || laneY > BOARD_TOP + BOARD_HEIGHT) {
+              continue;
+            }
+
+            if (lane.kind === "road") {
+              graphics.fillStyle(0x1f2937, 1);
+              graphics.fillRect(0, laneY, WIDTH, TILE_SIZE);
+              graphics.fillStyle(0xf8fafc, 0.75);
+              for (let x = -TILE_SIZE; x < WIDTH + TILE_SIZE; x += TILE_SIZE * 1.5) {
+                graphics.fillRect(x + lane.stripeOffset, laneY + TILE_SIZE / 2 - 3, 28, 6);
+              }
+            } else if (lane.kind === "rail") {
+              graphics.fillStyle(0x362510, 1);
+              graphics.fillRect(0, laneY, WIDTH, TILE_SIZE);
+              graphics.fillStyle(0x7c5a34, 1);
+              for (let x = 18; x < WIDTH; x += 44) {
+                graphics.fillRect(x, laneY + 10, 20, TILE_SIZE - 20);
+              }
+              graphics.fillStyle(0x9ca3af, 1);
+              graphics.fillRect(0, laneY + 14, WIDTH, 6);
+              graphics.fillRect(0, laneY + TILE_SIZE - 20, WIDTH, 6);
+
+              const activeStart = lane.trainCooldownMs + lane.trainWarningMs;
+              const warning = lane.trainTimerMs >= lane.trainCooldownMs && lane.trainTimerMs < activeStart;
+              graphics.fillStyle(warning ? 0xf87171 : 0x334155, 0.95);
+              graphics.fillCircle(18, laneY + TILE_SIZE / 2, 7);
+              graphics.fillCircle(WIDTH - 18, laneY + TILE_SIZE / 2, 7);
+
+              if (lane.trainTimerMs >= activeStart && lane.trainTimerMs <= activeStart + lane.trainActiveMs) {
+                graphics.fillStyle(0xdc2626, 1);
+                graphics.fillRect(
+                  lane.trainOffset - TRAIN_TOTAL_WIDTH / 2,
+                  laneY + 6,
+                  TRAIN_TOTAL_WIDTH,
+                  TILE_SIZE - 12
+                );
+                graphics.fillStyle(0xfca5a5, 1);
+                graphics.fillRect(
+                  lane.trainOffset - TRAIN_TOTAL_WIDTH / 2,
+                  laneY + TILE_SIZE / 2 - 4,
+                  TRAIN_TOTAL_WIDTH,
+                  8
+                );
+              }
+            } else {
+              const grassColor = lane.kind === "start" ? 0x166534 : 0x15803d;
+              graphics.fillStyle(grassColor, 1);
+              graphics.fillRect(0, laneY, WIDTH, TILE_SIZE);
+
+              lane.blockers.forEach((column) => {
+                const centerX = cellCenterX(column);
+                graphics.fillStyle(0x14532d, 1);
+                graphics.fillCircle(centerX, laneY + TILE_SIZE / 2 + 4, 16);
+                graphics.fillCircle(centerX - 9, laneY + TILE_SIZE / 2 + 2, 12);
+                graphics.fillCircle(centerX + 10, laneY + TILE_SIZE / 2 + 1, 13);
+                graphics.fillStyle(0x713f12, 1);
+                graphics.fillRect(centerX - 4, laneY + TILE_SIZE / 2 + 10, 8, 14);
+              });
+            }
+
+            if (lane.coinColumn != null) {
+              const coinX = cellCenterX(lane.coinColumn);
+              graphics.fillStyle(0xfacc15, 1);
+              graphics.fillCircle(coinX, laneY + TILE_SIZE / 2, 10);
+            }
+
+            lane.obstacles.forEach((obstacle) => {
+              if (lane.kind !== "road") {
+                return;
+              }
+
+              graphics.fillStyle(obstacle.color, 1);
+              graphics.fillRoundedRect(
+                obstacle.x - obstacle.width / 2,
+                laneY + 10,
+                obstacle.width,
+                TILE_SIZE - 20,
+                10
+              );
+              graphics.fillStyle(0xe5e7eb, 0.9);
+              graphics.fillRect(obstacle.x - obstacle.width / 2 + 8, laneY + 18, 10, 10);
+              graphics.fillRect(obstacle.x + obstacle.width / 2 - 18, laneY + 18, 10, 10);
+              if (obstacle.pattern === "sprinter") {
+                graphics.fillStyle(0xffffff, 0.28);
+                graphics.fillRect(obstacle.x - 8, laneY + 8, 16, 4);
+              }
+            });
+          }
+
+          graphics.fillStyle(0xffffff, 0.06);
+          graphics.fillRect(8, 58, WIDTH - 16, 1);
+          graphics.fillRect(8, HEIGHT - 54, WIDTH - 16, 1);
+
+          const player = this.run.getPlayerRenderPosition();
+          const playerX = cellCenterX(player.column);
+          const playerY = laneWorldY(player.row, cameraRow) + TILE_SIZE / 2;
+          this.playerShadow.setPosition(playerX, playerY + 18);
+          this.playerBody.setPosition(playerX, playerY - 2);
+          this.playerTrim.setPosition(playerX, playerY - 3);
+          this.playerBody.rotation = this.run.hopping ? Math.sin((this.run.hopElapsedMs / HOP_DURATION_MS) * Math.PI) * 0.08 : 0;
+          this.playerTrim.rotation = this.playerBody.rotation;
+
+          if (this.run.shakeMs > 0) {
+            this.playerBody.setFillStyle(0xf87171, 1);
+          } else {
+            this.playerBody.setFillStyle(playerColor, 1);
+          }
+
+          this.run.floatingLabels.forEach((label) => {
+            const text =
+              this.floatingTextPool.get(label.id)
+              ?? this.add.text(0, 0, label.text, {
+                fontSize: "18px",
+                fontStyle: "bold",
+                color: label.color
+              }).setOrigin(0.5).setDepth(45);
+            text.setText(label.text);
+            text.setColor(label.color);
+            text.setPosition(label.x, laneWorldY(label.row, cameraRow) + TILE_SIZE / 2 - 42 + label.y);
+            text.setAlpha(Math.min(1, label.ttlMs / 280));
+            this.floatingTextPool.set(label.id, text);
+          });
+
+          Array.from(this.floatingTextPool.keys()).forEach((id) => {
+            if (!this.run.floatingLabels.some((label) => label.id === id)) {
+              this.floatingTextPool.get(id)?.destroy();
+              this.floatingTextPool.delete(id);
+            }
+          });
+        }
+
+        syncHud() {
+          this.scoreText.setText(`Score ${this.run.score}`);
+          this.coinText.setText(`Coins ${this.run.coins}`);
+          this.bestText.setText(`Best ${bestRun.score}`);
+          this.districtText.setText(DISTRICT_LABELS[this.run.districtTier].toUpperCase());
+          this.districtText.setColor(this.run.districtTier >= 3 ? "#fb7185" : "#93c5fd");
+          this.rushText.setText(
+            this.run.rushTimerMs > 0 ? `RUSH x${Math.max(1, this.run.rushStreak)}` : "RUSH READY"
+          );
+          this.rushText.setColor(this.run.rushTimerMs > 0 ? "#e2e8f0" : "#94a3b8");
+          this.feverText.setText(
+            this.run.feverMs > 0
+              ? `FEVER ${Math.ceil(this.run.feverMs / 1000)}s`
+              : `Fever ${Math.round((this.run.feverCharge / FEVER_CHARGE_MAX) * 100)}%`
+          );
+          this.feverText.setColor(this.run.feverMs > 0 ? "#fda4af" : "#cbd5e1");
+          this.focusText.setText(
+            this.run.focusMs > 0
+              ? `Focus ${Math.ceil(this.run.focusMs / 1000)}s`
+              : `Focus ${this.run.focusCharges}`
+          );
+          this.focusText.setColor(this.run.focusCharges > 0 || this.run.focusMs > 0 ? "#e2e8f0" : "#64748b");
+          this.focusButtonLabel.setText(this.run.focusMs > 0 ? "ACTIVE" : "SHIFT");
+          this.focusButtonLabel.setColor("#e2e8f0");
+        }
       }
 
-      update(_time: number, delta: number) {
-        if (finished) {
-          return;
-        }
+      const game = new Phaser.Game({
+        type: Phaser.CANVAS,
+        width: WIDTH,
+        height: HEIGHT,
+        parent: containerRef.current,
+        backgroundColor: "#0b1324",
+        render: {
+          antialias: false,
+          pixelArt: true,
+          roundPixels: true
+        },
+        scene: TownRushScene
+      });
 
-        const dt = delta / 1000;
-        const body = this.player.body as Phaser.Physics.Arcade.Body;
-        const wantsJump = Phaser.Input.Keyboard.JustDown(this.cursors.up!) || Phaser.Input.Keyboard.JustDown(this.jumpKey) || Phaser.Input.Keyboard.JustDown(this.cursors.space!);
-        const wantsSlide = Phaser.Input.Keyboard.JustDown(this.cursors.down!) || Phaser.Input.Keyboard.JustDown(this.slideKey);
-        const wantsFocus = Phaser.Input.Keyboard.JustDown(this.focusKey);
+      gameRef.current = game;
+      cleanup = () => {
+        game.destroy(true);
+        gameRef.current = null;
+      };
+    };
 
-        if (wantsJump) {
-          this.tryJump();
-        }
-        if (wantsSlide) {
-          this.trySlide();
-        }
-        if (wantsFocus) {
-          this.tryFocus();
-        }
-
-        if (this.focusMs > 0) {
-          this.focusMs -= delta;
-        }
-
-        if (this.slideMs > 0) {
-          this.slideMs -= delta;
-          if (this.slideMs <= 0) {
-            body.setSize(42, 62).setOffset(28, 24);
-            this.player.y = FLOOR_Y - 58;
-          }
-        }
-
-        if (this.wallrunMs > 0) {
-          this.wallrunMs -= delta;
-        }
-
-        const speedMultiplier = this.focusMs > 0 ? 0.68 : 1;
-        const effectiveSpeed = this.worldSpeed * speedMultiplier;
-
-        this.score += dt * (effectiveSpeed * 0.45);
-        this.distance += dt * (effectiveSpeed * 0.12);
-        this.worldSpeed = Math.min(610, this.worldSpeed + dt * 5.5);
-
-        const nextTier = getDistrictTier(this.score);
-        if (nextTier !== this.districtTier) {
-          this.districtTier = nextTier;
-          this.focusCharges = Math.min(3, this.focusCharges + 1);
-          this.score += 80;
-          setStatus(`${DISTRICT_NAMES[nextTier]} unlocked. Patterns tighten up, but you get an extra Focus.`);
-          playAudio(bonusAudioRef.current, true);
-        }
-
-        this.nextPatternDistance -= effectiveSpeed * dt;
-        if (this.nextPatternDistance <= 0) {
-          this.spawnPattern();
-        }
-
-        this.skyline.forEach((shape, index) => {
-          shape.x -= dt * (40 + index * 6);
-          if (shape.x < -80) {
-            shape.x = WIDTH + 100;
-            shape.height = Phaser.Math.Between(140, 220);
-            shape.y = 220 + Phaser.Math.Between(-18, 30);
-          }
-        });
-
-        this.trackMarks.forEach((dash) => {
-          dash.x -= effectiveSpeed * dt;
-          if (dash.x < -50) {
-            dash.x = WIDTH + 50;
-          }
-        });
-
-        this.obstacles.children.each((child) => {
-          const obstacle = child as PhaserObstacle;
-          obstacle.setVelocityX(-effectiveSpeed);
-          if (obstacle.x < -120) {
-            obstacle.destroy();
-          }
-        });
-
-        this.coins.children.each((child) => {
-          const coin = child as PhaserCoin;
-          coin.setVelocityX(-effectiveSpeed);
-          if (coin.x < -40) {
-            coin.destroy();
-          }
-        });
-
-        if (body.blocked.down) {
-          this.player.y = this.slideMs > 0 ? FLOOR_Y - 34 : FLOOR_Y - 58;
-        }
-
-        if (this.wallrunMs > 0) {
-          this.player.play("runner-wallrun", true);
-        } else if (this.slideMs > 0) {
-          this.player.play("runner-slide", true);
-        } else if (!body.blocked.down) {
-          this.player.play("runner-jump", true);
-        } else {
-          this.player.play("runner-run", true);
-        }
-
-        if (this.player.y > HEIGHT + 80) {
-          this.finishRun("Missed the beat and hit the floor hard.");
-          return;
-        }
-
-        this.pushHud();
-      }
-    }
-
-    const game = new Phaser.Game({
-      type: Phaser.CANVAS,
-      width: WIDTH,
-      height: HEIGHT,
-      parent: containerRef.current,
-      backgroundColor: "#f3ecd7",
-      pixelArt: true,
-      roundPixels: true,
-      render: {
-        antialias: false,
-        pixelArt: true,
-        roundPixels: true
-      },
-      physics: {
-        default: "arcade",
-        arcade: {
-          debug: false,
-          gravity: { x: 0, y: 0 }
-        }
-      },
-      scene: TownRushScene
-    });
-
-    gameRef.current = game;
+    void setup();
 
     return () => {
-      cancelled = true;
-      game.destroy(true);
-      gameRef.current = null;
+      isUnmounted = true;
+      cleanup?.();
     };
-  }, [phase, runSeed]);
-
-  const districtName = DISTRICT_NAMES[hud.districtTier];
-
-  const beginRun = () => {
-    setHud({
-      score: 0,
-      distance: 0,
-      coins: 0,
-      speed: 360,
-      districtTier: 0,
-      focusCharges: 1,
-      focusActive: false
-    });
-    setLastRun(null);
-    setStatus("Starter Strip is live. Jump low ink crates, slide under hanging signs, and ride walls on late jumps.");
-    setRunSeed((value) => value + 1);
-    setPhase("playing");
-  };
+  }, [restartCount]);
 
   return (
     <div className="page">
       <NavBar />
-      <main className="content card townrush-shell">
-        <div className="townrush-copy">
-          <h1>Town Rush</h1>
-          <p>
-            Sprint left to right through a rubber-hose paper city. The run starts readable, then new
-            tricks show up at 500, 1000, and 1500 score without turning the whole thing into RNG sludge.
-          </p>
-        </div>
-
-        <div className="townrush-layout">
-          <section className="townrush-stage">
-            <div ref={containerRef} className="townrush-canvas" />
-
-            <div className="townrush-hud townrush-hud--top">
-              <div className="townrush-marquee">
-                <span className="townrush-logo">Town Rush</span>
-                <span className="townrush-district">{districtName}</span>
-              </div>
-              <div className="townrush-scoreboard">
-                <span>Score {hud.score}</span>
-                <span>{Math.round(hud.distance)}m</span>
-                <span>Coins {hud.coins}</span>
-              </div>
+      <div className="content card townrush-shell" style={{ maxWidth: 940 }}>
+        <h2>Town Rush</h2>
+        <p className="townrush-copy">
+          Push deeper into town one block at a time. Roads are pure timing, park rows give you a breather,
+          and rail crossings will absolutely punish greedy hops.
+        </p>
+        <div
+          className="townrush-layout"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 520px) minmax(260px, 1fr)",
+            gap: "1rem",
+            alignItems: "start"
+          }}
+        >
+          <div className="townrush-stage">
+            <div ref={containerRef} style={{ width: "100%", maxWidth: WIDTH, margin: "0 auto" }} />
+          </div>
+          <div
+            className="townrush-sidepanel"
+            style={{
+              display: "grid",
+              gap: "0.85rem"
+            }}
+          >
+            <div
+              className="townrush-panel"
+              style={{
+                padding: "0.95rem",
+                paddingTop: "1.1rem"
+              }}
+            >
+              <strong className="townrush-panel-title">Controls</strong>
+              <div className="info">`WASD` or arrow keys to hop.</div>
+              <div className="info">Tap above, below, left, or right of your runner on mobile.</div>
+              <div className="info">Press `Shift` or `Space` to spend Focus and slow the city for a clutch escape.</div>
+              <div className="info">Chain fast forward moves to build Rush and cash in bonus points.</div>
+              <div className="info">Near-misses charge Fever. Fever doubles row and coin scoring for a short burst.</div>
+              <div className="info">Districts unlock at 500, 1000, and 1500 score with new traffic patterns and extra Focus charges.</div>
             </div>
-
-            <div className="townrush-hud townrush-hud--bottom">
-              <span>Jump `W` / `Up` / tap top</span>
-              <span>Slide `S` / `Down` / tap bottom</span>
-              <span>Focus `Shift` {hud.focusCharges}</span>
-              <span>{hud.focusActive ? "Focus live" : `Speed ${hud.speed}`}</span>
-            </div>
-
-            {phase !== "playing" ? (
-              <div className="townrush-overlay">
-                <div className="townrush-overlay-card">
-                  <p className="townrush-overlay-kicker">{phase === "title" ? "Rubber-Hose Runner" : "Cut. Reset. Again."}</p>
-                  <h2>{phase === "title" ? "Run the reel" : `Score ${lastRun?.score ?? 0}`}</h2>
-                  <p>
-                    {phase === "title"
-                      ? "Jump, slide, and wall-run through prebuilt obstacle strings that stay readable as the city escalates."
-                      : `${lastRun?.reason ?? "Run over."} ${lastRun ? `Banked ${lastRun.goldEarned} gold and ${lastRun.coins} coins.` : ""}`}
-                  </p>
-                  <button className="primary-button" type="button" onClick={beginRun}>
-                    {phase === "title" ? "Start Run" : "Run It Back"}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </section>
-
-          <aside className="townrush-sidepanel">
-            <div className="townrush-panel">
-              <span className="townrush-panel-title">Controls</span>
-              <p>Jump over ink crates.</p>
-              <p>Slide under hanging signs.</p>
-              <p>Hit walls from a late jump to vault them and score bonus style points.</p>
-              <p>Focus slows the city for a short clutch window.</p>
-            </div>
-
-            <div className="townrush-panel">
-              <span className="townrush-panel-title">Progression</span>
-              <p>500 score: Studio Row adds cleaner combo strings.</p>
-              <p>1000 score: Ink Works introduces wall vaults.</p>
-              <p>1500 score: Final Reel chains patterns tighter, but still on purpose.</p>
-            </div>
-
-            <div className="townrush-panel townrush-status-panel">
-              <span className="townrush-panel-title">Run Status</span>
-              <p>{status}</p>
-              <p>Best score on this device: {bestScore}</p>
+            <div
+              className="townrush-panel townrush-status-panel"
+              style={{
+                padding: "0.95rem",
+                paddingTop: "1.1rem"
+              }}
+            >
+              <strong className="townrush-panel-title">Run Status</strong>
+              <p className="info" style={{ marginBottom: "0.65rem" }}>{status}</p>
               {lastRun ? (
-                <p>
-                  Last run: {lastRun.score} score, {lastRun.distance}m, {lastRun.coins} coins.
+                <p className="info" style={{ marginBottom: "0.65rem" }}>
+                  Last run: <strong>{lastRun.score}</strong> score, <strong>{lastRun.distance}</strong> blocks,
+                  {" "}and <strong>{lastRun.coins}</strong> coins.
                 </p>
-              ) : (
-                <p>No take yet. Hit Start Run and build a reel worth replaying.</p>
-              )}
+              ) : null}
+              <p className="info" style={{ marginBottom: "0.65rem" }}>
+                Best run on this device: <strong>{bestRun.score}</strong> score across <strong>{bestRun.distance}</strong> blocks.
+              </p>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => {
+                  setCanRestart(false);
+                  setStatus("Fresh streets. Fresh mistakes.");
+                  setRestartCount((count) => count + 1);
+                }}
+                disabled={!canRestart}
+              >
+                {canRestart ? "Run It Back" : "In Progress"}
+              </button>
             </div>
-          </aside>
+          </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 };

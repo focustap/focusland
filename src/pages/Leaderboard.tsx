@@ -10,6 +10,7 @@ type LeaderboardEntry = {
   dodgeBestScore: number;
   catchBestScore: number;
   townRushBestScore: number;
+  rooftopRunnerBestScore: number;
   hallwayBestRun: number;
   invadersBestWave: number;
   brawlWins: number;
@@ -60,11 +61,21 @@ const Leaderboard: React.FC = () => {
           throw townRushError;
         }
 
+        const { data: rooftopRunnerRows, error: rooftopRunnerError } = await supabase
+          .from("scores")
+          .select("user_id, score")
+          .eq("game_name", "rooftop_runner");
+
+        if (rooftopRunnerError) {
+          throw rooftopRunnerError;
+        }
+
         const allUserIds = [
           ...(statsRows ?? []).map((row) => row.user_id),
           ...(cardWinRows ?? []).map((row) => row.user_id),
           ...(hallwayRows ?? []).map((row) => row.user_id),
-          ...(townRushRows ?? []).map((row) => row.user_id)
+          ...(townRushRows ?? []).map((row) => row.user_id),
+          ...(rooftopRunnerRows ?? []).map((row) => row.user_id)
         ];
         const userIds = Array.from(new Set(allUserIds));
         if (!userIds.length) {
@@ -107,6 +118,14 @@ const Leaderboard: React.FC = () => {
           townRushBestByUser.set(row.user_id, Math.max(townRushBestByUser.get(row.user_id) ?? 0, Number(row.score ?? 0)));
         });
 
+        const rooftopRunnerBestByUser = new Map<string, number>();
+        (rooftopRunnerRows ?? []).forEach((row) => {
+          rooftopRunnerBestByUser.set(
+            row.user_id,
+            Math.max(rooftopRunnerBestByUser.get(row.user_id) ?? 0, Number(row.score ?? 0))
+          );
+        });
+
         setEntries(
           userIds.map((userId) => {
             const row = (statsRows ?? []).find((item) => item.user_id === userId);
@@ -119,6 +138,7 @@ const Leaderboard: React.FC = () => {
               dodgeBestScore: Number(row?.dodge_best_score ?? 0),
               catchBestScore: Number(row?.catch_best_score ?? 0),
               townRushBestScore: Number(townRushBestByUser.get(userId) ?? 0),
+              rooftopRunnerBestScore: Number(rooftopRunnerBestByUser.get(userId) ?? 0),
               hallwayBestRun: Number(hallwayBestByUser.get(userId) ?? 0),
               invadersBestWave: Number(row?.invaders_best_wave ?? 0),
               brawlWins: Number(row?.brawl_wins ?? 0),
@@ -141,7 +161,7 @@ const Leaderboard: React.FC = () => {
     title: string,
     keyName: keyof Pick<
       LeaderboardEntry,
-      "gold" | "dodgeBestScore" | "catchBestScore" | "townRushBestScore" | "hallwayBestRun" | "invadersBestWave" | "brawlWins" | "brawlPveHighestBoss"
+      "gold" | "dodgeBestScore" | "catchBestScore" | "townRushBestScore" | "rooftopRunnerBestScore" | "hallwayBestRun" | "invadersBestWave" | "brawlWins" | "brawlPveHighestBoss"
       | "cardDuelWins"
     >,
     suffix = ""
@@ -191,6 +211,7 @@ const Leaderboard: React.FC = () => {
             {renderBoard("Best Catch Score", "catchBestScore")}
             {renderBoard("Best Dodge Score", "dodgeBestScore")}
             {renderBoard("Best Town Rush Score", "townRushBestScore")}
+            {renderBoard("Best Rooftop Run", "rooftopRunnerBestScore")}
             {renderBoard("Best Hallway Run", "hallwayBestRun")}
             {renderBoard("Best Invader Wave", "invadersBestWave")}
           </div>
