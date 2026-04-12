@@ -178,10 +178,10 @@ function getPlayerBounds(state: RunnerState) {
 
 function buildObstacle(seedBase: number, x: number, tier: DistrictTier, index: number): BuildingObstacle {
   const roll = noise(seedBase + index * 11);
-  if (tier >= 1 && roll > 0.62) {
+  if (tier >= 2 && roll > 0.72) {
     return { id: `${seedBase}-line-${index}`, x, width: 66, height: 20, type: "clothesline" };
   }
-  if (roll > 0.3) {
+  if (roll > 0.5) {
     return { id: `${seedBase}-chimney-${index}`, x, width: 34, height: 52, type: "chimney" };
   }
   return { id: `${seedBase}-crate-${index}`, x, width: 46, height: 28, type: "crate" };
@@ -197,15 +197,19 @@ function createBuilding(prev: Building, id: number, tier: DistrictTier): Buildin
   const anchorY = top - between(id * 43, 70, 122);
 
   const obstacleCount =
-    width > 240
-      ? tier >= 2
-        ? 2
-        : noise(id * 47) > 0.48
-          ? 2
-          : 1
-      : noise(id * 53) > 0.56
-        ? 1
-        : 0;
+    tier === 0
+      ? 0
+      : tier === 1
+        ? width > 250 && noise(id * 47) > 0.66
+          ? 1
+          : 0
+        : width > 260
+          ? noise(id * 47) > 0.78
+            ? 2
+            : 1
+          : noise(id * 53) > 0.8
+            ? 1
+            : 0;
 
   const obstacles: BuildingObstacle[] = [];
   for (let i = 0; i < obstacleCount; i += 1) {
@@ -251,7 +255,7 @@ function createBuilding(prev: Building, id: number, tier: DistrictTier): Buildin
   }
 
   const airObstacles: AirObstacle[] = [];
-  if (noise(id * 109) > 0.48) {
+  if (tier >= 2 && noise(id * 109) > 0.72) {
     airObstacles.push({
       id: `${id}-air-0`,
       x: x + width * between(id * 113, 0.24, 0.78),
@@ -262,7 +266,7 @@ function createBuilding(prev: Building, id: number, tier: DistrictTier): Buildin
     });
   }
 
-  if (tier >= 2 && noise(id * 137) > 0.7) {
+  if (tier >= 3 && noise(id * 137) > 0.8) {
     airObstacles.push({
       id: `${id}-air-1`,
       x: x + width * between(id * 139, 0.42, 0.88),
@@ -347,30 +351,18 @@ function findBuildingUnder(state: RunnerState, x: number) {
 }
 
 function findHookTarget(state: RunnerState, aimWorldX: number, aimWorldY: number) {
-  const candidates = state.buildings.flatMap((building) =>
-    building.hookPoints
-      .filter(
-        (point) =>
-          point.x > state.playerX + 30 &&
-          point.x < state.playerX + 340 &&
-          point.y < state.playerY - 16
-      )
-      .map((point) => ({
-        point,
-        score: Math.hypot(point.x - aimWorldX, point.y - aimWorldY)
-      }))
-  );
+  const dx = aimWorldX - state.playerX;
+  const dy = aimWorldY - (state.playerY - 30);
+  const distance = Math.hypot(dx, dy);
 
-  if (!candidates.length) {
+  if (dx < 22 || aimWorldY > state.playerY - 16 || distance > 360) {
     return null;
   }
 
-  candidates.sort((a, b) => a.score - b.score);
-  if (candidates[0].score > 110) {
-    return null;
-  }
-
-  return candidates[0].point;
+  return {
+    x: aimWorldX,
+    y: aimWorldY
+  };
 }
 
 function ensureWorldAhead(state: RunnerState) {
@@ -563,12 +555,8 @@ function drawSketchLine(
   wobble: number
 ) {
   ctx.beginPath();
-  ctx.moveTo(x1 + wobble * 0.4, y1 - wobble * 0.3);
-  ctx.lineTo(x2 - wobble * 0.3, y2 + wobble * 0.4);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(x1 - wobble * 0.25, y1 + wobble * 0.2);
-  ctx.lineTo(x2 + wobble * 0.2, y2 - wobble * 0.25);
+  ctx.moveTo(x1 + wobble * 0.15, y1 - wobble * 0.12);
+  ctx.lineTo(x2 - wobble * 0.12, y2 + wobble * 0.15);
   ctx.stroke();
 }
 
@@ -588,25 +576,21 @@ function drawSketchRect(
 
 function renderBackground(ctx: CanvasRenderingContext2D, score: number) {
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
-  ctx.fillStyle = "#f7f1de";
+  ctx.fillStyle = "#f3efe3";
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  const sky = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+  sky.addColorStop(0, "#f8f4e8");
+  sky.addColorStop(1, score >= DISTRICT_THRESHOLDS[2] ? "#ddd9cf" : "#ebe5d7");
+  ctx.fillStyle = sky;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  ctx.strokeStyle = "rgba(86, 150, 212, 0.24)";
+  ctx.globalAlpha = 0.08;
+  ctx.strokeStyle = "#8b8174";
   ctx.lineWidth = 1;
-  for (let y = 44; y < HEIGHT; y += 32) {
-    drawSketchLine(ctx, 0, y, WIDTH, y, 0.8);
+  for (let y = 54; y < HEIGHT; y += 54) {
+    drawSketchLine(ctx, 24, y, WIDTH - 24, y, 0.25);
   }
-
-  ctx.strokeStyle = "rgba(224, 86, 86, 0.18)";
-  drawSketchLine(ctx, 46, 0, 46, HEIGHT, 0.4);
-
-  ctx.fillStyle =
-    score >= DISTRICT_THRESHOLDS[2]
-      ? "rgba(29, 78, 216, 0.06)"
-      : score >= DISTRICT_THRESHOLDS[1]
-        ? "rgba(180, 83, 9, 0.05)"
-        : "rgba(15, 23, 42, 0.03)";
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.globalAlpha = 1;
 }
 
 function renderWorld(
@@ -635,33 +619,36 @@ function renderWorld(
 
   visibleBuildings.forEach((building) => {
     const x = building.x - cameraX;
-    const wobble = 1 + noise(building.seed) * 1.6;
+    const wobble = 0.25 + noise(building.seed) * 0.45;
 
-    ctx.fillStyle = "rgba(255,255,255,0.28)";
+    ctx.fillStyle = "#f6f2e8";
     ctx.fillRect(x, building.top, building.width, building.height);
-    ctx.strokeStyle = "#171717";
+    ctx.fillStyle = "rgba(17, 24, 39, 0.08)";
+    ctx.fillRect(x + 8, building.top + 8, building.width, building.height);
+    ctx.strokeStyle = "#1b1b1b";
     drawSketchRect(ctx, x, building.top, building.width, building.height, wobble);
-    drawSketchLine(ctx, x, building.top + 8, x + building.width, building.top + 8, wobble);
+    drawSketchLine(ctx, x, building.top + 7, x + building.width, building.top + 7, wobble);
 
     for (let i = 0; i < Math.floor(building.width / 48); i += 1) {
       const windowX = x + 18 + i * 42;
       const windowY = building.top + 28 + (i % 2) * 22;
-      drawSketchRect(ctx, windowX, windowY, 16, 22, 0.7);
+      ctx.strokeStyle = "rgba(27, 27, 27, 0.72)";
+      drawSketchRect(ctx, windowX, windowY, 16, 22, 0.25);
     }
 
     building.hookPoints.forEach((point) => {
       const pointX = point.x - cameraX;
-      ctx.strokeStyle = point.kind === "pole" ? "#7c2d12" : point.kind === "antenna" ? "#334155" : "#1f2937";
+      ctx.strokeStyle = point.kind === "pole" ? "#5b4636" : point.kind === "antenna" ? "#4b5563" : "#475569";
       if (point.kind === "wire") {
-        drawSketchLine(ctx, pointX - 12, point.y + 6, pointX + 12, point.y + 6, 0.5);
-        drawSketchLine(ctx, pointX, point.y + 6, pointX, building.top, 0.5);
+        drawSketchLine(ctx, pointX - 12, point.y + 6, pointX + 12, point.y + 6, 0.2);
+        drawSketchLine(ctx, pointX, point.y + 6, pointX, building.top, 0.2);
       } else {
-        drawSketchLine(ctx, pointX, point.y, pointX, building.top, 0.9);
-        drawSketchLine(ctx, pointX - 14, point.y + 10, pointX + 14, point.y + 10, 0.5);
+        drawSketchLine(ctx, pointX, point.y, pointX, building.top, 0.25);
+        drawSketchLine(ctx, pointX - 14, point.y + 10, pointX + 14, point.y + 10, 0.2);
       }
-      ctx.strokeStyle = "#1d4ed8";
+      ctx.strokeStyle = "#2f3b4d";
       ctx.beginPath();
-      ctx.arc(pointX, point.y, 6, 0, Math.PI * 2);
+      ctx.arc(pointX, point.y, 4.5, 0, Math.PI * 2);
       ctx.stroke();
     });
 
@@ -688,36 +675,37 @@ function renderWorld(
       }
 
       const pickupX = pickup.x - cameraX;
+      ctx.strokeStyle = "#8b6b2e";
       ctx.beginPath();
-      ctx.arc(pickupX, pickup.y, 10, 0, Math.PI * 2);
+      ctx.arc(pickupX, pickup.y, 9, 0, Math.PI * 2);
       ctx.stroke();
-      drawSketchLine(ctx, pickupX - 8, pickup.y, pickupX + 8, pickup.y, 0.5);
-      drawSketchLine(ctx, pickupX, pickup.y - 8, pickupX, pickup.y + 8, 0.5);
+      drawSketchLine(ctx, pickupX - 7, pickup.y, pickupX + 7, pickup.y, 0.2);
+      drawSketchLine(ctx, pickupX, pickup.y - 7, pickupX, pickup.y + 7, 0.2);
     });
 
     building.airObstacles.forEach((obstacle) => {
       const obstacleX = obstacle.x - cameraX;
       ctx.strokeStyle = "#111827";
       if (obstacle.kind === "bird") {
-        drawSketchLine(ctx, obstacleX - 14, obstacle.y, obstacleX - 2, obstacle.y - 8, 0.5);
-        drawSketchLine(ctx, obstacleX - 2, obstacle.y - 8, obstacleX + 12, obstacle.y, 0.5);
-        drawSketchLine(ctx, obstacleX - 2, obstacle.y - 6, obstacleX + 8, obstacle.y - 12, 0.4);
+        drawSketchLine(ctx, obstacleX - 14, obstacle.y, obstacleX - 2, obstacle.y - 8, 0.2);
+        drawSketchLine(ctx, obstacleX - 2, obstacle.y - 8, obstacleX + 12, obstacle.y, 0.2);
+        drawSketchLine(ctx, obstacleX - 2, obstacle.y - 6, obstacleX + 8, obstacle.y - 12, 0.15);
       } else if (obstacle.kind === "kite") {
-        drawSketchLine(ctx, obstacleX, obstacle.y - 12, obstacleX + 12, obstacle.y, 0.5);
-        drawSketchLine(ctx, obstacleX + 12, obstacle.y, obstacleX, obstacle.y + 12, 0.5);
-        drawSketchLine(ctx, obstacleX, obstacle.y + 12, obstacleX - 12, obstacle.y, 0.5);
-        drawSketchLine(ctx, obstacleX - 12, obstacle.y, obstacleX, obstacle.y - 12, 0.5);
-        drawSketchLine(ctx, obstacleX, obstacle.y + 12, obstacleX + 10, obstacle.y + 26, 0.5);
+        drawSketchLine(ctx, obstacleX, obstacle.y - 12, obstacleX + 12, obstacle.y, 0.2);
+        drawSketchLine(ctx, obstacleX + 12, obstacle.y, obstacleX, obstacle.y + 12, 0.2);
+        drawSketchLine(ctx, obstacleX, obstacle.y + 12, obstacleX - 12, obstacle.y, 0.2);
+        drawSketchLine(ctx, obstacleX - 12, obstacle.y, obstacleX, obstacle.y - 12, 0.2);
+        drawSketchLine(ctx, obstacleX, obstacle.y + 12, obstacleX + 10, obstacle.y + 26, 0.2);
       } else {
-        drawSketchLine(ctx, obstacleX - 20, obstacle.y, obstacleX + 20, obstacle.y, 0.5);
-        drawSketchLine(ctx, obstacleX - 12, obstacle.y - 8, obstacleX - 12, obstacle.y + 8, 0.5);
-        drawSketchLine(ctx, obstacleX + 4, obstacle.y - 10, obstacleX + 4, obstacle.y + 10, 0.5);
+        drawSketchLine(ctx, obstacleX - 20, obstacle.y, obstacleX + 20, obstacle.y, 0.2);
+        drawSketchLine(ctx, obstacleX - 12, obstacle.y - 8, obstacleX - 12, obstacle.y + 8, 0.2);
+        drawSketchLine(ctx, obstacleX + 4, obstacle.y - 10, obstacleX + 4, obstacle.y + 10, 0.2);
       }
     });
   });
 
   if (state.hook) {
-    ctx.strokeStyle = "#1d4ed8";
+    ctx.strokeStyle = "#2f3b4d";
     drawSketchLine(
       ctx,
       state.playerX - cameraX,
@@ -735,6 +723,11 @@ function renderWorld(
   const armSwing = state.grounded ? Math.cos(runCycle) * 10 : -12;
   const torsoLean = state.hook ? 10 : state.grounded ? Math.sin(runCycle) * 2 : -8;
   const headOffsetY = state.grounded ? Math.sin(runCycle * 2) * 1.5 : 0;
+
+  ctx.fillStyle = "rgba(17, 24, 39, 0.12)";
+  ctx.beginPath();
+  ctx.ellipse(playerScreenX, state.playerY + 4, 16, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
 
   ctx.strokeStyle = "#101010";
   ctx.lineWidth = 3;
@@ -782,18 +775,18 @@ function renderPoster(ctx: CanvasRenderingContext2D, bestScore: number, lastRun:
   preview.buildings = preview.buildings.slice(0, 4);
   renderWorld(ctx, preview);
 
-  ctx.fillStyle = "rgba(247, 241, 222, 0.78)";
+  ctx.fillStyle = "rgba(248, 244, 232, 0.88)";
   ctx.fillRect(86, 82, WIDTH - 172, HEIGHT - 164);
-  ctx.strokeStyle = "#171717";
+  ctx.strokeStyle = "#1b1b1b";
   ctx.lineWidth = 2;
-  drawSketchRect(ctx, 86, 82, WIDTH - 172, HEIGHT - 164, 1.2);
+  drawSketchRect(ctx, 86, 82, WIDTH - 172, HEIGHT - 164, 0.25);
 
   ctx.fillStyle = "#111827";
   ctx.font = "bold 38px PublicPixel, monospace";
   ctx.fillText("Rooftop Runner", 118, 146);
   ctx.font = "18px system-ui";
-  ctx.fillText("Stick figure parkour across hand-drawn rooftops.", 118, 188);
-  ctx.fillText("Jump gaps, duck roof junk, and sling forward with the grappling hook.", 118, 216);
+  ctx.fillText("Stick figure parkour across inked rooftops.", 118, 188);
+  ctx.fillText("Jump gaps, duck roof junk, and click anywhere overhead to sling forward.", 118, 216);
   ctx.fillText("Best score on this device: " + bestScore, 118, 268);
 
   if (phase === "gameOver" && lastRun) {

@@ -770,8 +770,8 @@ input {
 .rooftop-shell {
   max-width: 1120px;
   background:
-    radial-gradient(circle at top left, rgba(86, 150, 212, 0.1), transparent 26%),
-    linear-gradient(180deg, rgba(248, 244, 231, 0.98), rgba(236, 229, 210, 0.98));
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.04), transparent 26%),
+    linear-gradient(180deg, rgba(245, 241, 232, 0.98), rgba(233, 227, 214, 0.98));
   border: 1px solid rgba(104, 99, 89, 0.28);
   box-shadow:
     0 22px 52px rgba(49, 46, 43, 0.16),
@@ -795,7 +795,7 @@ input {
   border-radius: 1.2rem;
   overflow: hidden;
   border: 2px solid rgba(37, 30, 24, 0.55);
-  background: linear-gradient(180deg, rgba(248, 244, 231, 1), rgba(235, 228, 207, 1));
+  background: linear-gradient(180deg, rgba(245, 241, 232, 1), rgba(232, 226, 212, 1));
   box-shadow: 0 18px 36px rgba(49, 46, 43, 0.18);
   min-height: 540px;
 }
@@ -805,7 +805,7 @@ input {
   width: 100%;
   height: auto;
   min-height: 540px;
-  background: linear-gradient(180deg, rgba(248, 244, 231, 1), rgba(235, 228, 207, 1));
+  background: linear-gradient(180deg, rgba(245, 241, 232, 1), rgba(232, 226, 212, 1));
 }
 
 .rooftop-hud {
@@ -849,7 +849,7 @@ input {
 }
 
 .rooftop-district {
-  color: #9a3412;
+  color: #7c2d12;
 }
 
 .rooftop-sidepanel {
@@ -861,7 +861,7 @@ input {
   border-radius: 1.15rem;
   border: 2px solid rgba(37, 30, 24, 0.42);
   background:
-    linear-gradient(180deg, rgba(247, 241, 222, 0.98), rgba(235, 228, 207, 0.98));
+    linear-gradient(180deg, rgba(245, 241, 232, 0.98), rgba(232, 226, 212, 0.98));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
   padding: 1rem;
   display: grid;
@@ -888,7 +888,7 @@ input {
   z-index: 4;
   display: grid;
   place-items: center;
-  background: rgba(247, 241, 222, 0.36);
+  background: rgba(245, 241, 232, 0.42);
   backdrop-filter: blur(3px);
 }
 
@@ -897,7 +897,7 @@ input {
   padding: 1.35rem;
   border-radius: 1.2rem;
   background:
-    linear-gradient(180deg, rgba(247, 241, 222, 0.97), rgba(235, 228, 207, 0.98));
+    linear-gradient(180deg, rgba(245, 241, 232, 0.97), rgba(232, 226, 212, 0.98));
   border: 2px solid rgba(37, 30, 24, 0.38);
   box-shadow: 0 20px 50px rgba(49, 46, 43, 0.18);
   display: grid;
@@ -926,10 +926,10 @@ input {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(transparent 31px, rgba(86, 150, 212, 0.08) 32px),
-    linear-gradient(90deg, transparent 44px, rgba(224, 86, 86, 0.08) 45px, transparent 46px);
-  background-size: 100% 32px, 100% 100%;
-  opacity: 0.18;
+    linear-gradient(transparent 47px, rgba(15, 23, 42, 0.035) 48px),
+    linear-gradient(90deg, transparent 47px, rgba(15, 23, 42, 0.02) 48px);
+  background-size: 100% 48px, 48px 100%;
+  opacity: 0.22;
 }
 
 .rooftop-stage--paper,
