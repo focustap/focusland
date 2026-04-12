@@ -731,6 +731,7 @@ input {
   background:
     linear-gradient(180deg, rgba(8, 15, 28, 0.98), rgba(3, 8, 20, 0.98));
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.3);
+  min-height: 540px;
 }
 
 .townrush-stage::before {
@@ -744,6 +745,8 @@ input {
 
 .townrush-sidepanel {
   align-self: stretch;
+  display: grid;
+  gap: 1rem;
 }
 
 .townrush-panel {
@@ -752,11 +755,19 @@ input {
   background:
     linear-gradient(180deg, rgba(10, 18, 31, 0.98), rgba(5, 12, 24, 0.98));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 1rem;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.townrush-panel p {
+  margin: 0;
+  color: #d8e1ef;
+  line-height: 1.45;
 }
 
 .townrush-panel-title {
   display: block;
-  margin-bottom: 0.9rem;
   color: #f8fafc;
   font-size: 0.98rem;
   letter-spacing: 0.03em;
@@ -765,6 +776,125 @@ input {
 
 .townrush-status-panel .primary-button {
   min-width: 126px;
+}
+
+.townrush-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.townrush-canvas {
+  width: 100%;
+  min-height: 540px;
+}
+
+.townrush-canvas canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.townrush-hud {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  pointer-events: none;
+  font-family: "PublicPixel", monospace;
+  font-size: 0.72rem;
+  color: #f8fafc;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+}
+
+.townrush-hud--top {
+  top: 0;
+  align-items: flex-start;
+}
+
+.townrush-hud--bottom {
+  bottom: 0;
+  font-size: 0.58rem;
+  color: #d9e4f2;
+  align-items: flex-end;
+}
+
+.townrush-marquee,
+.townrush-scoreboard {
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.townrush-logo {
+  color: #fff7dc;
+}
+
+.townrush-district {
+  color: #9bc2ff;
+}
+
+.townrush-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 10, 20, 0.36);
+  backdrop-filter: blur(4px);
+}
+
+.townrush-overlay-card {
+  width: min(88%, 420px);
+  padding: 1.35rem;
+  border-radius: 1.2rem;
+  background:
+    linear-gradient(180deg, rgba(8, 15, 28, 0.96), rgba(5, 12, 24, 0.98));
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.34);
+  display: grid;
+  gap: 0.8rem;
+  text-align: center;
+}
+
+.townrush-overlay-card h2,
+.townrush-overlay-card p {
+  margin: 0;
+}
+
+.townrush-overlay-kicker {
+  color: #93c5fd;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 980px) {
+  .townrush-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .townrush-stage {
+    min-height: 420px;
+  }
+
+  .townrush-canvas {
+    min-height: 420px;
+  }
+
+  .townrush-hud {
+    font-size: 0.6rem;
+  }
+
+  .townrush-hud--bottom {
+    flex-wrap: wrap;
+  }
 }
 
 .ride-bus-table {

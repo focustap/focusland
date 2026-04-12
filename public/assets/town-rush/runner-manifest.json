@@ -1,0 +1,18 @@
+﻿{
+  "titleMusic": "SwinginSafari.wav",
+  "gameplayMusic": "BourbonBlues.wav",
+  "bonusMusic": "BoogieWonderland.wav",
+  "resultsMusic": "CoolCatCaper.wav",
+  "spritesheets": {
+    "run": { "path": "/assets/town-rush/runner-run-sheet.png", "frameWidth": 96, "frameHeight": 96, "frames": 8 },
+    "jump": { "path": "/assets/town-rush/runner-jump-sheet.png", "frameWidth": 96, "frameHeight": 96, "frames": 5 },
+    "slide": { "path": "/assets/town-rush/runner-slide-sheet.png", "frameWidth": 96, "frameHeight": 96, "frames": 4 },
+    "wallrun": { "path": "/assets/town-rush/runner-wallrun-sheet.png", "frameWidth": 96, "frameHeight": 96, "frames": 6 }
+  },
+  "expressiveSpritesheets": {
+    "run": { "path": "/assets/town-rush/runner-expressive-run-sheet.png", "frameWidth": 96, "frameHeight": 96, "frames": 8 },
+    "jump": { "path": "/assets/town-rush/runner-expressive-jump-sheet.png", "frameWidth": 96, "frameHeight": 96, "frames": 5 },
+    "slide": { "path": "/assets/town-rush/runner-expressive-slide-sheet.png", "frameWidth": 96, "frameHeight": 96, "frames": 4 },
+    "wallrun": { "path": "/assets/town-rush/runner-expressive-wallrun-sheet.png", "frameWidth": 96, "frameHeight": 96, "frames": 6 }
+  }
+}
