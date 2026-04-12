@@ -44,16 +44,6 @@ const LOCAL_BEST_KEY = "focusland-rooftop-runner-best";
 const DISTRICT_THRESHOLDS = [500, 1000, 1500] as const;
 const DISTRICT_NAMES = ["Sketch Block", "Studio Heights", "Inkline Mile", "Moonlight Reel"] as const;
 
-const RUN_SHEET = "/assets/town-rush/runner-expressive-run-sheet.png";
-const JUMP_SHEET = "/assets/town-rush/runner-expressive-jump-sheet.png";
-const SLIDE_SHEET = "/assets/town-rush/runner-expressive-slide-sheet.png";
-const WALLRUN_SHEET = "/assets/town-rush/runner-expressive-wallrun-sheet.png";
-
-const TITLE_TRACK = "/assets/music/town-rush/SwinginSafari.wav";
-const GAMEPLAY_TRACK = "/assets/music/town-rush/BourbonBlues.wav";
-const BONUS_TRACK = "/assets/music/town-rush/BoogieWonderland.wav";
-const RESULTS_TRACK = "/assets/music/town-rush/CoolCatCaper.wav";
-
 const PATTERNS: Record<DistrictTier, PatternEvent[][]> = {
   0: [
     [{ kind: "coin", gap: 0, y: FLOOR_Y - 120 }, { kind: "crate", gap: 230 }],
@@ -120,6 +110,7 @@ function pauseAudio(audio: HTMLAudioElement | null) {
 }
 
 const RooftopRunner: React.FC = () => {
+  const assetBase = import.meta.env.BASE_URL;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const bestScoreRef = useRef(loadLocalBest());
@@ -143,23 +134,32 @@ const RooftopRunner: React.FC = () => {
   });
   const [lastRun, setLastRun] = useState<RunSummary | null>(null);
 
+  const runSheet = `${assetBase}assets/town-rush/runner-expressive-run-sheet.png`;
+  const jumpSheet = `${assetBase}assets/town-rush/runner-expressive-jump-sheet.png`;
+  const slideSheet = `${assetBase}assets/town-rush/runner-expressive-slide-sheet.png`;
+  const wallrunSheet = `${assetBase}assets/town-rush/runner-expressive-wallrun-sheet.png`;
+  const titleTrackPath = `${assetBase}assets/music/town-rush/SwinginSafari.wav`;
+  const gameplayTrackPath = `${assetBase}assets/music/town-rush/BourbonBlues.wav`;
+  const bonusTrackPath = `${assetBase}assets/music/town-rush/BoogieWonderland.wav`;
+  const resultsTrackPath = `${assetBase}assets/music/town-rush/CoolCatCaper.wav`;
+
   useEffect(() => {
     bestScoreRef.current = bestScore;
   }, [bestScore]);
 
   useEffect(() => {
-    const titleTrack = new Audio(TITLE_TRACK);
+    const titleTrack = new Audio(titleTrackPath);
     titleTrack.loop = true;
     titleTrack.volume = 0.34;
 
-    const gameplayTrack = new Audio(GAMEPLAY_TRACK);
+    const gameplayTrack = new Audio(gameplayTrackPath);
     gameplayTrack.loop = true;
     gameplayTrack.volume = 0.25;
 
-    const bonusTrack = new Audio(BONUS_TRACK);
+    const bonusTrack = new Audio(bonusTrackPath);
     bonusTrack.volume = 0.5;
 
-    const resultsTrack = new Audio(RESULTS_TRACK);
+    const resultsTrack = new Audio(resultsTrackPath);
     resultsTrack.volume = 0.4;
 
     titleAudioRef.current = titleTrack;
@@ -173,7 +173,7 @@ const RooftopRunner: React.FC = () => {
         audio.src = "";
       });
     };
-  }, []);
+  }, [bonusTrackPath, gameplayTrackPath, resultsTrackPath, titleTrackPath]);
 
   useEffect(() => {
     if (phase === "title") {
@@ -228,10 +228,10 @@ const RooftopRunner: React.FC = () => {
       rooftopHeight = 0;
 
       preload() {
-        this.load.spritesheet("runner-run", RUN_SHEET, { frameWidth: 96, frameHeight: 96 });
-        this.load.spritesheet("runner-jump", JUMP_SHEET, { frameWidth: 96, frameHeight: 96 });
-        this.load.spritesheet("runner-slide", SLIDE_SHEET, { frameWidth: 96, frameHeight: 96 });
-        this.load.spritesheet("runner-wallrun", WALLRUN_SHEET, { frameWidth: 96, frameHeight: 96 });
+        this.load.spritesheet("runner-run", runSheet, { frameWidth: 96, frameHeight: 96 });
+        this.load.spritesheet("runner-jump", jumpSheet, { frameWidth: 96, frameHeight: 96 });
+        this.load.spritesheet("runner-slide", slideSheet, { frameWidth: 96, frameHeight: 96 });
+        this.load.spritesheet("runner-wallrun", wallrunSheet, { frameWidth: 96, frameHeight: 96 });
       }
 
       create() {
@@ -296,6 +296,8 @@ const RooftopRunner: React.FC = () => {
           );
         });
 
+        this.spawnPattern();
+        this.spawnPattern();
         this.pushHud(true);
       }
 
@@ -727,7 +729,7 @@ const RooftopRunner: React.FC = () => {
       game.destroy(true);
       gameRef.current = null;
     };
-  }, [phase, runSeed]);
+  }, [jumpSheet, phase, runSeed, runSheet, slideSheet, wallrunSheet]);
 
   const districtName = DISTRICT_NAMES[hud.districtTier];
 
@@ -829,6 +831,9 @@ const RooftopRunner: React.FC = () => {
               ) : (
                 <p>No clean take yet. Start a run and chase the skyline.</p>
               )}
+              <button className="primary-button" type="button" onClick={beginRun}>
+                {phase === "playing" ? "Restart Run" : phase === "gameOver" ? "Run It Back" : "Start Run"}
+              </button>
             </div>
           </aside>
         </div>
