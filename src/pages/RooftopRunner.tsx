@@ -22,7 +22,8 @@ type PlayerAction =
   | "grappling"
   | "vaulting";
 type SurfaceKind = "roof" | "ledge" | "grapple-bar" | "anchor-wire";
-type ObstacleKind = "low-barrier" | "slide-sign" | "slide-gap" | "air-hazard";
+type GateResponse = "slide" | "jump" | "grapple";
+type ObstacleKind = "low-barrier" | "slide-sign" | "slide-gap" | "air-hazard" | "route-gate";
 type HookPhase = "idle" | "extending" | "attached" | "retracting";
 
 type Vec2 = { x: number; y: number };
@@ -67,6 +68,9 @@ type Obstacle = {
   vaultable?: boolean;
   slideClearance?: boolean;
   cleared?: boolean;
+  gapY?: number;
+  gapHeight?: number;
+  response?: GateResponse;
 };
 
 type Pickup = {
@@ -360,6 +364,13 @@ function getAreaTypeForChunk(id: number, seed: number): AreaType {
   return AREA_ORDER[(rotation + block + wobble) % AREA_ORDER.length];
 }
 
+function getGateResponseForChunk(id: number): GateResponse {
+  const localIndex = ((id % 3) + 3) % 3;
+  if (localIndex === 0) return "slide";
+  if (localIndex === 1) return "jump";
+  return "grapple";
+}
+
 function getChunkTemplate(id: number, seed: number, tier: DistrictTier): ChunkTemplate {
   const routeSeed = id * 97 + seed * 13.37;
   const early = id < 3;
@@ -602,6 +613,39 @@ function createChunk(id: number, startX: number, tier: DistrictTier, seed: numbe
     grappleSurfaces.push(
       createSurface(`${wallBase.id}-wallrun-bar`, wallBase.x + wallBase.width * 0.62, wallBase.y - 70, wallBase.x + wallBase.width * 0.9, wallBase.y - 70, "grapple-bar", 20)
     );
+  }
+
+  if (id >= 3) {
+    const gateResponse = getGateResponseForChunk(id);
+    const gateX = lowA.x + lowA.width + template.lowGap * 0.5;
+    const gateWidth = Math.min(58, Math.max(42, template.lowGap - 18));
+    const gateGapHeight =
+      gateResponse === "slide" ? 38 :
+      gateResponse === "jump" ? 58 :
+      64;
+    const gateGapY =
+      gateResponse === "slide" ? lowA.y - 34 :
+      gateResponse === "jump" ? lowA.y - 108 :
+      154 + Math.round(between(id * 111 + seed, -10, 18));
+
+    obstacles.push({
+      id: `${id}-route-gate-${gateResponse}`,
+      kind: "route-gate",
+      x: gateX,
+      y: 0,
+      width: gateWidth,
+      height: HEIGHT,
+      lane: gateResponse === "grapple" ? "high" : gateResponse === "jump" ? "mid" : "low",
+      gapY: gateGapY,
+      gapHeight: gateGapHeight,
+      response: gateResponse
+    });
+
+    if (gateResponse === "grapple") {
+      grappleSurfaces.push(
+        createSurface(`${id}-gate-grapple-bar`, gateX - 52, gateGapY - 30, gateX + 52, gateGapY - 30, "grapple-bar", 26)
+      );
+    }
   }
 
   const endX = Math.max(...platforms.map((platform) => platform.x + platform.width)) + 40;
@@ -1187,6 +1231,39 @@ function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: numbe
     awardFlow(state, 2, 20, "Threaded the slide line.");
   }
 
+  const routeGate = getAllObstacles(state.chunks).find((obstacle) => {
+    if (obstacle.kind !== "route-gate" || obstacle.cleared || obstacle.gapY == null || obstacle.gapHeight == null) {
+      return false;
+    }
+    const left = obstacle.x - obstacle.width / 2;
+    const right = obstacle.x + obstacle.width / 2;
+    return movedBounds.right > left && movedBounds.left < right;
+  });
+  if (routeGate && routeGate.gapY != null && routeGate.gapHeight != null) {
+    const gapTop = routeGate.gapY;
+    const gapBottom = routeGate.gapY + routeGate.gapHeight;
+    const fullyInsideGap = movedBounds.top >= gapTop && movedBounds.bottom <= gapBottom;
+    if (fullyInsideGap) {
+      routeGate.cleared = true;
+      if (routeGate.response === "slide") {
+        player.velocity.x = Math.min(MAX_SPEED + 100, player.velocity.x + 28);
+        awardFlow(state, 2, 24, "Slide gate cleared clean.");
+      } else if (routeGate.response === "jump") {
+        awardFlow(state, 2, 22, "Jump gate cleared.");
+      } else {
+        awardFlow(state, 3, 28, "Grapple gate cleared.");
+      }
+    } else {
+      state.gameOver = true;
+      state.reason =
+        routeGate.response === "slide"
+          ? "You missed the low gate. Slide was the line."
+          : routeGate.response === "jump"
+            ? "You stayed too low for the jump gate."
+            : "You missed the high gate. Grapple the opening.";
+    }
+  }
+
   const airHazard = getAllObstacles(state.chunks).find(
     (obstacle) =>
       !obstacle.cleared &&
@@ -1436,6 +1513,25 @@ function renderWorld(ctx: CanvasRenderingContext2D, state: RunnerState, input: I
         ctx.strokeStyle = "#7dd3fc";
         drawRectStroke(ctx, x, obstacle.y, obstacle.width, obstacle.height, 1);
         drawLine(ctx, x + 14, obstacle.y + obstacle.height / 2, x + obstacle.width - 14, obstacle.y + obstacle.height / 2, 2, 0.5);
+      } else if (obstacle.kind === "route-gate" && obstacle.gapY != null && obstacle.gapHeight != null) {
+        const gateLeft = x;
+        const gapTop = obstacle.gapY;
+        const gapBottom = obstacle.gapY + obstacle.gapHeight;
+        ctx.fillStyle = "rgba(9, 14, 25, 0.88)";
+        ctx.fillRect(gateLeft, 0, obstacle.width, gapTop);
+        ctx.fillRect(gateLeft, gapBottom, obstacle.width, HEIGHT - gapBottom);
+        ctx.strokeStyle =
+          obstacle.response === "slide"
+            ? "#f59e0b"
+            : obstacle.response === "jump"
+              ? "#86efac"
+              : "#67d4ff";
+        drawRectStroke(ctx, gateLeft, 0, obstacle.width, gapTop, 1);
+        drawRectStroke(ctx, gateLeft, gapBottom, obstacle.width, HEIGHT - gapBottom, 1);
+        drawLine(ctx, gateLeft + 6, gapTop, gateLeft + obstacle.width - 6, gapTop, 2.5, 0.85);
+        drawLine(ctx, gateLeft + 6, gapBottom, gateLeft + obstacle.width - 6, gapBottom, 2.5, 0.85);
+        ctx.strokeStyle = "rgba(255,255,255,0.22)";
+        drawLine(ctx, gateLeft + obstacle.width / 2, gapTop + 10, gateLeft + obstacle.width / 2, gapBottom - 10, 1.5, 1);
       } else {
         ctx.strokeStyle = "#f87171";
         drawLine(ctx, x, obstacle.y, x + obstacle.width / 2, obstacle.y - obstacle.height / 2, 2.4, 1);
