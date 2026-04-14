@@ -4,6 +4,15 @@ import { recordArcadeResult } from "../lib/progression";
 
 type GamePhase = "title" | "playing" | "gameOver";
 type DistrictTier = 0 | 1 | 2 | 3;
+type AreaType =
+  | "skylineSprint"
+  | "constructionGauntlet"
+  | "clutteredRoofs"
+  | "wallRunDistrict"
+  | "needleAlleys"
+  | "openChase"
+  | "industrialHazards"
+  | "eliteFlow";
 type PlayerAction =
   | "running"
   | "jumping"
@@ -72,6 +81,7 @@ type Chunk = {
   id: number;
   startX: number;
   endX: number;
+  areaType: AreaType;
   platforms: Platform[];
   grappleSurfaces: Surface[];
   walls: Wall[];
@@ -139,6 +149,7 @@ type RunnerState = {
   player: PlayerState;
   chunks: Chunk[];
   camera: Vec2;
+  activeArea: AreaType;
   score: number;
   distance: number;
   coins: number;
@@ -159,6 +170,7 @@ type HudState = {
   coins: number;
   speed: number;
   districtTier: DistrictTier;
+  areaType: AreaType;
   combo: number;
   bestCombo: number;
   hookReady: boolean;
@@ -195,6 +207,7 @@ type SegmentHit = {
 };
 
 type ChunkTemplate = {
+  areaType: AreaType;
   lowGap: number;
   lowWidth: number;
   nextLowY: number;
@@ -236,6 +249,26 @@ const SAME_WALL_LOCK_MS = 520;
 const COMBO_DECAY_MS = 1550;
 const DISTRICT_THRESHOLDS = [500, 1000, 1500] as const;
 const DISTRICT_NAMES = ["Sketch Block", "Pencil Plaza", "Hookline Heights", "Midnight Margin"] as const;
+const AREA_ORDER: AreaType[] = [
+  "openChase",
+  "constructionGauntlet",
+  "skylineSprint",
+  "clutteredRoofs",
+  "needleAlleys",
+  "wallRunDistrict",
+  "industrialHazards",
+  "eliteFlow"
+] as const;
+const AREA_NAMES: Record<AreaType, string> = {
+  skylineSprint: "Skyline Sprint",
+  constructionGauntlet: "Construction Gauntlet",
+  clutteredRoofs: "Cluttered Roofs",
+  wallRunDistrict: "Wall Run District",
+  needleAlleys: "Needle Alleys",
+  openChase: "Open Chase",
+  industrialHazards: "Industrial Hazards",
+  eliteFlow: "Elite Flow"
+};
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -320,28 +353,66 @@ function makePlatform(id: string, x: number, y: number, width: number, lane: "lo
   };
 }
 
+function getAreaTypeForChunk(id: number, seed: number): AreaType {
+  const block = Math.floor(id / 3);
+  const rotation = Math.floor(noise(seed * 0.37) * AREA_ORDER.length);
+  const wobble = Math.floor(noise(seed * 0.71 + block * 1.91) * AREA_ORDER.length);
+  return AREA_ORDER[(rotation + block + wobble) % AREA_ORDER.length];
+}
+
 function getChunkTemplate(id: number, seed: number, tier: DistrictTier): ChunkTemplate {
   const routeSeed = id * 97 + seed * 13.37;
   const early = id < 3;
+  const areaType = getAreaTypeForChunk(id, seed);
   const midEnabled = early ? id !== 0 : noise(routeSeed + 1) > 0.2 || tier >= 1;
   const highEnabled = early ? id >= 1 : noise(routeSeed + 2) > 0.42 || tier >= 2;
 
+  const areaLowGapBias =
+    areaType === "skylineSprint" ? 26 :
+    areaType === "openChase" ? 18 :
+    areaType === "needleAlleys" ? 8 :
+    areaType === "constructionGauntlet" ? -4 :
+    0;
+  const areaHighBias =
+    areaType === "skylineSprint" || areaType === "eliteFlow" ? 0.22 :
+    areaType === "constructionGauntlet" ? -0.08 :
+    areaType === "openChase" ? 0.1 :
+    0;
+  const areaMidBias =
+    areaType === "constructionGauntlet" || areaType === "clutteredRoofs" ? 0.18 :
+    areaType === "openChase" ? -0.08 :
+    0;
+
   return {
-    lowGap: Math.round(46 + between(routeSeed + 3, 0, tier >= 2 ? 44 : 26)),
-    lowWidth: Math.round(228 + between(routeSeed + 4, tier >= 2 ? -12 : 0, 42)),
+    areaType,
+    lowGap: Math.round(46 + areaLowGapBias + between(routeSeed + 3, 0, tier >= 2 ? 44 : 26)),
+    lowWidth: Math.round(228 + between(routeSeed + 4, tier >= 2 ? -12 : 0, 42) + (areaType === "openChase" ? 32 : areaType === "needleAlleys" ? -24 : 0)),
     nextLowY: 372 + Math.round(between(routeSeed + 5, -14, 14)),
-    midEnabled,
+    midEnabled: midEnabled || noise(routeSeed + 101) < areaMidBias,
     midX: 156 + Math.round(between(routeSeed + 6, -18, 24)),
     midY: 302 + Math.round(between(routeSeed + 7, -14, 10)),
-    midWidth: 160 + Math.round(between(routeSeed + 8, -8, 26)),
-    highEnabled,
+    midWidth: 160 + Math.round(between(routeSeed + 8, -8, 26)) + (areaType === "constructionGauntlet" ? 12 : areaType === "needleAlleys" ? -18 : 0),
+    highEnabled: highEnabled || noise(routeSeed + 102) < areaHighBias,
     highX: 330 + Math.round(between(routeSeed + 9, -20, 26)),
     highY: 222 + Math.round(between(routeSeed + 10, -16, 18)),
-    highWidth: 148 + Math.round(between(routeSeed + 11, -12, 20)),
-    lowBarrier: !early && noise(routeSeed + 12) > 0.46,
-    slideSign: tier >= 1 && !early && noise(routeSeed + 13) > 0.54,
-    airHazard: tier >= 2 && noise(routeSeed + 14) > 0.7,
-    poleBar: tier >= 2 && noise(routeSeed + 15) > 0.4
+    highWidth: 148 + Math.round(between(routeSeed + 11, -12, 20)) + (areaType === "skylineSprint" ? 10 : areaType === "needleAlleys" ? -12 : 0),
+    lowBarrier:
+      (!early && noise(routeSeed + 12) > 0.46) ||
+      areaType === "clutteredRoofs" ||
+      areaType === "eliteFlow",
+    slideSign:
+      (tier >= 1 && !early && noise(routeSeed + 13) > 0.54) ||
+      areaType === "constructionGauntlet" ||
+      areaType === "needleAlleys",
+    airHazard:
+      (tier >= 2 && noise(routeSeed + 14) > 0.7) ||
+      areaType === "industrialHazards" ||
+      areaType === "eliteFlow",
+    poleBar:
+      (tier >= 2 && noise(routeSeed + 15) > 0.4) ||
+      areaType === "skylineSprint" ||
+      areaType === "wallRunDistrict" ||
+      areaType === "eliteFlow"
   };
 }
 
@@ -353,6 +424,7 @@ function createChunk(id: number, startX: number, tier: DistrictTier, seed: numbe
   const pickups: Pickup[] = [];
 
   const template = getChunkTemplate(id, seed, tier);
+  const areaType = template.areaType;
   const lowA = makePlatform(
     `${id}-low-a`,
     startX + 0,
@@ -432,13 +504,26 @@ function createChunk(id: number, startX: number, tier: DistrictTier, seed: numbe
     obstacles.push({
       id: `${lowB.id}-low`,
       kind: "low-barrier",
-      x: lowB.x + lowB.width * 0.62,
+      x: lowB.x + lowB.width * (areaType === "clutteredRoofs" ? 0.4 : 0.62),
       y: lowB.y,
-      width: 40,
-      height: 24,
+      width: areaType === "clutteredRoofs" ? 56 : 40,
+      height: areaType === "clutteredRoofs" ? 28 : 24,
       lane: "low",
       vaultable: true
     });
+
+    if (areaType === "clutteredRoofs" || areaType === "eliteFlow") {
+      obstacles.push({
+        id: `${lowB.id}-low-2`,
+        kind: "low-barrier",
+        x: lowB.x + lowB.width * 0.78,
+        y: lowB.y,
+        width: 48,
+        height: 26,
+        lane: "low",
+        vaultable: true
+      });
+    }
   }
 
   if (template.slideSign) {
@@ -446,25 +531,38 @@ function createChunk(id: number, startX: number, tier: DistrictTier, seed: numbe
     obstacles.push({
       id: `${slidePlatform.id}-slide`,
       kind: "slide-sign",
-      x: slidePlatform.x + slidePlatform.width * 0.56,
-      y: slidePlatform.y - 34,
-      width: 70,
-      height: 18,
+      x: slidePlatform.x + slidePlatform.width * (areaType === "constructionGauntlet" ? 0.48 : 0.56),
+      y: slidePlatform.y - (areaType === "constructionGauntlet" ? 46 : 34),
+      width: areaType === "constructionGauntlet" ? 92 : 70,
+      height: areaType === "constructionGauntlet" ? 24 : 18,
       lane: slidePlatform.lane,
       slideClearance: true
     });
 
-    if (slidePlatform.width > 140) {
+    if (slidePlatform.width > 140 || areaType === "constructionGauntlet" || areaType === "needleAlleys") {
       obstacles.push({
         id: `${slidePlatform.id}-tunnel`,
         kind: "slide-gap",
-        x: slidePlatform.x + slidePlatform.width * 0.74,
-        y: slidePlatform.y - 26,
-        width: 92,
-        height: 24,
+        x: slidePlatform.x + slidePlatform.width * (areaType === "needleAlleys" ? 0.64 : 0.74),
+        y: slidePlatform.y - (areaType === "constructionGauntlet" ? 34 : 26),
+        width: areaType === "needleAlleys" ? 76 : 92,
+        height: areaType === "constructionGauntlet" ? 34 : 24,
         lane: slidePlatform.lane,
         slideClearance: true
       });
+
+      if (areaType === "constructionGauntlet" || areaType === "eliteFlow") {
+        obstacles.push({
+          id: `${slidePlatform.id}-tunnel-2`,
+          kind: "slide-gap",
+          x: slidePlatform.x + slidePlatform.width * 0.86,
+          y: slidePlatform.y - 30,
+          width: 70,
+          height: 28,
+          lane: slidePlatform.lane,
+          slideClearance: true
+        });
+      }
     }
   }
 
@@ -491,8 +589,23 @@ function createChunk(id: number, startX: number, tier: DistrictTier, seed: numbe
     );
   }
 
+  if (areaType === "skylineSprint" || areaType === "eliteFlow") {
+    const skyBarX = startX + 210;
+    const skyBarY = 138 + Math.round(between(id * 91 + seed, -12, 16));
+    grappleSurfaces.push(
+      createSurface(`${id}-skyline-bar`, skyBarX, skyBarY, skyBarX + 116, skyBarY, "grapple-bar", 32)
+    );
+  }
+
+  if (areaType === "wallRunDistrict") {
+    const wallBase = platforms.find((platform) => platform.lane === "mid") ?? lowB;
+    grappleSurfaces.push(
+      createSurface(`${wallBase.id}-wallrun-bar`, wallBase.x + wallBase.width * 0.62, wallBase.y - 70, wallBase.x + wallBase.width * 0.9, wallBase.y - 70, "grapple-bar", 20)
+    );
+  }
+
   const endX = Math.max(...platforms.map((platform) => platform.x + platform.width)) + 40;
-  return { id, startX, endX, platforms, grappleSurfaces, walls, obstacles, pickups };
+  return { id, startX, endX, areaType, platforms, grappleSurfaces, walls, obstacles, pickups };
 }
 
 function createInitialChunks(seed: number): Chunk[] {
@@ -553,6 +666,7 @@ function createInitialState(seed: number): RunnerState {
     },
     chunks,
     camera: { x: 0, y: 0 },
+    activeArea: chunks[0]?.areaType ?? "openChase",
     score: 0,
     distance: 0,
     coins: 0,
@@ -595,6 +709,10 @@ function getAllObstacles(chunks: Chunk[]) {
 
 function getAllPickups(chunks: Chunk[]) {
   return chunks.flatMap((chunk) => chunk.pickups);
+}
+
+function getActiveChunk(state: RunnerState) {
+  return state.chunks.find((chunk) => state.player.position.x >= chunk.startX && state.player.position.x < chunk.endX) ?? state.chunks[0];
 }
 
 function ensureWorldAhead(state: RunnerState) {
@@ -1097,6 +1215,13 @@ function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: numbe
 
   resolvePlayerCollisions(state, previousY);
   ensureWorldAhead(state);
+  const activeChunk = getActiveChunk(state);
+  if (activeChunk && activeChunk.areaType !== state.activeArea) {
+    state.activeArea = activeChunk.areaType;
+    state.statusText = `${AREA_NAMES[activeChunk.areaType]} coming up. Read the rooftops.`;
+  } else if (activeChunk) {
+    state.activeArea = activeChunk.areaType;
+  }
   updateScoringAndCombo(state, dtMs);
 
   const lane = getCurrentLane(state);
@@ -1128,11 +1253,27 @@ function drawRectStroke(ctx: CanvasRenderingContext2D, x: number, y: number, wid
   ctx.restore();
 }
 
-function renderBackground(ctx: CanvasRenderingContext2D, tier: DistrictTier, cameraX = 0, speed = 0) {
+function renderBackground(ctx: CanvasRenderingContext2D, tier: DistrictTier, areaType: AreaType = "openChase", cameraX = 0, speed = 0) {
+  const topColor =
+    areaType === "industrialHazards" ? "#2d2f3d" :
+    areaType === "constructionGauntlet" ? "#314b63" :
+    areaType === "skylineSprint" ? "#1d2742" :
+    areaType === "eliteFlow" ? "#231f4d" :
+    "#243453";
+  const midColor =
+    areaType === "industrialHazards" ? "#5a4a4a" :
+    areaType === "constructionGauntlet" ? "#58708c" :
+    areaType === "openChase" ? "#52658e" :
+    "#45557c";
+  const bottomColor =
+    areaType === "industrialHazards" ? "#e88a5d" :
+    areaType === "skylineSprint" ? "#f0b783" :
+    areaType === "needleAlleys" ? "#eab08a" :
+    "#f0b783";
   const sky = ctx.createLinearGradient(0, 0, 0, HEIGHT);
-  sky.addColorStop(0, tier >= 2 ? "#1d2742" : "#243453");
-  sky.addColorStop(0.52, tier >= 2 ? "#34436a" : "#45557c");
-  sky.addColorStop(1, "#f0b783");
+  sky.addColorStop(0, tier >= 2 ? topColor : topColor);
+  sky.addColorStop(0.52, tier >= 2 ? midColor : midColor);
+  sky.addColorStop(1, bottomColor);
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
@@ -1142,9 +1283,9 @@ function renderBackground(ctx: CanvasRenderingContext2D, tier: DistrictTier, cam
   ctx.fill();
 
   const layers = [
-    { color: "rgba(19, 26, 43, 0.24)", baseY: 250, height: 140, width: 120, factor: 0.12 },
-    { color: "rgba(18, 24, 38, 0.42)", baseY: 302, height: 190, width: 92, factor: 0.22 },
-    { color: "rgba(13, 18, 31, 0.68)", baseY: 356, height: 240, width: 72, factor: 0.36 }
+    { color: areaType === "constructionGauntlet" ? "rgba(42, 57, 76, 0.28)" : "rgba(19, 26, 43, 0.24)", baseY: 250, height: 140, width: 120, factor: 0.12 },
+    { color: areaType === "industrialHazards" ? "rgba(52, 37, 37, 0.46)" : "rgba(18, 24, 38, 0.42)", baseY: 302, height: 190, width: 92, factor: 0.22 },
+    { color: areaType === "eliteFlow" ? "rgba(18, 15, 43, 0.72)" : "rgba(13, 18, 31, 0.68)", baseY: 356, height: 240, width: 72, factor: 0.36 }
   ];
 
   layers.forEach((layer, layerIndex) => {
@@ -1237,7 +1378,7 @@ function renderWorld(ctx: CanvasRenderingContext2D, state: RunnerState, input: I
   const targetCameraX = Math.max(0, state.player.position.x - PLAYER_SCREEN_X + state.player.velocity.x * 0.14);
   state.camera.x = lerp(state.camera.x, targetCameraX, 0.12);
   const cameraX = state.camera.x;
-  renderBackground(ctx, state.tier, cameraX, state.player.velocity.x);
+  renderBackground(ctx, state.tier, state.activeArea, cameraX, state.player.velocity.x);
 
   ctx.strokeStyle = "#0f172a";
   ctx.fillStyle = "#151c2f";
@@ -1397,6 +1538,7 @@ const RooftopRunner: React.FC = () => {
     coins: 0,
     speed: getBaseSpeed(0),
     districtTier: 0,
+    areaType: "openChase",
     combo: 0,
     bestCombo: 0,
     hookReady: true,
@@ -1466,7 +1608,7 @@ const RooftopRunner: React.FC = () => {
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
-    renderBackground(ctx, hud.districtTier);
+    renderBackground(ctx, hud.districtTier, hud.areaType);
     ctx.fillStyle = "rgba(10, 15, 26, 0.78)";
     ctx.fillRect(88, 86, WIDTH - 176, HEIGHT - 172);
     ctx.strokeStyle = "rgba(147, 197, 253, 0.34)";
@@ -1583,7 +1725,21 @@ const RooftopRunner: React.FC = () => {
       if (finished) return;
       finished = true;
       const accuracy = state.flow.grappleShots > 0 ? Math.round((state.flow.grappleHits / state.flow.grappleShots) * 100) : 0;
-      const goldEarned = Math.max(28, Math.floor(state.score / 18) + Math.floor(state.flow.bestCombo * 3) + state.coins * 7);
+      const goldEarned =
+        state.distance < 40
+          ? 1
+          : Math.max(
+              2,
+              Math.min(
+                24,
+                Math.floor(state.distance / 120) +
+                  Math.floor(state.score / 260) +
+                  Math.floor(state.flow.bestCombo / 5) +
+                  state.tier * 2 +
+                  Math.floor(state.coins / 3) +
+                  Math.floor(state.flow.styleScore / 220)
+              )
+            );
       const nextBest = Math.max(bestScoreRef.current, state.score);
       setBestScore(nextBest);
       saveLocalBest(nextBest);
@@ -1623,6 +1779,7 @@ const RooftopRunner: React.FC = () => {
           coins: state.coins,
           speed: Math.round(state.player.velocity.x),
           districtTier: state.tier,
+          areaType: state.activeArea,
           combo: state.flow.combo,
           bestCombo: state.flow.bestCombo,
           hookReady: state.player.grappleCooldownMs <= 0 && state.player.hook.phase === "idle",
@@ -1670,6 +1827,7 @@ const RooftopRunner: React.FC = () => {
       coins: 0,
       speed: getBaseSpeed(0),
       districtTier: 0,
+      areaType: "openChase",
       combo: 0,
       bestCombo: 0,
       hookReady: true,
@@ -1700,6 +1858,7 @@ const RooftopRunner: React.FC = () => {
               <div className="rooftop-marquee">
                 <span className="rooftop-logo">Rooftop Runner</span>
                 <span className="rooftop-district">{DISTRICT_NAMES[hud.districtTier]}</span>
+                <span className="rooftop-district">{AREA_NAMES[hud.areaType]}</span>
               </div>
               <div className="rooftop-scoreboard">
                 <span>Score {hud.score}</span>
