@@ -606,13 +606,15 @@ function queryGrappleSurfaces(state: RunnerState, segmentStart: Vec2, segmentEnd
   return hits[0] ?? null;
 }
 
-function queryStandingSurface(state: RunnerState, nextY: number) {
+function queryStandingSurface(state: RunnerState, previousY: number, nextY: number) {
   const player = state.player;
   const bounds = getPlayerBounds(player);
-  return getAllPlatforms(state.chunks).find((platform) => {
-    const overlapsX = bounds.right > platform.x + 8 && bounds.left < platform.x + platform.width - 8;
-    return overlapsX && player.position.y <= platform.y && nextY >= platform.y;
-  }) ?? null;
+  return getAllPlatforms(state.chunks)
+    .filter((platform) => {
+      const overlapsX = bounds.right > platform.x + 8 && bounds.left < platform.x + platform.width - 8;
+      return overlapsX && previousY <= platform.y && nextY >= platform.y;
+    })
+    .sort((a, b) => a.y - b.y)[0] ?? null;
 }
 
 function queryNearbyWalls(state: RunnerState) {
@@ -791,7 +793,7 @@ function resolvePlayerCollisions(state: RunnerState, previousY: number) {
   player.contacts.platformId = null;
   player.contacts.underCeiling = false;
 
-  const landingSurface = queryStandingSurface(state, player.position.y);
+  const landingSurface = queryStandingSurface(state, previousY, player.position.y);
   if (landingSurface && player.velocity.y >= 0 && previousY <= landingSurface.y) {
     const hardLanding = player.velocity.y > 560;
     player.position.y = landingSurface.y;
@@ -1352,7 +1354,11 @@ const RooftopRunner: React.FC = () => {
     const onPointerDown = (event: PointerEvent) => {
       syncAim(event.clientX, event.clientY);
       if (event.pointerType === "mouse") {
-        input.hookPressed = true;
+        if (state.player.hook.phase === "attached") {
+          input.hookReleased = true;
+        } else {
+          input.hookPressed = true;
+        }
       } else if (input.aimScreen.y < HEIGHT * 0.6) {
         input.jumpHeld = true;
       } else {
@@ -1361,7 +1367,6 @@ const RooftopRunner: React.FC = () => {
     };
     const onPointerUp = () => {
       input.slideHeld = false;
-      input.hookReleased = true;
     };
 
     const finalize = () => {
