@@ -770,17 +770,18 @@ input {
 .rooftop-shell {
   max-width: 1120px;
   background:
-    radial-gradient(circle at top left, rgba(99, 102, 241, 0.04), transparent 26%),
-    linear-gradient(180deg, rgba(245, 241, 232, 0.98), rgba(233, 227, 214, 0.98));
-  border: 1px solid rgba(104, 99, 89, 0.28);
+    radial-gradient(circle at top left, rgba(103, 212, 255, 0.08), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(251, 146, 60, 0.09), transparent 34%),
+    linear-gradient(180deg, rgba(13, 18, 31, 0.98), rgba(20, 27, 44, 0.98));
+  border: 1px solid rgba(124, 146, 180, 0.22);
   box-shadow:
-    0 22px 52px rgba(49, 46, 43, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    0 22px 52px rgba(7, 10, 18, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .rooftop-copy {
   max-width: 58rem;
-  color: #2c241d;
+  color: #d9e3f4;
 }
 
 .rooftop-layout {
@@ -794,9 +795,9 @@ input {
   position: relative;
   border-radius: 1.2rem;
   overflow: hidden;
-  border: 2px solid rgba(37, 30, 24, 0.55);
-  background: linear-gradient(180deg, rgba(245, 241, 232, 1), rgba(232, 226, 212, 1));
-  box-shadow: 0 18px 36px rgba(49, 46, 43, 0.18);
+  border: 1px solid rgba(124, 146, 180, 0.28);
+  background: linear-gradient(180deg, #1a2338, #111827);
+  box-shadow: 0 18px 36px rgba(7, 10, 18, 0.3);
   min-height: 540px;
 }
 
@@ -805,7 +806,7 @@ input {
   width: 100%;
   height: auto;
   min-height: 540px;
-  background: linear-gradient(180deg, rgba(245, 241, 232, 1), rgba(232, 226, 212, 1));
+  background: linear-gradient(180deg, #31415f, #f0b783 92%);
 }
 
 .rooftop-hud {
@@ -820,7 +821,7 @@ input {
   pointer-events: none;
   font-family: "PublicPixel", monospace;
   font-size: 0.72rem;
-  color: #1f2937;
+  color: #edf4ff;
   text-shadow: none;
 }
 
@@ -833,7 +834,7 @@ input {
   bottom: 0;
   align-items: flex-end;
   font-size: 0.58rem;
-  color: #3f3a32;
+  color: rgba(219, 234, 254, 0.82);
 }
 
 .rooftop-marquee,
@@ -845,11 +846,11 @@ input {
 }
 
 .rooftop-logo {
-  color: #111827;
+  color: #f8fafc;
 }
 
 .rooftop-district {
-  color: #7c2d12;
+  color: #7dd3fc;
 }
 
 .rooftop-sidepanel {
@@ -859,10 +860,10 @@ input {
 
 .rooftop-panel {
   border-radius: 1.15rem;
-  border: 2px solid rgba(37, 30, 24, 0.42);
+  border: 1px solid rgba(124, 146, 180, 0.24);
   background:
-    linear-gradient(180deg, rgba(245, 241, 232, 0.98), rgba(232, 226, 212, 0.98));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(17, 24, 39, 0.92));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
   padding: 1rem;
   display: grid;
   gap: 0.65rem;
@@ -870,13 +871,13 @@ input {
 
 .rooftop-panel p {
   margin: 0;
-  color: #2e261f;
+  color: #cbd5e1;
   line-height: 1.45;
 }
 
 .rooftop-panel-title {
   display: block;
-  color: #111827;
+  color: #f8fafc;
   font-size: 0.98rem;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -888,8 +889,8 @@ input {
   z-index: 4;
   display: grid;
   place-items: center;
-  background: rgba(245, 241, 232, 0.42);
-  backdrop-filter: blur(3px);
+  background: rgba(8, 12, 20, 0.42);
+  backdrop-filter: blur(6px);
 }
 
 .rooftop-overlay-card {
@@ -897,13 +898,13 @@ input {
   padding: 1.35rem;
   border-radius: 1.2rem;
   background:
-    linear-gradient(180deg, rgba(245, 241, 232, 0.97), rgba(232, 226, 212, 0.98));
-  border: 2px solid rgba(37, 30, 24, 0.38);
-  box-shadow: 0 20px 50px rgba(49, 46, 43, 0.18);
+    linear-gradient(180deg, rgba(13, 18, 31, 0.94), rgba(20, 27, 44, 0.96));
+  border: 1px solid rgba(124, 146, 180, 0.24);
+  box-shadow: 0 20px 50px rgba(7, 10, 18, 0.36);
   display: grid;
   gap: 0.8rem;
   text-align: center;
-  color: #2c241d;
+  color: #dbeafe;
 }
 
 .rooftop-overlay-card h2,
@@ -912,7 +913,7 @@ input {
 }
 
 .rooftop-overlay-kicker {
-  color: #9a3412;
+  color: #7dd3fc;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 0.75rem;
@@ -926,10 +927,9 @@ input {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(transparent 47px, rgba(15, 23, 42, 0.035) 48px),
-    linear-gradient(90deg, transparent 47px, rgba(15, 23, 42, 0.02) 48px);
-  background-size: 100% 48px, 48px 100%;
-  opacity: 0.22;
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.08), transparent 18%),
+    linear-gradient(135deg, rgba(148, 163, 184, 0.06), transparent 42%);
+  opacity: 0.55;
 }
 
 .rooftop-stage--paper,
