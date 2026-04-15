@@ -57,6 +57,7 @@ type SectionProfile = {
   breakableChance: number;
   movingChance: number;
   hazardChance: number;
+  movingHazardChance: number;
   anchorChance: number;
   forceAnchorGap: number;
   forceAnchorSpacing: number;
@@ -69,21 +70,21 @@ function getSectionProfile(height: number): SectionProfile {
   const band = Math.floor(meters / METERS_PER_BAND);
   switch (band) {
     case 0:
-      return { theme: "service", spacingMin: 78, spacingMax: 92, swing: 108, widthMin: 96, widthMax: 148, breakableChance: 0.08, movingChance: 0.02, hazardChance: 0, anchorChance: 0.58, forceAnchorGap: 116, forceAnchorSpacing: 96, extraPlatformChance: 0.22, collapseBonus: 0 };
+      return { theme: "service", spacingMin: 80, spacingMax: 96, swing: 118, widthMin: 92, widthMax: 140, breakableChance: 0.1, movingChance: 0.04, hazardChance: 0.02, movingHazardChance: 0, anchorChance: 0.54, forceAnchorGap: 116, forceAnchorSpacing: 96, extraPlatformChance: 0.18, collapseBonus: 2 };
     case 1:
-      return { theme: "maintenance", spacingMin: 84, spacingMax: 102, swing: 122, widthMin: 88, widthMax: 138, breakableChance: 0.14, movingChance: 0.06, hazardChance: 0.02, anchorChance: 0.48, forceAnchorGap: 120, forceAnchorSpacing: 100, extraPlatformChance: 0.16, collapseBonus: 4 };
+      return { theme: "maintenance", spacingMin: 88, spacingMax: 108, swing: 132, widthMin: 84, widthMax: 130, breakableChance: 0.16, movingChance: 0.1, hazardChance: 0.08, movingHazardChance: 0.18, anchorChance: 0.42, forceAnchorGap: 120, forceAnchorSpacing: 100, extraPlatformChance: 0.11, collapseBonus: 8 };
     case 2:
-      return { theme: "office", spacingMin: 92, spacingMax: 110, swing: 136, widthMin: 82, widthMax: 126, breakableChance: 0.18, movingChance: 0.1, hazardChance: 0.04, anchorChance: 0.38, forceAnchorGap: 126, forceAnchorSpacing: 106, extraPlatformChance: 0.1, collapseBonus: 8 };
+      return { theme: "office", spacingMin: 96, spacingMax: 116, swing: 144, widthMin: 78, widthMax: 120, breakableChance: 0.18, movingChance: 0.14, hazardChance: 0.1, movingHazardChance: 0.24, anchorChance: 0.34, forceAnchorGap: 126, forceAnchorSpacing: 106, extraPlatformChance: 0.07, collapseBonus: 14 };
     case 3:
-      return { theme: "industrial", spacingMin: 96, spacingMax: 118, swing: 148, widthMin: 78, widthMax: 120, breakableChance: 0.22, movingChance: 0.18, hazardChance: 0.08, anchorChance: 0.28, forceAnchorGap: 132, forceAnchorSpacing: 108, extraPlatformChance: 0.06, collapseBonus: 12 };
+      return { theme: "industrial", spacingMin: 102, spacingMax: 124, swing: 156, widthMin: 74, widthMax: 114, breakableChance: 0.22, movingChance: 0.2, hazardChance: 0.12, movingHazardChance: 0.28, anchorChance: 0.24, forceAnchorGap: 132, forceAnchorSpacing: 108, extraPlatformChance: 0.05, collapseBonus: 20 };
     case 4:
-      return { theme: "relay", spacingMin: 112, spacingMax: 132, swing: 168, widthMin: 72, widthMax: 108, breakableChance: 0.18, movingChance: 0.2, hazardChance: 0.1, anchorChance: 0.16, forceAnchorGap: 126, forceAnchorSpacing: 100, extraPlatformChance: 0.03, collapseBonus: 18 };
+      return { theme: "relay", spacingMin: 114, spacingMax: 136, swing: 172, widthMin: 68, widthMax: 102, breakableChance: 0.18, movingChance: 0.2, hazardChance: 0.16, movingHazardChance: 0.34, anchorChance: 0.14, forceAnchorGap: 126, forceAnchorSpacing: 100, extraPlatformChance: 0.02, collapseBonus: 26 };
     case 5:
-      return { theme: "surge", spacingMin: 114, spacingMax: 136, swing: 176, widthMin: 70, widthMax: 104, breakableChance: 0.18, movingChance: 0.16, hazardChance: 0.18, anchorChance: 0.12, forceAnchorGap: 120, forceAnchorSpacing: 98, extraPlatformChance: 0.02, collapseBonus: 24 };
+      return { theme: "surge", spacingMin: 118, spacingMax: 140, swing: 182, widthMin: 66, widthMax: 98, breakableChance: 0.18, movingChance: 0.18, hazardChance: 0.22, movingHazardChance: 0.4, anchorChance: 0.1, forceAnchorGap: 120, forceAnchorSpacing: 98, extraPlatformChance: 0.01, collapseBonus: 34 };
     case 6:
-      return { theme: "shutter", spacingMin: 120, spacingMax: 142, swing: 184, widthMin: 64, widthMax: 96, breakableChance: 0.14, movingChance: 0.28, hazardChance: 0.16, anchorChance: 0.08, forceAnchorGap: 116, forceAnchorSpacing: 94, extraPlatformChance: 0.01, collapseBonus: 32 };
+      return { theme: "shutter", spacingMin: 124, spacingMax: 146, swing: 188, widthMin: 62, widthMax: 92, breakableChance: 0.14, movingChance: 0.3, hazardChance: 0.2, movingHazardChance: 0.44, anchorChance: 0.07, forceAnchorGap: 116, forceAnchorSpacing: 94, extraPlatformChance: 0.01, collapseBonus: 42 };
     default:
-      return { theme: "critical", spacingMin: 124, spacingMax: 148, swing: 194, widthMin: 60, widthMax: 92, breakableChance: 0.18, movingChance: 0.24, hazardChance: 0.22, anchorChance: 0.06, forceAnchorGap: 112, forceAnchorSpacing: 92, extraPlatformChance: 0, collapseBonus: 40 };
+      return { theme: "critical", spacingMin: 128, spacingMax: 154, swing: 198, widthMin: 58, widthMax: 88, breakableChance: 0.16, movingChance: 0.26, hazardChance: 0.26, movingHazardChance: 0.5, anchorChance: 0.05, forceAnchorGap: 112, forceAnchorSpacing: 92, extraPlatformChance: 0, collapseBonus: 52 };
   }
 }
 
@@ -217,9 +218,12 @@ function generateSection(state: RunState) {
       y,
       width,
       kind,
-      vx: kind === "moving" ? random.pick([-1, 1]) * randomBetween(() => random.frac(), 56, 88) : 0,
-      minX: clamp(nextX - randomBetween(() => random.frac(), 34, profile.theme === "shutter" ? 108 : 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
-      maxX: clamp(nextX + randomBetween(() => random.frac(), 34, profile.theme === "shutter" ? 108 : 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
+      vx:
+        kind === "moving" || (kind === "hazard" && random.frac() < profile.movingHazardChance)
+          ? random.pick([-1, 1]) * randomBetween(() => random.frac(), kind === "hazard" ? 74 : 56, kind === "hazard" ? 116 : 88)
+          : 0,
+      minX: clamp(nextX - randomBetween(() => random.frac(), 34, kind === "hazard" ? 132 : profile.theme === "shutter" ? 108 : 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
+      maxX: clamp(nextX + randomBetween(() => random.frac(), 34, kind === "hazard" ? 132 : profile.theme === "shutter" ? 108 : 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
       breakDelayMs: kind === "breakable" ? 360 : 0,
       respawnDelayMs: kind === "breakable" ? 1200 : 0
     });
@@ -251,6 +255,18 @@ function generateSection(state: RunState) {
         y: y - randomBetween(() => random.frac(), 36, 56),
         width: randomBetween(() => random.frac(), 60, 86),
         kind: "stable"
+      });
+    }
+
+    if (profile.hazardChance > 0.08 && random.frac() < profile.hazardChance * 0.45) {
+      createPlatform(state, {
+        x: clamp((previousX + nextX) / 2, SHAFT_LEFT + 56, SHAFT_RIGHT - 56),
+        y: y - randomBetween(() => random.frac(), 22, 40),
+        width: randomBetween(() => random.frac(), 68, 116),
+        kind: "hazard",
+        vx: random.pick([-1, 1]) * randomBetween(() => random.frac(), 66, 108),
+        minX: SHAFT_LEFT + 58,
+        maxX: SHAFT_RIGHT - 58
       });
     }
 
