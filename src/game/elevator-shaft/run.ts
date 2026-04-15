@@ -244,11 +244,11 @@ function generateSection(state: RunState) {
       maxY: y + (kind === "hazard" && verticalMover ? randomBetween(() => random.frac(), 48, 112) : 0),
       forceX:
         kind === "wind"
-          ? random.pick([-1, 1]) * randomBetween(() => random.frac(), 240, 340)
+          ? random.pick([-1, 1]) * randomBetween(() => random.frac(), 900, 1300)
           : 0,
       forceY:
         kind === "wind"
-          ? -randomBetween(() => random.frac(), 160, 260)
+          ? -randomBetween(() => random.frac(), 700, 1050)
           : 0,
       breakDelayMs: kind === "breakable" ? 360 : 0,
       respawnDelayMs: kind === "breakable" ? 1200 : 0
@@ -566,6 +566,8 @@ export function updateRun(
     if (overlapsWind) {
       player.vx += platform.forceX * deltaSeconds;
       player.vy += platform.forceY * deltaSeconds;
+      player.x += platform.forceX * deltaSeconds * 0.14;
+      player.y += platform.forceY * deltaSeconds * 0.08;
       state.statusText = "Vent gust! Hold your line.";
     }
 
