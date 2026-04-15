@@ -99,6 +99,8 @@ function drawScene(
     ctx.fillStyle =
       platform.kind === "hazard"
         ? "#ef4444"
+        : platform.kind === "wind"
+          ? "rgba(34, 211, 238, 0.28)"
         : platform.kind === "breakable"
         ? "#f97316"
         : platform.kind === "moving"
@@ -118,6 +120,15 @@ function drawScene(
         ctx.moveTo(x - 4, screenY + 4);
         ctx.lineTo(x, screenY - 4);
         ctx.lineTo(x + 4, screenY + 4);
+        ctx.stroke();
+      }
+    } else if (platform.kind === "wind") {
+      ctx.strokeStyle = "rgba(103, 232, 249, 0.72)";
+      ctx.lineWidth = 2;
+      for (let row = -platform.height / 2 + 12; row < platform.height / 2 - 6; row += 18) {
+        ctx.beginPath();
+        ctx.moveTo(platform.x - 12, screenY + row);
+        ctx.quadraticCurveTo(platform.x, screenY + row - 6, platform.x + 12, screenY + row);
         ctx.stroke();
       }
     }
@@ -376,8 +387,8 @@ const ElevatorShaftEscape: React.FC = () => {
             <span className="elevator-kicker">Arcade Vertical Climber</span>
             <h1>Elevator Shaft Escape</h1>
             <p>
-              Climb a collapsing high-rise with jumps, wall kicks, and anchor grapples. It is built as a fast,
-              restart-friendly endless run with a strong Phase 1 movement core and enough section identity to feel like a real game already.
+              Climb through a collapsing high-rise using sharp jumps, wall kicks, and quick grapples. Stay ahead of the collapse,
+              adapt to each new shaft section, and push for the highest climb before the building wins.
             </p>
           </div>
           <div className="elevator-summary-card">
@@ -431,11 +442,11 @@ const ElevatorShaftEscape: React.FC = () => {
           <aside className="elevator-sidepanel">
             <div className="elevator-panel">
               <span className="elevator-panel__title">Core Loop</span>
-              <p>Climb up, chain landings, and let the collapse pressure decide the pace. The grapple is a rescue tool first and a stylish route extender second.</p>
+              <p>Keep climbing, stay calm under pressure, and use each landing to set up the next move. The collapse below sets the pace, so hesitation is usually what gets you caught.</p>
             </div>
             <div className="elevator-panel">
-              <span className="elevator-panel__title">Phase 1 Systems</span>
-              <p>Responsive jump with jump cut, wall jump recovery, anchor grapple, upward camera, rising failure line, and score from height plus run quality.</p>
+              <span className="elevator-panel__title">How To Survive</span>
+              <p>White platforms are safe footing. Orange platforms break and return after a short delay. Blue platforms move, so time your landing. Red energy bars are lethal, and some sweep across the shaft. Cyan vent columns push your movement, so use them or fight them depending on the route. Grapple anchors glow when targeted, and the hook is best used to recover or bridge dangerous gaps.</p>
             </div>
             <div className="elevator-panel">
               <span className="elevator-panel__title">Run Status</span>

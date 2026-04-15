@@ -1,4 +1,4 @@
-export type PlatformKind = "stable" | "breakable" | "moving" | "hazard";
+export type PlatformKind = "stable" | "breakable" | "moving" | "hazard" | "wind";
 
 export type ShaftSectionId =
   | "service"
@@ -23,10 +23,15 @@ export type PlatformData = {
   width: number;
   height: number;
   vx: number;
+  vy: number;
   minX: number;
   maxX: number;
+  minY: number;
+  maxY: number;
   kind: PlatformKind;
   anchorId: number | null;
+  forceX: number;
+  forceY: number;
   breakDelayMs: number;
   respawnDelayMs: number;
   broken: boolean;

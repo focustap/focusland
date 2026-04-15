@@ -58,6 +58,7 @@ type SectionProfile = {
   movingChance: number;
   hazardChance: number;
   movingHazardChance: number;
+  windChance: number;
   anchorChance: number;
   forceAnchorGap: number;
   forceAnchorSpacing: number;
@@ -70,21 +71,21 @@ function getSectionProfile(height: number): SectionProfile {
   const band = Math.floor(meters / METERS_PER_BAND);
   switch (band) {
     case 0:
-      return { theme: "service", spacingMin: 80, spacingMax: 96, swing: 118, widthMin: 92, widthMax: 140, breakableChance: 0.1, movingChance: 0.04, hazardChance: 0.02, movingHazardChance: 0, anchorChance: 0.54, forceAnchorGap: 116, forceAnchorSpacing: 96, extraPlatformChance: 0.18, collapseBonus: 2 };
+      return { theme: "service", spacingMin: 80, spacingMax: 96, swing: 118, widthMin: 92, widthMax: 140, breakableChance: 0.1, movingChance: 0.04, hazardChance: 0.02, movingHazardChance: 0, windChance: 0, anchorChance: 0.54, forceAnchorGap: 116, forceAnchorSpacing: 96, extraPlatformChance: 0.18, collapseBonus: 2 };
     case 1:
-      return { theme: "maintenance", spacingMin: 88, spacingMax: 108, swing: 132, widthMin: 84, widthMax: 130, breakableChance: 0.16, movingChance: 0.1, hazardChance: 0.08, movingHazardChance: 0.18, anchorChance: 0.42, forceAnchorGap: 120, forceAnchorSpacing: 100, extraPlatformChance: 0.11, collapseBonus: 8 };
+      return { theme: "maintenance", spacingMin: 88, spacingMax: 108, swing: 132, widthMin: 84, widthMax: 130, breakableChance: 0.16, movingChance: 0.1, hazardChance: 0.08, movingHazardChance: 0.18, windChance: 0.06, anchorChance: 0.42, forceAnchorGap: 120, forceAnchorSpacing: 100, extraPlatformChance: 0.11, collapseBonus: 8 };
     case 2:
-      return { theme: "office", spacingMin: 96, spacingMax: 116, swing: 144, widthMin: 78, widthMax: 120, breakableChance: 0.18, movingChance: 0.14, hazardChance: 0.1, movingHazardChance: 0.24, anchorChance: 0.34, forceAnchorGap: 126, forceAnchorSpacing: 106, extraPlatformChance: 0.07, collapseBonus: 14 };
+      return { theme: "office", spacingMin: 96, spacingMax: 116, swing: 144, widthMin: 78, widthMax: 120, breakableChance: 0.18, movingChance: 0.14, hazardChance: 0.1, movingHazardChance: 0.24, windChance: 0.08, anchorChance: 0.34, forceAnchorGap: 126, forceAnchorSpacing: 106, extraPlatformChance: 0.07, collapseBonus: 14 };
     case 3:
-      return { theme: "industrial", spacingMin: 102, spacingMax: 124, swing: 156, widthMin: 74, widthMax: 114, breakableChance: 0.22, movingChance: 0.2, hazardChance: 0.12, movingHazardChance: 0.28, anchorChance: 0.24, forceAnchorGap: 132, forceAnchorSpacing: 108, extraPlatformChance: 0.05, collapseBonus: 20 };
+      return { theme: "industrial", spacingMin: 102, spacingMax: 124, swing: 156, widthMin: 74, widthMax: 114, breakableChance: 0.22, movingChance: 0.2, hazardChance: 0.12, movingHazardChance: 0.28, windChance: 0.1, anchorChance: 0.24, forceAnchorGap: 132, forceAnchorSpacing: 108, extraPlatformChance: 0.05, collapseBonus: 20 };
     case 4:
-      return { theme: "relay", spacingMin: 114, spacingMax: 136, swing: 172, widthMin: 68, widthMax: 102, breakableChance: 0.18, movingChance: 0.2, hazardChance: 0.16, movingHazardChance: 0.34, anchorChance: 0.14, forceAnchorGap: 126, forceAnchorSpacing: 100, extraPlatformChance: 0.02, collapseBonus: 26 };
+      return { theme: "relay", spacingMin: 114, spacingMax: 136, swing: 172, widthMin: 68, widthMax: 102, breakableChance: 0.18, movingChance: 0.2, hazardChance: 0.16, movingHazardChance: 0.34, windChance: 0.14, anchorChance: 0.14, forceAnchorGap: 126, forceAnchorSpacing: 100, extraPlatformChance: 0.02, collapseBonus: 26 };
     case 5:
-      return { theme: "surge", spacingMin: 118, spacingMax: 140, swing: 182, widthMin: 66, widthMax: 98, breakableChance: 0.18, movingChance: 0.18, hazardChance: 0.22, movingHazardChance: 0.4, anchorChance: 0.1, forceAnchorGap: 120, forceAnchorSpacing: 98, extraPlatformChance: 0.01, collapseBonus: 34 };
+      return { theme: "surge", spacingMin: 118, spacingMax: 140, swing: 182, widthMin: 66, widthMax: 98, breakableChance: 0.18, movingChance: 0.18, hazardChance: 0.22, movingHazardChance: 0.4, windChance: 0.16, anchorChance: 0.1, forceAnchorGap: 120, forceAnchorSpacing: 98, extraPlatformChance: 0.01, collapseBonus: 34 };
     case 6:
-      return { theme: "shutter", spacingMin: 124, spacingMax: 146, swing: 188, widthMin: 62, widthMax: 92, breakableChance: 0.14, movingChance: 0.3, hazardChance: 0.2, movingHazardChance: 0.44, anchorChance: 0.07, forceAnchorGap: 116, forceAnchorSpacing: 94, extraPlatformChance: 0.01, collapseBonus: 42 };
+      return { theme: "shutter", spacingMin: 124, spacingMax: 146, swing: 188, widthMin: 62, widthMax: 92, breakableChance: 0.14, movingChance: 0.3, hazardChance: 0.2, movingHazardChance: 0.44, windChance: 0.18, anchorChance: 0.07, forceAnchorGap: 116, forceAnchorSpacing: 94, extraPlatformChance: 0.01, collapseBonus: 42 };
     default:
-      return { theme: "critical", spacingMin: 128, spacingMax: 154, swing: 198, widthMin: 58, widthMax: 88, breakableChance: 0.16, movingChance: 0.26, hazardChance: 0.26, movingHazardChance: 0.5, anchorChance: 0.05, forceAnchorGap: 112, forceAnchorSpacing: 92, extraPlatformChance: 0, collapseBonus: 52 };
+      return { theme: "critical", spacingMin: 128, spacingMax: 154, swing: 198, widthMin: 58, widthMax: 88, breakableChance: 0.16, movingChance: 0.26, hazardChance: 0.26, movingHazardChance: 0.5, windChance: 0.2, anchorChance: 0.05, forceAnchorGap: 112, forceAnchorSpacing: 92, extraPlatformChance: 0, collapseBonus: 52 };
   }
 }
 
@@ -111,10 +112,15 @@ function createPlatform(
     width: options.width,
     height: options.height ?? 14,
     vx: options.vx ?? 0,
+    vy: options.vy ?? 0,
     minX: options.minX ?? options.x,
     maxX: options.maxX ?? options.x,
+    minY: options.minY ?? options.y,
+    maxY: options.maxY ?? options.y,
     kind: options.kind ?? "stable",
     anchorId: options.anchorId ?? null,
+    forceX: options.forceX ?? 0,
+    forceY: options.forceY ?? 0,
     breakDelayMs: options.breakDelayMs ?? 0,
     respawnDelayMs: options.respawnDelayMs ?? 0,
     broken: false,
@@ -199,31 +205,51 @@ function generateSection(state: RunState) {
     let kind: PlatformData["kind"] = "stable";
     if (kindRoll < profile.hazardChance) {
       kind = "hazard";
-    } else if (kindRoll < profile.hazardChance + profile.movingChance) {
+    } else if (kindRoll < profile.hazardChance + profile.windChance) {
+      kind = "wind";
+    } else if (kindRoll < profile.hazardChance + profile.windChance + profile.movingChance) {
       kind = "moving";
-    } else if (kindRoll < profile.hazardChance + profile.movingChance + profile.breakableChance) {
+    } else if (kindRoll < profile.hazardChance + profile.windChance + profile.movingChance + profile.breakableChance) {
       kind = "breakable";
     }
     const width =
       kind === "hazard"
         ? randomBetween(() => random.frac(), profile.widthMin + 4, profile.widthMax + 18)
+        : kind === "wind"
+          ? randomBetween(() => random.frac(), 54, 78)
         : kind === "breakable"
           ? randomBetween(() => random.frac(), profile.widthMin, profile.widthMax)
           : kind === "moving"
             ? randomBetween(() => random.frac(), profile.widthMin + 8, profile.widthMax + 8)
             : randomBetween(() => random.frac(), profile.widthMin + 10, profile.widthMax + 24);
+    const verticalMover = kind === "hazard" && random.frac() < 0.34;
 
     const platform = createPlatform(state, {
       x: nextX,
       y,
       width,
+      height: kind === "wind" ? randomBetween(() => random.frac(), 88, 144) : 14,
       kind,
       vx:
-        kind === "moving" || (kind === "hazard" && random.frac() < profile.movingHazardChance)
+        kind === "moving" || (kind === "hazard" && !verticalMover && random.frac() < profile.movingHazardChance)
           ? random.pick([-1, 1]) * randomBetween(() => random.frac(), kind === "hazard" ? 74 : 56, kind === "hazard" ? 116 : 88)
+          : 0,
+      vy:
+        kind === "hazard" && verticalMover
+          ? random.pick([-1, 1]) * randomBetween(() => random.frac(), 78, 120)
           : 0,
       minX: clamp(nextX - randomBetween(() => random.frac(), 34, kind === "hazard" ? 132 : profile.theme === "shutter" ? 108 : 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
       maxX: clamp(nextX + randomBetween(() => random.frac(), 34, kind === "hazard" ? 132 : profile.theme === "shutter" ? 108 : 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
+      minY: y - (kind === "hazard" && verticalMover ? randomBetween(() => random.frac(), 48, 112) : 0),
+      maxY: y + (kind === "hazard" && verticalMover ? randomBetween(() => random.frac(), 48, 112) : 0),
+      forceX:
+        kind === "wind"
+          ? random.pick([-1, 1]) * randomBetween(() => random.frac(), 240, 340)
+          : 0,
+      forceY:
+        kind === "wind"
+          ? -randomBetween(() => random.frac(), 160, 260)
+          : 0,
       breakDelayMs: kind === "breakable" ? 360 : 0,
       respawnDelayMs: kind === "breakable" ? 1200 : 0
     });
@@ -500,11 +526,18 @@ export function updateRun(
       return;
     }
 
-    if (platform.kind === "moving") {
+    if (platform.vx !== 0) {
       platform.x += platform.vx * deltaSeconds;
       if (platform.x <= platform.minX || platform.x >= platform.maxX) {
         platform.vx *= -1;
         platform.x = clamp(platform.x, platform.minX, platform.maxX);
+      }
+    }
+    if (platform.vy !== 0) {
+      platform.y += platform.vy * deltaSeconds;
+      if (platform.y <= platform.minY || platform.y >= platform.maxY) {
+        platform.vy *= -1;
+        platform.y = clamp(platform.y, platform.minY, platform.maxY);
       }
     }
 
@@ -526,9 +559,19 @@ export function updateRun(
       return;
     }
 
+    const overlapsWind =
+      platform.kind === "wind" &&
+      player.y + halfHeight > platformTop &&
+      player.y - halfHeight < platformBottom;
+    if (overlapsWind) {
+      player.vx += platform.forceX * deltaSeconds;
+      player.vy += platform.forceY * deltaSeconds;
+      state.statusText = "Vent gust! Hold your line.";
+    }
+
     const wasAbove = previousY + halfHeight <= platformTop + 3;
     const hitsTop = player.y + halfHeight >= platformTop && player.y + halfHeight <= platformBottom + 16;
-    if (platform.kind !== "hazard" && player.vy >= 0 && wasAbove && hitsTop) {
+    if (platform.kind !== "hazard" && platform.kind !== "wind" && player.vy >= 0 && wasAbove && hitsTop) {
       if (!landingPlatform || platformTop < landingPlatform.y - landingPlatform.height / 2) {
         landingPlatform = platform;
       }
