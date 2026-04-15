@@ -20,17 +20,19 @@ export const COYOTE_MS = 110;
 export const JUMP_BUFFER_MS = 110;
 export const GRAPPLE_RANGE = 230;
 export const GRAPPLE_PULL_SPEED = 820;
-export const GRAPPLE_COOLDOWN_MS = 520;
+export const GRAPPLE_COOLDOWN_MS = 860;
 export const COLLAPSE_KILL_BUFFER = 18;
-export const SECTION_HEIGHT = 920;
-
-const SECTION_ORDER: ShaftSectionId[] = ["service", "maintenance", "office", "industrial", "critical"];
+const METERS_PER_BAND = 1000;
+const WORLD_UNITS_PER_METER = 10;
 
 const SECTION_LABELS: Record<ShaftSectionId, string> = {
   service: "Service Shaft",
   maintenance: "Maintenance Core",
   office: "Office Breakthrough",
   industrial: "Machine Deck",
+  relay: "Relay Void",
+  surge: "Surge Grid",
+  shutter: "Shutter Core",
   critical: "Critical Collapse"
 };
 
@@ -39,12 +41,54 @@ const SECTION_COLORS: Record<ShaftSectionId, { bg: number; accent: number; hazar
   maintenance: { bg: 0x10261f, accent: 0x34d399, hazard: 0xfacc15 },
   office: { bg: 0x1f2340, accent: 0xc4b5fd, hazard: 0xfb7185 },
   industrial: { bg: 0x2a1a12, accent: 0xf59e0b, hazard: 0xef4444 },
+  relay: { bg: 0x101827, accent: 0x22d3ee, hazard: 0xf97316 },
+  surge: { bg: 0x1d1027, accent: 0xe879f9, hazard: 0xef4444 },
+  shutter: { bg: 0x1e1f10, accent: 0xa3e635, hazard: 0xf59e0b },
   critical: { bg: 0x2c1014, accent: 0xf87171, hazard: 0xfbbf24 }
 };
 
+type SectionProfile = {
+  theme: ShaftSectionId;
+  spacingMin: number;
+  spacingMax: number;
+  swing: number;
+  widthMin: number;
+  widthMax: number;
+  breakableChance: number;
+  movingChance: number;
+  hazardChance: number;
+  anchorChance: number;
+  forceAnchorGap: number;
+  forceAnchorSpacing: number;
+  extraPlatformChance: number;
+  collapseBonus: number;
+};
+
+function getSectionProfile(height: number): SectionProfile {
+  const meters = Math.floor(height / WORLD_UNITS_PER_METER);
+  const band = Math.floor(meters / METERS_PER_BAND);
+  switch (band) {
+    case 0:
+      return { theme: "service", spacingMin: 78, spacingMax: 92, swing: 108, widthMin: 96, widthMax: 148, breakableChance: 0.08, movingChance: 0.02, hazardChance: 0, anchorChance: 0.58, forceAnchorGap: 116, forceAnchorSpacing: 96, extraPlatformChance: 0.22, collapseBonus: 0 };
+    case 1:
+      return { theme: "maintenance", spacingMin: 84, spacingMax: 102, swing: 122, widthMin: 88, widthMax: 138, breakableChance: 0.14, movingChance: 0.06, hazardChance: 0.02, anchorChance: 0.48, forceAnchorGap: 120, forceAnchorSpacing: 100, extraPlatformChance: 0.16, collapseBonus: 4 };
+    case 2:
+      return { theme: "office", spacingMin: 92, spacingMax: 110, swing: 136, widthMin: 82, widthMax: 126, breakableChance: 0.18, movingChance: 0.1, hazardChance: 0.04, anchorChance: 0.38, forceAnchorGap: 126, forceAnchorSpacing: 106, extraPlatformChance: 0.1, collapseBonus: 8 };
+    case 3:
+      return { theme: "industrial", spacingMin: 96, spacingMax: 118, swing: 148, widthMin: 78, widthMax: 120, breakableChance: 0.22, movingChance: 0.18, hazardChance: 0.08, anchorChance: 0.28, forceAnchorGap: 132, forceAnchorSpacing: 108, extraPlatformChance: 0.06, collapseBonus: 12 };
+    case 4:
+      return { theme: "relay", spacingMin: 112, spacingMax: 132, swing: 168, widthMin: 72, widthMax: 108, breakableChance: 0.18, movingChance: 0.2, hazardChance: 0.1, anchorChance: 0.16, forceAnchorGap: 126, forceAnchorSpacing: 100, extraPlatformChance: 0.03, collapseBonus: 18 };
+    case 5:
+      return { theme: "surge", spacingMin: 114, spacingMax: 136, swing: 176, widthMin: 70, widthMax: 104, breakableChance: 0.18, movingChance: 0.16, hazardChance: 0.18, anchorChance: 0.12, forceAnchorGap: 120, forceAnchorSpacing: 98, extraPlatformChance: 0.02, collapseBonus: 24 };
+    case 6:
+      return { theme: "shutter", spacingMin: 120, spacingMax: 142, swing: 184, widthMin: 64, widthMax: 96, breakableChance: 0.14, movingChance: 0.28, hazardChance: 0.16, anchorChance: 0.08, forceAnchorGap: 116, forceAnchorSpacing: 94, extraPlatformChance: 0.01, collapseBonus: 32 };
+    default:
+      return { theme: "critical", spacingMin: 124, spacingMax: 148, swing: 194, widthMin: 60, widthMax: 92, breakableChance: 0.18, movingChance: 0.24, hazardChance: 0.22, anchorChance: 0.06, forceAnchorGap: 112, forceAnchorSpacing: 92, extraPlatformChance: 0, collapseBonus: 40 };
+  }
+}
+
 function sectionForHeight(height: number) {
-  const index = Math.floor(height / SECTION_HEIGHT) % SECTION_ORDER.length;
-  return SECTION_ORDER[index];
+  return getSectionProfile(height).theme;
 }
 
 function randomBetween(random: () => number, min: number, max: number) {
@@ -130,64 +174,62 @@ function findBestAnchor(state: RunState, pointerWorldX: number, pointerWorldY: n
 
 function generateSection(state: RunState) {
   const startY = state.nextSpawnY;
-  const endY = startY - SECTION_HEIGHT;
+  const profile = getSectionProfile(Math.max(0, -startY));
+  const endY = startY - 1000;
   const random = new Phaser.Math.RandomDataGenerator([String(state.seed + state.nextSectionId)]);
-  const theme = sectionForHeight(Math.max(0, -endY));
-  createSectionSlice(state, startY, endY, theme);
+  createSectionSlice(state, startY, endY, profile.theme);
 
   let y = startY - 90;
   let previousX = Phaser.Math.Between(SHAFT_LEFT + 80, SHAFT_RIGHT - 80);
+  let previousHadAnchor = true;
 
   while (y > endY + 60) {
-    const spacing = randomBetween(() => random.frac(), 78, theme === "critical" ? 104 : 92);
+    const spacing = randomBetween(() => random.frac(), profile.spacingMin, profile.spacingMax);
     y -= spacing;
 
     const routeBias = Phaser.Math.Between(-1, 1);
-    const swing = theme === "office" ? 122 : theme === "critical" ? 144 : 110;
     const nextX = clamp(
-      previousX + routeBias * randomBetween(() => random.frac(), 42, swing),
+      previousX + routeBias * randomBetween(() => random.frac(), 42, profile.swing),
       SHAFT_LEFT + 58,
       SHAFT_RIGHT - 58
     );
 
     const kindRoll = random.frac();
-    const kind =
-      theme === "critical" && kindRoll > 0.62
-        ? "breakable"
-        : theme === "industrial" && kindRoll > 0.72
-          ? "moving"
-          : kindRoll > 0.84
-            ? "breakable"
-            : "stable";
+    let kind: PlatformData["kind"] = "stable";
+    if (kindRoll < profile.hazardChance) {
+      kind = "hazard";
+    } else if (kindRoll < profile.hazardChance + profile.movingChance) {
+      kind = "moving";
+    } else if (kindRoll < profile.hazardChance + profile.movingChance + profile.breakableChance) {
+      kind = "breakable";
+    }
     const width =
-      kind === "breakable"
-        ? randomBetween(() => random.frac(), 76, 116)
-        : kind === "moving"
-          ? randomBetween(() => random.frac(), 84, 124)
-          : randomBetween(() => random.frac(), 92, 148);
+      kind === "hazard"
+        ? randomBetween(() => random.frac(), profile.widthMin + 4, profile.widthMax + 18)
+        : kind === "breakable"
+          ? randomBetween(() => random.frac(), profile.widthMin, profile.widthMax)
+          : kind === "moving"
+            ? randomBetween(() => random.frac(), profile.widthMin + 8, profile.widthMax + 8)
+            : randomBetween(() => random.frac(), profile.widthMin + 10, profile.widthMax + 24);
 
     const platform = createPlatform(state, {
       x: nextX,
       y,
       width,
       kind,
-      vx: kind === "moving" ? random.pick([-48, 48]) : 0,
-      minX: clamp(nextX - randomBetween(() => random.frac(), 34, 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
-      maxX: clamp(nextX + randomBetween(() => random.frac(), 34, 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
+      vx: kind === "moving" ? random.pick([-1, 1]) * randomBetween(() => random.frac(), 56, 88) : 0,
+      minX: clamp(nextX - randomBetween(() => random.frac(), 34, profile.theme === "shutter" ? 108 : 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
+      maxX: clamp(nextX + randomBetween(() => random.frac(), 34, profile.theme === "shutter" ? 108 : 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
       breakDelayMs: kind === "breakable" ? 360 : 0,
       respawnDelayMs: kind === "breakable" ? 1200 : 0
     });
 
-    const anchorChance =
-      theme === "maintenance"
-        ? 0.74
-        : theme === "critical"
-          ? 0.7
-          : theme === "office"
-            ? 0.5
-            : 0.4;
-    const shouldForceAnchor = Math.abs(nextX - previousX) > 108 || spacing > 96;
-    if (random.frac() < anchorChance || shouldForceAnchor) {
+    const shouldForceAnchor =
+      kind === "hazard" ||
+      Math.abs(nextX - previousX) > profile.forceAnchorGap ||
+      spacing > profile.forceAnchorSpacing ||
+      !previousHadAnchor;
+    if (random.frac() < profile.anchorChance || shouldForceAnchor) {
       const anchorX = clamp(
         shouldForceAnchor
           ? (previousX + nextX) / 2 + randomBetween(() => random.frac(), -26, 26)
@@ -198,13 +240,16 @@ function generateSection(state: RunState) {
       const anchorY = y - randomBetween(() => random.frac(), shouldForceAnchor ? 56 : 48, shouldForceAnchor ? 92 : 72);
       const anchor = createAnchor(state, anchorX, anchorY);
       platform.anchorId = anchor.id;
+      previousHadAnchor = true;
+    } else {
+      previousHadAnchor = false;
     }
 
-    if (theme === "office" && random.frac() < 0.26) {
+    if (random.frac() < profile.extraPlatformChance) {
       createPlatform(state, {
         x: clamp(nextX + randomBetween(() => random.frac(), -138, 138), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
         y: y - randomBetween(() => random.frac(), 36, 56),
-        width: randomBetween(() => random.frac(), 64, 90),
+        width: randomBetween(() => random.frac(), 60, 86),
         kind: "stable"
       });
     }
@@ -455,9 +500,19 @@ export function updateRun(
       return;
     }
 
+    const overlapsHazard =
+      platform.kind === "hazard" &&
+      player.y + halfHeight > platformTop &&
+      player.y - halfHeight < platformBottom;
+    if (overlapsHazard) {
+      state.gameOver = true;
+      state.reason = "You clipped an energized barrier.";
+      return;
+    }
+
     const wasAbove = previousY + halfHeight <= platformTop + 3;
     const hitsTop = player.y + halfHeight >= platformTop && player.y + halfHeight <= platformBottom + 16;
-    if (player.vy >= 0 && wasAbove && hitsTop) {
+    if (platform.kind !== "hazard" && player.vy >= 0 && wasAbove && hitsTop) {
       if (!landingPlatform || platformTop < landingPlatform.y - landingPlatform.height / 2) {
         landingPlatform = platform;
       }
@@ -520,7 +575,7 @@ export function updateRun(
   state.topHeight = Math.max(state.topHeight, height);
   state.score = Math.floor(state.topHeight + state.elapsedMs * 0.015 + state.bestCombo * 18);
 
-  const collapseBaseSpeed = 52 + Math.min(132, state.topHeight * 0.028);
+  const collapseBaseSpeed = 52 + Math.min(132, state.topHeight * 0.028) + getSectionProfile(state.topHeight).collapseBonus;
   state.collapseSpeed = collapseBaseSpeed;
   state.collapseHeight += state.collapseSpeed * deltaSeconds;
 

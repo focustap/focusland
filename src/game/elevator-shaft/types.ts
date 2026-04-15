@@ -1,10 +1,13 @@
-export type PlatformKind = "stable" | "breakable" | "moving";
+export type PlatformKind = "stable" | "breakable" | "moving" | "hazard";
 
 export type ShaftSectionId =
   | "service"
   | "maintenance"
   | "office"
   | "industrial"
+  | "relay"
+  | "surge"
+  | "shutter"
   | "critical";
 
 export type GrappleAnchor = {

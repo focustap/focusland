@@ -97,7 +97,9 @@ function drawScene(
       return;
     }
     ctx.fillStyle =
-      platform.kind === "breakable"
+      platform.kind === "hazard"
+        ? "#ef4444"
+        : platform.kind === "breakable"
         ? "#f97316"
         : platform.kind === "moving"
           ? "#38bdf8"
@@ -108,6 +110,17 @@ function drawScene(
     ctx.roundRect(platform.x - platform.width / 2, screenY - platform.height / 2, platform.width, platform.height, 8);
     ctx.fill();
     ctx.stroke();
+    if (platform.kind === "hazard") {
+      ctx.strokeStyle = "rgba(254, 242, 242, 0.75)";
+      ctx.lineWidth = 2;
+      for (let x = platform.x - platform.width / 2 + 8; x < platform.x + platform.width / 2 - 8; x += 16) {
+        ctx.beginPath();
+        ctx.moveTo(x - 4, screenY + 4);
+        ctx.lineTo(x, screenY - 4);
+        ctx.lineTo(x + 4, screenY + 4);
+        ctx.stroke();
+      }
+    }
   });
 
   state.anchors.forEach((anchor) => {
