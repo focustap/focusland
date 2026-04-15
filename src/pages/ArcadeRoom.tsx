@@ -107,6 +107,7 @@ const ArcadeRoom: React.FC = () => {
           { label: "Dodge", route: "/game", x: 448, y: 58, color: 0x22c55e },
           { label: "Catch", route: "/catch", x: 510, y: 58, color: 0xf97316 },
           { label: "Pong", route: "/pong", x: 572, y: 58, color: 0x06b6d4 },
+          { label: "Elevator", route: "/arcade/elevator-shaft-escape", x: 676, y: 132, color: 0xfb7185 },
           { label: "8 Ball", route: "/pool", x: 214, y: 346, color: 0x0f766e },
           { label: "Town Rush", route: "/town-rush", x: 334, y: 346, color: 0x38bdf8 },
           { label: "Rooftop", route: "/rooftop-runner", x: 454, y: 346, color: 0xf97316 },

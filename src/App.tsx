@@ -14,6 +14,7 @@ const CardRoom = lazy(() => import("./pages/CardRoom"));
 const Casino = lazy(() => import("./pages/Casino"));
 const CasinoRoom = lazy(() => import("./pages/CasinoRoom"));
 const CatchGame = lazy(() => import("./pages/CatchGame"));
+const ElevatorShaftEscape = lazy(() => import("./pages/ElevatorShaftEscape"));
 const Game = lazy(() => import("./pages/Game"));
 const Gwent = lazy(() => import("./pages/Gwent"));
 const Hallway13 = lazy(() => import("./pages/Hallway13"));
@@ -149,6 +150,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <Hallway13 />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/arcade/elevator-shaft-escape"
+            element={
+              <ProtectedRoute>
+                <ElevatorShaftEscape />
               </ProtectedRoute>
             }
           />
