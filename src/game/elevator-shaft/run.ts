@@ -634,9 +634,11 @@ export function updateRun(
 
   const height = Math.max(0, FLOOR_Y - player.y);
   state.topHeight = Math.max(state.topHeight, height);
-  state.score = Math.floor(state.topHeight + state.elapsedMs * 0.015 + state.bestCombo * 18);
+  state.score = Math.floor(state.topHeight / WORLD_UNITS_PER_METER);
 
-  const collapseBaseSpeed = 52 + Math.min(132, state.topHeight * 0.028) + getSectionProfile(state.topHeight).collapseBonus;
+  const timeRamp = Math.min(42, state.elapsedMs * 0.00018);
+  const heightRamp = Math.min(96, state.topHeight * 0.018);
+  const collapseBaseSpeed = 46 + heightRamp + timeRamp + getSectionProfile(state.topHeight).collapseBonus;
   state.collapseSpeed = collapseBaseSpeed;
   state.collapseHeight += state.collapseSpeed * deltaSeconds;
 
@@ -669,8 +671,6 @@ export function getHudSnapshot(state: RunState): HudSnapshot {
   return {
     height: Math.floor(state.topHeight / 10),
     score: state.score,
-    combo: Math.floor(state.combo),
-    bestCombo: state.bestCombo,
     collapseGap: Math.max(0, Math.floor((collapseWorldY - state.player.y) / 10)),
     sectionLabel: currentSection ? SECTION_LABELS[currentSection.theme] : "Service Shaft",
     grappleReady: state.player.grappleCooldownMs <= 0

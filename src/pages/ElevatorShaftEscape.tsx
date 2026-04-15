@@ -17,8 +17,6 @@ import {
 type HudState = {
   height: number;
   score: number;
-  combo: number;
-  bestCombo: number;
   collapseGap: number;
   sectionLabel: string;
   grappleReady: boolean;
@@ -27,7 +25,6 @@ type HudState = {
 type RunSummary = {
   score: number;
   height: number;
-  bestCombo: number;
   goldEarned: number;
   reason: string;
 };
@@ -35,8 +32,6 @@ type RunSummary = {
 const DEFAULT_HUD: HudState = {
   height: 0,
   score: 0,
-  combo: 0,
-  bestCombo: 0,
   collapseGap: 0,
   sectionLabel: "Service Shaft",
   grappleReady: true
@@ -299,12 +294,11 @@ const ElevatorShaftEscape: React.FC = () => {
       finished = true;
       const goldEarned = Math.max(
         2,
-        Math.min(24, Math.floor(state.topHeight / 260) + Math.floor(state.score / 450) + Math.floor(state.bestCombo / 2) + 2)
+        Math.min(24, Math.floor(state.topHeight / 240) + 2)
       );
       const summary: RunSummary = {
         score: state.score,
         height: Math.floor(state.topHeight / 10),
-        bestCombo: state.bestCombo,
         goldEarned,
         reason: state.reason
       };
@@ -405,8 +399,8 @@ const ElevatorShaftEscape: React.FC = () => {
             <div className="elevator-stage__hud elevator-stage__hud--top">
               <span>Height {hud.height}m</span>
               <span>Score {hud.score}</span>
-              <span>Combo {hud.combo}</span>
-              <span>Best {hud.bestCombo}</span>
+              <span>{hud.grappleReady ? "Grapple Ready" : "Grapple Cooling"}</span>
+              <span>Collapse Gap {hud.collapseGap}m</span>
             </div>
             <div className="elevator-stage__frame">
               <canvas
@@ -422,7 +416,7 @@ const ElevatorShaftEscape: React.FC = () => {
                     <h2>{runSummary.height}m climbed</h2>
                     <p>{runSummary.reason}</p>
                     <p>
-                      Score {runSummary.score} | Best combo {runSummary.bestCombo} | Reward {runSummary.goldEarned} gold
+                      Score {runSummary.score} | Reward {runSummary.goldEarned} gold
                     </p>
                     <button className="primary-button" type="button" onClick={restartRun}>
                       Run It Back
@@ -453,7 +447,7 @@ const ElevatorShaftEscape: React.FC = () => {
               <p>{status}</p>
               {runSummary ? (
                 <p>
-                  Last run: {runSummary.height}m, score {runSummary.score}, combo {runSummary.bestCombo}.
+                  Last run: {runSummary.height}m, score {runSummary.score}.
                 </p>
               ) : (
                 <p>No completed run yet. The cleanest plays come from using walls to stay calm when the shaft narrows.</p>

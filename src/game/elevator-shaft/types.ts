@@ -91,8 +91,6 @@ export type RunState = {
 export type HudSnapshot = {
   height: number;
   score: number;
-  combo: number;
-  bestCombo: number;
   collapseGap: number;
   sectionLabel: string;
   grappleReady: boolean;
