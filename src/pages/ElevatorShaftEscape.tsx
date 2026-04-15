@@ -1,9 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
-import Phaser from "phaser";
 import NavBar from "../components/NavBar";
 import { recordArcadeResult } from "../lib/progression";
-import { ELEVATOR_GAME_HEIGHT, ELEVATOR_GAME_WIDTH } from "../game/elevator-shaft/run";
-import { createElevatorShaftScene } from "../game/elevator-shaft/phaser/createElevatorShaftScene";
+import {
+  ELEVATOR_GAME_HEIGHT,
+  ELEVATOR_GAME_WIDTH,
+  FLOOR_Y,
+  SHAFT_LEFT,
+  SHAFT_RIGHT,
+  createInitialRun,
+  getHudSnapshot,
+  getSectionForHeight,
+  getSectionPalette,
+  updateRun
+} from "../game/elevator-shaft/run";
 
 type HudState = {
   height: number;
@@ -33,63 +42,296 @@ const DEFAULT_HUD: HudState = {
   grappleReady: true
 };
 
+function drawScene(
+  ctx: CanvasRenderingContext2D,
+  state: ReturnType<typeof createInitialRun>,
+  cameraY: number,
+  pointerX: number,
+  pointerY: number
+) {
+  const section = getSectionForHeight(state.topHeight);
+  const palette = getSectionPalette(section);
+
+  ctx.clearRect(0, 0, ELEVATOR_GAME_WIDTH, ELEVATOR_GAME_HEIGHT);
+
+  const bgGradient = ctx.createLinearGradient(0, 0, 0, ELEVATOR_GAME_HEIGHT);
+  bgGradient.addColorStop(0, `#${palette.bg.toString(16).padStart(6, "0")}`);
+  bgGradient.addColorStop(1, "#05070d");
+  ctx.fillStyle = bgGradient;
+  ctx.fillRect(0, 0, ELEVATOR_GAME_WIDTH, ELEVATOR_GAME_HEIGHT);
+
+  ctx.fillStyle = "#04060c";
+  ctx.fillRect(0, 0, SHAFT_LEFT, ELEVATOR_GAME_HEIGHT);
+  ctx.fillRect(SHAFT_RIGHT, 0, ELEVATOR_GAME_WIDTH - SHAFT_RIGHT, ELEVATOR_GAME_HEIGHT);
+
+  const shaftGradient = ctx.createLinearGradient(SHAFT_LEFT, 0, SHAFT_RIGHT, 0);
+  shaftGradient.addColorStop(0, "rgba(8, 12, 22, 0.86)");
+  shaftGradient.addColorStop(0.5, "rgba(90, 140, 200, 0.08)");
+  shaftGradient.addColorStop(1, "rgba(8, 12, 22, 0.86)");
+  ctx.fillStyle = shaftGradient;
+  ctx.fillRect(SHAFT_LEFT, 0, SHAFT_RIGHT - SHAFT_LEFT, ELEVATOR_GAME_HEIGHT);
+
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.22)";
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(SHAFT_LEFT, 0);
+  ctx.lineTo(SHAFT_LEFT, ELEVATOR_GAME_HEIGHT);
+  ctx.moveTo(SHAFT_RIGHT, 0);
+  ctx.lineTo(SHAFT_RIGHT, ELEVATOR_GAME_HEIGHT);
+  ctx.stroke();
+
+  for (let i = -2; i < 16; i += 1) {
+    const markerY = ((i * 72) - (cameraY * 0.2)) % (ELEVATOR_GAME_HEIGHT + 80);
+    const y = markerY < -40 ? markerY + ELEVATOR_GAME_HEIGHT + 80 : markerY;
+    ctx.fillStyle = "rgba(148, 163, 184, 0.12)";
+    ctx.fillRect(SHAFT_LEFT + 14, y, 6, 30);
+    ctx.fillRect(SHAFT_RIGHT - 20, y + 20, 6, 30);
+  }
+
+  state.platforms.forEach((platform) => {
+    if (platform.broken) {
+      return;
+    }
+    const screenY = platform.y - cameraY;
+    if (screenY < -40 || screenY > ELEVATOR_GAME_HEIGHT + 40) {
+      return;
+    }
+    ctx.fillStyle =
+      platform.kind === "breakable"
+        ? "#f97316"
+        : platform.kind === "moving"
+          ? "#38bdf8"
+          : "#e2e8f0";
+    ctx.strokeStyle = "#0f172a";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(platform.x - platform.width / 2, screenY - platform.height / 2, platform.width, platform.height, 8);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  state.anchors.forEach((anchor) => {
+    const screenY = anchor.y - cameraY;
+    if (screenY < -20 || screenY > ELEVATOR_GAME_HEIGHT + 20) {
+      return;
+    }
+    ctx.fillStyle = "#f8fafc";
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(anchor.x, screenY, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  if (state.player.grappleLineMs > 0) {
+    const anchor = state.anchors.find((item) => item.id === state.player.grappleAnchorId);
+    const targetX = anchor?.x ?? pointerX;
+    const targetY = (anchor?.y ?? (pointerY + cameraY)) - cameraY;
+    ctx.strokeStyle = "rgba(248, 250, 252, 0.9)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(state.player.x, state.player.y - cameraY - 4);
+    ctx.lineTo(targetX, targetY);
+    ctx.stroke();
+  }
+
+  const collapseWorldY = FLOOR_Y - state.collapseHeight;
+  const collapseScreenY = collapseWorldY - cameraY;
+  const collapseGradient = ctx.createLinearGradient(0, collapseScreenY - 110, 0, collapseScreenY + 180);
+  collapseGradient.addColorStop(0, "rgba(251, 146, 60, 0)");
+  collapseGradient.addColorStop(0.35, "rgba(249, 115, 22, 0.34)");
+  collapseGradient.addColorStop(1, "rgba(124, 45, 18, 0.88)");
+  ctx.fillStyle = collapseGradient;
+  ctx.fillRect(SHAFT_LEFT, collapseScreenY - 120, SHAFT_RIGHT - SHAFT_LEFT, ELEVATOR_GAME_HEIGHT - collapseScreenY + 160);
+
+  for (let i = 0; i < 20; i += 1) {
+    const sparkX = SHAFT_LEFT + ((i * 37 + state.elapsedMs * 0.02) % (SHAFT_RIGHT - SHAFT_LEFT));
+    const sparkY = collapseScreenY + ((i * 19) % 110);
+    ctx.fillStyle = i % 3 === 0 ? "rgba(251, 191, 36, 0.8)" : "rgba(248, 250, 252, 0.28)";
+    ctx.fillRect(sparkX, sparkY, 3, 3);
+  }
+
+  const playerScreenY = state.player.y - cameraY;
+  ctx.save();
+  ctx.translate(state.player.x, playerScreenY);
+  ctx.rotate(Math.max(-0.16, Math.min(0.16, state.player.vx * 0.0007)));
+  ctx.fillStyle = "#e2e8f0";
+  ctx.strokeStyle = "#38bdf8";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(-state.player.width / 2, -state.player.height / 2, state.player.width, state.player.height, 10);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(-7, -8, 14, 4);
+  ctx.restore();
+
+  ctx.fillStyle = "rgba(248, 250, 252, 0.1)";
+  ctx.font = '14px "PublicPixel", monospace';
+  ctx.fillText(state.statusText.toUpperCase().slice(0, 40), SHAFT_LEFT + 14, 28);
+}
+
 const ElevatorShaftEscape: React.FC = () => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const gameRef = useRef<Phaser.Game | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hud, setHud] = useState<HudState>(DEFAULT_HUD);
   const [status, setStatus] = useState("Climb before the collapse turns the shaft into a furnace.");
   const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
   const [runNonce, setRunNonce] = useState(0);
 
   useEffect(() => {
-    if (!containerRef.current || gameRef.current) {
+    const canvas = canvasRef.current;
+    if (!canvas) {
       return;
     }
 
-    let destroyed = false;
-    const SceneClass = createElevatorShaftScene({
-      onHudChange: (nextHud, nextStatus) => {
-        if (destroyed) {
-          return;
-        }
-        setHud(nextHud);
-        setStatus(nextStatus);
-      },
-      onRunOver: (summary) => {
-        if (destroyed) {
-          return;
-        }
-        setRunSummary(summary);
-        setStatus(`${summary.reason} Score saved. +${summary.goldEarned} gold if sync succeeds.`);
-        void recordArcadeResult({
-          scoreGameName: "elevator_shaft_escape",
-          score: summary.score,
-          goldEarned: summary.goldEarned
-        }).catch(() => {
-          setStatus(`${summary.reason} Local run complete, but score sync failed.`);
-        });
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      setStatus("Canvas rendering is unavailable in this browser.");
+      return;
+    }
+
+    const state = createInitialRun(Date.now() + runNonce);
+    let raf = 0;
+    let last = performance.now();
+    let finished = false;
+    let pointerX = ELEVATOR_GAME_WIDTH / 2;
+    let pointerY = ELEVATOR_GAME_HEIGHT * 0.35;
+    let move = 0;
+    let jumpHeld = false;
+    let jumpPressed = false;
+    let grapplePressed = false;
+    let cameraY = state.player.y - ELEVATOR_GAME_HEIGHT * 0.62;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "a" || event.key === "A" || event.key === "ArrowLeft") {
+        move = -1;
       }
-    });
+      if (event.key === "d" || event.key === "D" || event.key === "ArrowRight") {
+        move = 1;
+      }
+      if (event.key === "w" || event.key === "W" || event.key === "ArrowUp" || event.key === " ") {
+        if (!jumpHeld) {
+          jumpPressed = true;
+        }
+        jumpHeld = true;
+      }
+      if (event.key === "e" || event.key === "E") {
+        grapplePressed = true;
+      }
+    };
 
-    const game = new Phaser.Game({
-      type: Phaser.AUTO,
-      parent: containerRef.current,
-      backgroundColor: "#06070d",
-      scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
-        width: ELEVATOR_GAME_WIDTH,
-        height: ELEVATOR_GAME_HEIGHT
-      },
-      scene: SceneClass
-    });
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (
+        (event.key === "a" || event.key === "A" || event.key === "ArrowLeft") &&
+        move < 0
+      ) {
+        move = 0;
+      }
+      if (
+        (event.key === "d" || event.key === "D" || event.key === "ArrowRight") &&
+        move > 0
+      ) {
+        move = 0;
+      }
+      if (event.key === "w" || event.key === "W" || event.key === "ArrowUp" || event.key === " ") {
+        jumpHeld = false;
+      }
+    };
 
-    gameRef.current = game;
+    const updatePointer = (event: PointerEvent) => {
+      const bounds = canvas.getBoundingClientRect();
+      const scaleX = ELEVATOR_GAME_WIDTH / bounds.width;
+      const scaleY = ELEVATOR_GAME_HEIGHT / bounds.height;
+      pointerX = (event.clientX - bounds.left) * scaleX;
+      pointerY = (event.clientY - bounds.top) * scaleY;
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      updatePointer(event);
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      updatePointer(event);
+      grapplePressed = true;
+    };
+
+    const finishRun = () => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      const goldEarned = Math.max(
+        2,
+        Math.min(24, Math.floor(state.topHeight / 260) + Math.floor(state.score / 450) + Math.floor(state.bestCombo / 2) + 2)
+      );
+      const summary: RunSummary = {
+        score: state.score,
+        height: Math.floor(state.topHeight / 10),
+        bestCombo: state.bestCombo,
+        goldEarned,
+        reason: state.reason
+      };
+      setRunSummary(summary);
+      setStatus(summary.reason);
+      void recordArcadeResult({
+        scoreGameName: "elevator_shaft_escape",
+        score: summary.score,
+        goldEarned: summary.goldEarned
+      }).catch(() => {
+        setStatus(`${summary.reason} Local run complete, but score sync failed.`);
+      });
+    };
+
+    const tick = (time: number) => {
+      const deltaMs = Math.min(33, time - last);
+      last = time;
+
+      updateRun(
+        state,
+        {
+          move,
+          jumpPressed,
+          jumpHeld,
+          grapplePressed,
+          pointerX,
+          pointerY,
+          cameraY
+        },
+        deltaMs
+      );
+
+      cameraY += ((state.player.y - ELEVATOR_GAME_HEIGHT * 0.62) - cameraY) * 0.11;
+      drawScene(ctx, state, cameraY, pointerX, pointerY);
+      setHud(getHudSnapshot(state));
+      setStatus(state.statusText);
+
+      jumpPressed = false;
+      grapplePressed = false;
+
+      if (state.gameOver) {
+        finishRun();
+      } else {
+        raf = window.requestAnimationFrame(tick);
+      }
+    };
+
+    drawScene(ctx, state, cameraY, pointerX, pointerY);
+    setHud(getHudSnapshot(state));
+    setStatus(state.statusText);
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerdown", onPointerDown);
+    raf = window.requestAnimationFrame(tick);
 
     return () => {
-      destroyed = true;
-      game.destroy(true);
-      gameRef.current = null;
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerdown", onPointerDown);
     };
   }, [runNonce]);
 
@@ -97,10 +339,6 @@ const ElevatorShaftEscape: React.FC = () => {
     setRunSummary(null);
     setHud(DEFAULT_HUD);
     setStatus("Fresh run. The building is already moving under your feet.");
-    if (gameRef.current) {
-      gameRef.current.destroy(true);
-      gameRef.current = null;
-    }
     setRunNonce((value) => value + 1);
   };
 
@@ -135,14 +373,11 @@ const ElevatorShaftEscape: React.FC = () => {
               <span>Best {hud.bestCombo}</span>
             </div>
             <div className="elevator-stage__frame">
-              <div
-                ref={containerRef}
-                className="elevator-game-host"
-                style={{
-                  width: "100%",
-                  maxWidth: ELEVATOR_GAME_WIDTH,
-                  aspectRatio: `${ELEVATOR_GAME_WIDTH} / ${ELEVATOR_GAME_HEIGHT}`
-                }}
+              <canvas
+                ref={canvasRef}
+                className="elevator-game-canvas"
+                width={ELEVATOR_GAME_WIDTH}
+                height={ELEVATOR_GAME_HEIGHT}
               />
               {runSummary ? (
                 <div className="elevator-overlay">
@@ -164,7 +399,7 @@ const ElevatorShaftEscape: React.FC = () => {
               <span>Move `A` / `D`</span>
               <span>Jump `W` / `Up` / `Space`</span>
               <span>Grapple click or `E`</span>
-              <span>Restart `R` after a crash</span>
+              <span>Restart the run with the button</span>
             </div>
           </div>
 

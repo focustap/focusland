@@ -105,7 +105,7 @@ function createSectionSlice(state: RunState, startY: number, endY: number, theme
 function generateSection(state: RunState) {
   const startY = state.nextSpawnY;
   const endY = startY - SECTION_HEIGHT;
-  const random = Phaser.Math.RandomDataGenerator([String(state.seed + state.nextSectionId)]);
+  const random = new Phaser.Math.RandomDataGenerator([String(state.seed + state.nextSectionId)]);
   const theme = sectionForHeight(Math.max(0, -endY));
   createSectionSlice(state, startY, endY, theme);
 
