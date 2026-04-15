@@ -25,6 +25,7 @@ export type PlatformData = {
   kind: PlatformKind;
   anchorId: number | null;
   breakDelayMs: number;
+  respawnDelayMs: number;
   broken: boolean;
   triggered: boolean;
 };
@@ -50,9 +51,11 @@ export type PlayerState = {
   jumpBufferMs: number;
   jumpCutUsed: boolean;
   wallJumpLockMs: number;
+  lastWallJumpSide: -1 | 0 | 1;
   grappleCooldownMs: number;
   grappleLineMs: number;
   grappleAnchorId: number | null;
+  aimAnchorId: number | null;
 };
 
 export type RunState = {

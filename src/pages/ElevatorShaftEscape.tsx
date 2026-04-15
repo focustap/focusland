@@ -115,11 +115,23 @@ function drawScene(
     if (screenY < -20 || screenY > ELEVATOR_GAME_HEIGHT + 20) {
       return;
     }
+    const isTargeted = anchor.id === state.player.aimAnchorId;
+    if (isTargeted) {
+      ctx.fillStyle = "rgba(56, 189, 248, 0.22)";
+      ctx.beginPath();
+      ctx.arc(anchor.x, screenY, 20, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(125, 211, 252, 0.75)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(anchor.x, screenY, 15, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.fillStyle = "#f8fafc";
-    ctx.strokeStyle = "#38bdf8";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = isTargeted ? "#7dd3fc" : "#38bdf8";
+    ctx.lineWidth = isTargeted ? 4 : 3;
     ctx.beginPath();
-    ctx.arc(anchor.x, screenY, 8, 0, Math.PI * 2);
+    ctx.arc(anchor.x, screenY, isTargeted ? 10 : 8, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   });

@@ -19,7 +19,7 @@ export const WALL_SLIDE_SPEED = 220;
 export const COYOTE_MS = 110;
 export const JUMP_BUFFER_MS = 110;
 export const GRAPPLE_RANGE = 230;
-export const GRAPPLE_PULL_SPEED = 690;
+export const GRAPPLE_PULL_SPEED = 820;
 export const GRAPPLE_COOLDOWN_MS = 520;
 export const COLLAPSE_KILL_BUFFER = 18;
 export const SECTION_HEIGHT = 920;
@@ -71,6 +71,7 @@ function createPlatform(
     kind: options.kind ?? "stable",
     anchorId: options.anchorId ?? null,
     breakDelayMs: options.breakDelayMs ?? 0,
+    respawnDelayMs: options.respawnDelayMs ?? 0,
     broken: false,
     triggered: false
   };
@@ -100,6 +101,31 @@ function createSectionSlice(state: RunState, startY: number, endY: number, theme
   state.nextSectionId += 1;
   state.sections.push(slice);
   return slice;
+}
+
+function findBestAnchor(state: RunState, pointerWorldX: number, pointerWorldY: number) {
+  const player = state.player;
+  let bestAnchor: GrappleAnchor | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  state.anchors.forEach((anchor) => {
+    const dx = anchor.x - player.x;
+    const dy = anchor.y - player.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance > GRAPPLE_RANGE || dy > 120) {
+      return;
+    }
+
+    const pointerDistance = Math.hypot(anchor.x - pointerWorldX, anchor.y - pointerWorldY);
+    const verticalPreference = dy < 0 ? 0 : 36;
+    const score = pointerDistance * 0.72 + distance * 0.22 + verticalPreference;
+    if (score < bestScore) {
+      bestScore = score;
+      bestAnchor = anchor;
+    }
+  });
+
+  return bestAnchor;
 }
 
 function generateSection(state: RunState) {
@@ -148,7 +174,8 @@ function generateSection(state: RunState) {
       vx: kind === "moving" ? random.pick([-48, 48]) : 0,
       minX: clamp(nextX - randomBetween(() => random.frac(), 34, 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
       maxX: clamp(nextX + randomBetween(() => random.frac(), 34, 72), SHAFT_LEFT + 52, SHAFT_RIGHT - 52),
-      breakDelayMs: kind === "breakable" ? 360 : 0
+      breakDelayMs: kind === "breakable" ? 360 : 0,
+      respawnDelayMs: kind === "breakable" ? 1200 : 0
     });
 
     const anchorChance =
@@ -159,13 +186,16 @@ function generateSection(state: RunState) {
           : theme === "office"
             ? 0.5
             : 0.4;
-    if (random.frac() < anchorChance) {
+    const shouldForceAnchor = Math.abs(nextX - previousX) > 108 || spacing > 96;
+    if (random.frac() < anchorChance || shouldForceAnchor) {
       const anchorX = clamp(
-        nextX + randomBetween(() => random.frac(), -58, 58),
+        shouldForceAnchor
+          ? (previousX + nextX) / 2 + randomBetween(() => random.frac(), -26, 26)
+          : nextX + randomBetween(() => random.frac(), -58, 58),
         SHAFT_LEFT + 38,
         SHAFT_RIGHT - 38
       );
-      const anchorY = y - randomBetween(() => random.frac(), 48, 72);
+      const anchorY = y - randomBetween(() => random.frac(), shouldForceAnchor ? 56 : 48, shouldForceAnchor ? 92 : 72);
       const anchor = createAnchor(state, anchorX, anchorY);
       platform.anchorId = anchor.id;
     }
@@ -201,9 +231,11 @@ export function createInitialRun(seed: number): RunState {
       jumpBufferMs: 0,
       jumpCutUsed: false,
       wallJumpLockMs: 0,
+      lastWallJumpSide: 0,
       grappleCooldownMs: 0,
       grappleLineMs: 0,
-      grappleAnchorId: null
+      grappleAnchorId: null,
+      aimAnchorId: null
     },
     platforms: [],
     anchors: [],
@@ -291,6 +323,11 @@ export function updateRun(
   player.grappleCooldownMs = Math.max(0, player.grappleCooldownMs - deltaMs);
   player.grappleLineMs = Math.max(0, player.grappleLineMs - deltaMs);
 
+  const pointerWorldX = input.pointerX;
+  const pointerWorldY = input.pointerY + input.cameraY;
+  const aimedAnchor = findBestAnchor(state, pointerWorldX, pointerWorldY);
+  player.aimAnchorId = aimedAnchor?.id ?? null;
+
   if (input.jumpPressed) {
     player.jumpBufferMs = JUMP_BUFFER_MS;
   }
@@ -314,20 +351,23 @@ export function updateRun(
       player.coyoteMs = 0;
       player.jumpBufferMs = 0;
       player.jumpCutUsed = false;
+      player.lastWallJumpSide = 0;
       state.combo += 1;
-    } else if (player.wallLeft) {
+    } else if (player.wallLeft && player.lastWallJumpSide !== -1) {
       player.vx = WALL_JUMP_X;
       player.vy = -WALL_JUMP_Y;
       player.wallJumpLockMs = 90;
       player.jumpBufferMs = 0;
       player.jumpCutUsed = false;
+      player.lastWallJumpSide = -1;
       state.combo += 2;
-    } else if (player.wallRight) {
+    } else if (player.wallRight && player.lastWallJumpSide !== 1) {
       player.vx = -WALL_JUMP_X;
       player.vy = -WALL_JUMP_Y;
       player.wallJumpLockMs = 90;
       player.jumpBufferMs = 0;
       player.jumpCutUsed = false;
+      player.lastWallJumpSide = 1;
       state.combo += 2;
     }
     state.bestCombo = Math.max(state.bestCombo, state.combo);
@@ -339,36 +379,18 @@ export function updateRun(
   }
 
   if (input.grapplePressed && player.grappleCooldownMs <= 0) {
-    const pointerWorldX = input.pointerX;
-    const pointerWorldY = input.pointerY + input.cameraY;
-    let bestAnchor: GrappleAnchor | null = null;
-    let bestScore = Number.POSITIVE_INFINITY;
-
-    state.anchors.forEach((anchor) => {
-      const dx = anchor.x - player.x;
-      const dy = anchor.y - player.y;
-      const distance = Math.hypot(dx, dy);
-      if (distance > GRAPPLE_RANGE || dy > 80) {
-        return;
-      }
-
-      const pointerDistance = Math.hypot(anchor.x - pointerWorldX, anchor.y - pointerWorldY);
-      const score = pointerDistance * 0.78 + distance * 0.22;
-      if (score < bestScore) {
-        bestScore = score;
-        bestAnchor = anchor;
-      }
-    });
+    const bestAnchor = aimedAnchor;
 
     if (bestAnchor) {
       const dx = bestAnchor.x - player.x;
       const dy = bestAnchor.y - player.y;
       const length = Math.max(1, Math.hypot(dx, dy));
       player.vx = (dx / length) * GRAPPLE_PULL_SPEED;
-      player.vy = (dy / length) * GRAPPLE_PULL_SPEED;
+      player.vy = (dy / length) * GRAPPLE_PULL_SPEED - 90;
       player.grappleCooldownMs = GRAPPLE_COOLDOWN_MS;
       player.grappleLineMs = 160;
       player.grappleAnchorId = bestAnchor.id;
+      player.lastWallJumpSide = 0;
       state.combo += 2;
       state.bestCombo = Math.max(state.bestCombo, state.combo);
       state.statusText = "Anchor locked. Keep the chain alive.";
@@ -399,10 +421,16 @@ export function updateRun(
     player.x = SHAFT_LEFT + halfWidth;
     player.vx = Math.max(player.vx, 0);
     player.wallLeft = true;
+    if (player.lastWallJumpSide === 1) {
+      player.lastWallJumpSide = 0;
+    }
   } else if (player.x + halfWidth >= SHAFT_RIGHT) {
     player.x = SHAFT_RIGHT - halfWidth;
     player.vx = Math.min(player.vx, 0);
     player.wallRight = true;
+    if (player.lastWallJumpSide === -1) {
+      player.lastWallJumpSide = 0;
+    }
   }
 
   let landingPlatform: PlatformData | null = null;
@@ -443,6 +471,7 @@ export function updateRun(
     player.grounded = true;
     player.coyoteMs = COYOTE_MS;
     player.jumpCutUsed = false;
+    player.lastWallJumpSide = 0;
     if (landingPlatform.kind === "breakable" && !landingPlatform.triggered) {
       landingPlatform.triggered = true;
       landingPlatform.breakDelayMs = 360;
@@ -454,6 +483,15 @@ export function updateRun(
       platform.breakDelayMs -= deltaMs;
       if (platform.breakDelayMs <= 0) {
         platform.broken = true;
+        platform.triggered = false;
+      }
+    } else if (platform.kind === "breakable" && platform.broken) {
+      platform.respawnDelayMs -= deltaMs;
+      if (platform.respawnDelayMs <= 0) {
+        platform.broken = false;
+        platform.triggered = false;
+        platform.breakDelayMs = 360;
+        platform.respawnDelayMs = 1200;
       }
     }
   });
