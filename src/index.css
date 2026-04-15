@@ -258,7 +258,7 @@ body[data-theme="light"] {
   min-height: 2.8rem;
 }
 
-.elevator-shell {
+.content.elevator-shell {
   max-width: 1420px;
   color: #e5eefb;
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -360,6 +360,18 @@ body[data-theme="light"] {
   overflow: hidden;
 }
 
+.elevator-game-host {
+  width: 100%;
+  max-width: 560px;
+}
+
+.elevator-game-host canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 20px;
+}
+
 .elevator-stage__hud {
   display: flex;
   gap: 0.6rem;
@@ -435,12 +447,6 @@ body[data-theme="light"] {
 
   .elevator-stage__frame {
     padding: 8px;
-  }
-
-  .elevator-stage__frame > div {
-    transform: scale(0.78);
-    transform-origin: top center;
-    margin-bottom: -180px;
   }
 }
 

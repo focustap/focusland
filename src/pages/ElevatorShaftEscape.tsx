@@ -73,10 +73,14 @@ const ElevatorShaftEscape: React.FC = () => {
 
     const game = new Phaser.Game({
       type: Phaser.AUTO,
-      width: ELEVATOR_GAME_WIDTH,
-      height: ELEVATOR_GAME_HEIGHT,
       parent: containerRef.current,
       backgroundColor: "#06070d",
+      scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: ELEVATOR_GAME_WIDTH,
+        height: ELEVATOR_GAME_HEIGHT
+      },
       scene: SceneClass
     });
 
@@ -131,7 +135,15 @@ const ElevatorShaftEscape: React.FC = () => {
               <span>Best {hud.bestCombo}</span>
             </div>
             <div className="elevator-stage__frame">
-              <div ref={containerRef} style={{ width: ELEVATOR_GAME_WIDTH, height: ELEVATOR_GAME_HEIGHT }} />
+              <div
+                ref={containerRef}
+                className="elevator-game-host"
+                style={{
+                  width: "100%",
+                  maxWidth: ELEVATOR_GAME_WIDTH,
+                  aspectRatio: `${ELEVATOR_GAME_WIDTH} / ${ELEVATOR_GAME_HEIGHT}`
+                }}
+              />
               {runSummary ? (
                 <div className="elevator-overlay">
                   <div className="elevator-overlay__card">

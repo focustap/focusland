@@ -47,6 +47,7 @@ export function createElevatorShaftScene(callbacks: SceneCallbacks) {
       this.runState = createInitialRun(Date.now());
       this.cameras.main.setBounds(0, -120000, ELEVATOR_GAME_WIDTH, 121000);
       this.cameras.main.setBackgroundColor("#06070d");
+      this.cameras.main.scrollY = this.runState.player.y - ELEVATOR_GAME_HEIGHT * 0.62;
 
       this.sectionBackdrop = this.add.rectangle(
         ELEVATOR_GAME_WIDTH / 2,
