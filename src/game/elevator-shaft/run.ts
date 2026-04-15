@@ -18,7 +18,7 @@ export const WALL_JUMP_Y = 710;
 export const WALL_SLIDE_SPEED = 220;
 export const COYOTE_MS = 110;
 export const JUMP_BUFFER_MS = 110;
-export const GRAPPLE_RANGE = 190;
+export const GRAPPLE_RANGE = 230;
 export const GRAPPLE_PULL_SPEED = 690;
 export const GRAPPLE_COOLDOWN_MS = 520;
 export const COLLAPSE_KILL_BUFFER = 18;
@@ -348,13 +348,14 @@ export function updateRun(
       const dx = anchor.x - player.x;
       const dy = anchor.y - player.y;
       const distance = Math.hypot(dx, dy);
-      if (distance > GRAPPLE_RANGE || dy > 36) {
+      if (distance > GRAPPLE_RANGE || dy > 80) {
         return;
       }
 
       const pointerDistance = Math.hypot(anchor.x - pointerWorldX, anchor.y - pointerWorldY);
-      if (pointerDistance < bestScore) {
-        bestScore = pointerDistance;
+      const score = pointerDistance * 0.78 + distance * 0.22;
+      if (score < bestScore) {
+        bestScore = score;
         bestAnchor = anchor;
       }
     });
@@ -404,6 +405,7 @@ export function updateRun(
     player.wallRight = true;
   }
 
+  let landingPlatform: PlatformData | null = null;
   state.platforms.forEach((platform) => {
     if (platform.broken) {
       return;
@@ -428,17 +430,24 @@ export function updateRun(
     const wasAbove = previousY + halfHeight <= platformTop + 3;
     const hitsTop = player.y + halfHeight >= platformTop && player.y + halfHeight <= platformBottom + 16;
     if (player.vy >= 0 && wasAbove && hitsTop) {
-      player.y = platformTop - halfHeight;
-      player.vy = 0;
-      player.grounded = true;
-      player.coyoteMs = COYOTE_MS;
-      player.jumpCutUsed = false;
-      if (platform.kind === "breakable" && !platform.triggered) {
-        platform.triggered = true;
+      if (!landingPlatform || platformTop < landingPlatform.y - landingPlatform.height / 2) {
+        landingPlatform = platform;
       }
-      return;
     }
   });
+
+  if (landingPlatform) {
+    const platformTop = landingPlatform.y - landingPlatform.height / 2;
+    player.y = platformTop - halfHeight;
+    player.vy = 0;
+    player.grounded = true;
+    player.coyoteMs = COYOTE_MS;
+    player.jumpCutUsed = false;
+    if (landingPlatform.kind === "breakable" && !landingPlatform.triggered) {
+      landingPlatform.triggered = true;
+      landingPlatform.breakDelayMs = 360;
+    }
+  }
 
   state.platforms.forEach((platform) => {
     if (platform.kind === "breakable" && platform.triggered && !platform.broken) {
