@@ -77,8 +77,6 @@ export type RunState = {
   nextSpawnY: number;
   topHeight: number;
   score: number;
-  combo: number;
-  bestCombo: number;
   statusText: string;
   collapseHeight: number;
   collapseSpeed: number;

@@ -333,8 +333,6 @@ export function createInitialRun(seed: number): RunState {
     nextSpawnY: FLOOR_Y - 60,
     topHeight: 0,
     score: 0,
-    combo: 0,
-    bestCombo: 0,
     statusText: "Climb. The shaft is collapsing below you.",
     collapseHeight: -80,
     collapseSpeed: 52,
@@ -439,7 +437,6 @@ export function updateRun(
       player.jumpBufferMs = 0;
       player.jumpCutUsed = false;
       player.lastWallJumpSide = 0;
-      state.combo += 1;
     } else if (player.wallLeft && player.lastWallJumpSide !== -1) {
       player.vx = WALL_JUMP_X;
       player.vy = -WALL_JUMP_Y;
@@ -447,7 +444,6 @@ export function updateRun(
       player.jumpBufferMs = 0;
       player.jumpCutUsed = false;
       player.lastWallJumpSide = -1;
-      state.combo += 2;
     } else if (player.wallRight && player.lastWallJumpSide !== 1) {
       player.vx = -WALL_JUMP_X;
       player.vy = -WALL_JUMP_Y;
@@ -455,9 +451,7 @@ export function updateRun(
       player.jumpBufferMs = 0;
       player.jumpCutUsed = false;
       player.lastWallJumpSide = 1;
-      state.combo += 2;
     }
-    state.bestCombo = Math.max(state.bestCombo, state.combo);
   }
 
   if (!input.jumpHeld && player.vy < -260 && !player.jumpCutUsed) {
@@ -478,14 +472,11 @@ export function updateRun(
       player.grappleLineMs = 160;
       player.grappleAnchorId = bestAnchor.id;
       player.lastWallJumpSide = 0;
-      state.combo += 2;
-      state.bestCombo = Math.max(state.bestCombo, state.combo);
       state.statusText = "Anchor locked. Keep the chain alive.";
     } else {
       player.grappleCooldownMs = 220;
       player.grappleLineMs = 90;
       player.grappleAnchorId = null;
-      state.combo = Math.max(0, state.combo - 1);
       state.statusText = "No anchor. Stay calm and keep climbing.";
     }
   }
@@ -622,10 +613,7 @@ export function updateRun(
   }
 
   if (player.grounded) {
-    state.combo = Math.max(1, state.combo);
     player.grappleAnchorId = null;
-  } else if (player.y > previousY + 18) {
-    state.combo = Math.max(0, state.combo - deltaSeconds * 1.4);
   }
 
   state.platforms = state.platforms.filter((platform) => platform.y < player.y + ELEVATOR_GAME_HEIGHT * 1.8);
@@ -636,9 +624,15 @@ export function updateRun(
   state.topHeight = Math.max(state.topHeight, height);
   state.score = Math.floor(state.topHeight / WORLD_UNITS_PER_METER);
 
+  const collapseWorldYBeforeStep = FLOOR_Y - state.collapseHeight;
+  const collapseGapMeters = Math.max(0, (collapseWorldYBeforeStep - player.y) / WORLD_UNITS_PER_METER);
   const timeRamp = Math.min(42, state.elapsedMs * 0.00018);
   const heightRamp = Math.min(96, state.topHeight * 0.018);
-  const collapseBaseSpeed = 46 + heightRamp + timeRamp + getSectionProfile(state.topHeight).collapseBonus;
+  const catchupRamp =
+    collapseGapMeters <= 90
+      ? 0
+      : Math.min(220, (collapseGapMeters - 90) * 0.55);
+  const collapseBaseSpeed = 46 + heightRamp + timeRamp + catchupRamp + getSectionProfile(state.topHeight).collapseBonus;
   state.collapseSpeed = collapseBaseSpeed;
   state.collapseHeight += state.collapseSpeed * deltaSeconds;
 
