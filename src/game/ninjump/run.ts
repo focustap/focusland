@@ -261,6 +261,21 @@ function getWallX(side: WallSide) {
     : PLAYFIELD_RIGHT - PLAYER_HIT_WIDTH * 0.7;
 }
 
+function getTravelDirection(state: NinjumpState): 1 | -1 {
+  if (state.player.vx > 0) return 1;
+  if (state.player.vx < 0) return -1;
+  if (state.player.wallSide === "left") return 1;
+  if (state.player.wallSide === "right") return -1;
+  return state.player.facing;
+}
+
+function preserveAirMomentum(state: NinjumpState, minimumSpeed: number) {
+  const direction = getTravelDirection(state);
+  state.player.wallSide = null;
+  state.player.facing = direction;
+  state.player.vx = direction * Math.max(Math.abs(state.player.vx), minimumSpeed);
+}
+
 function getPlayerBounds(state: NinjumpState) {
   return {
     left: state.player.x - PLAYER_HIT_WIDTH / 2,
@@ -341,8 +356,8 @@ function registerEnemyDefeat(state: NinjumpState, enemyType: EnemyType, x: numbe
   if (state.streakCount >= 3) {
     state.bonusTimerMs = BONUS_TIME_MS;
     state.bonusLabel = enemyType === "bird" ? "Sky Break" : enemyType === "squirrel" ? "Wild Rush" : "Shadow Chain";
+    preserveAirMomentum(state, JUMP_VX * 0.92);
     state.player.vy = -820;
-    state.player.vx *= 0.4;
     extendCombo(state, 2);
     bumpScore(state, 90, x, y - 20, state.bonusLabel.toUpperCase());
     state.statusText = `${state.bonusLabel} triggered. Ride the mega-jump.`;
@@ -370,9 +385,8 @@ function killPlayer(state: NinjumpState, reason: string) {
     return;
   }
   if (consumeShield(state, reason)) {
-    state.player.vx *= -0.22;
-    state.player.vy = -260;
-    state.player.wallSide = null;
+    preserveAirMomentum(state, JUMP_VX * 0.82);
+    state.player.vy = Math.min(state.player.vy, -280);
     return;
   }
 
@@ -1137,6 +1151,7 @@ function renderPlayer(ctx: CanvasRenderingContext2D, state: NinjumpState, sprite
   ctx.translate(screenX, screenY - 12);
   if (state.player.wallSide === "left") {
     ctx.rotate(Math.PI / 2);
+    ctx.scale(1, -1);
   } else if (state.player.wallSide === "right") {
     ctx.rotate(-Math.PI / 2);
   } else {
