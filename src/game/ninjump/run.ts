@@ -8,8 +8,8 @@ export const PLAYER_DRAW_HEIGHT = 74;
 const PLAYER_HIT_WIDTH = 28;
 const PLAYER_HIT_HEIGHT = 60;
 const WALL_RUN_SPEED = 248;
-const JUMP_VX = 356;
-const JUMP_VY = 566;
+const JUMP_VX = 410;
+const JUMP_VY = 590;
 const GRAVITY = 1500;
 const WALL_ATTACH_BOOST = 296;
 const FALL_MARGIN = 108;
@@ -180,6 +180,7 @@ export type NinjumpState = {
   streakCount: number;
   bonusTimerMs: number;
   bonusLabel: string;
+  empoweredUntilLand: boolean;
   screenShakeMs: number;
   hitStopMs: number;
 };
@@ -356,6 +357,7 @@ function registerEnemyDefeat(state: NinjumpState, enemyType: EnemyType, x: numbe
   if (state.streakCount >= 3) {
     state.bonusTimerMs = BONUS_TIME_MS;
     state.bonusLabel = enemyType === "bird" ? "Sky Break" : enemyType === "squirrel" ? "Wild Rush" : "Shadow Chain";
+    state.empoweredUntilLand = true;
     preserveAirMomentum(state, JUMP_VX * 0.92);
     state.player.vy = -820;
     extendCombo(state, 2);
@@ -566,6 +568,7 @@ function updateMovingHazards(state: NinjumpState, deltaMs: number) {
 
 function attachToWall(state: NinjumpState, side: WallSide) {
   state.player.wallSide = side;
+  state.empoweredUntilLand = false;
   state.player.x = getWallX(side);
   state.player.vx = 0;
   state.player.vy = -Math.max(WALL_ATTACH_BOOST, WALL_RUN_SPEED * (1 + state.speedRamp * 0.04));
@@ -641,6 +644,7 @@ function updateTimers(state: NinjumpState, deltaMs: number) {
 
 function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
   const player = getPlayerBounds(state);
+  const empowered = state.empoweredUntilLand && state.player.wallSide === null;
 
   if (hazard.kind === "barrier") {
     const x = hazard.side === "left" ? PLAYFIELD_LEFT : PLAYFIELD_RIGHT - hazard.width;
@@ -651,6 +655,12 @@ function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
       bottom: hazard.y + hazard.height / 2
     };
     if (intersectsRect(player, rect)) {
+      if (empowered) {
+        bumpScore(state, 18, x + hazard.width / 2, hazard.y, "BREAK");
+        awardSlash(state, x + hazard.width / 2, hazard.y, "#ffe6b8");
+        state.screenShakeMs = Math.max(state.screenShakeMs, 90);
+        return true;
+      }
       killPlayer(state, "A ledge clipped the run.");
       return true;
     }
@@ -671,7 +681,7 @@ function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
       return false;
     }
 
-    if (isAirborneKillWindow(state)) {
+    if (empowered || isAirborneKillWindow(state)) {
       registerEnemyDefeat(state, hazard.enemyType, x, hazard.y);
       return true;
     }
@@ -686,7 +696,7 @@ function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
       return false;
     }
 
-    if (isAirborneKillWindow(state)) {
+    if (empowered || isAirborneKillWindow(state)) {
       registerEnemyDefeat(state, "bird", hazard.x, hazard.y);
       return true;
     }
@@ -699,6 +709,11 @@ function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
     if (distSq(state.player.x, state.player.y - 28, hazard.x, hazard.y) > (hazard.size + 15) * (hazard.size + 15)) {
       return false;
     }
+    if (empowered) {
+      bumpScore(state, 14, hazard.x, hazard.y, "CUT");
+      awardSlash(state, hazard.x, hazard.y, "#d7f5ff");
+      return true;
+    }
     killPlayer(state, "A throwing star caught you.");
     return true;
   }
@@ -707,6 +722,12 @@ function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
     const pulseRadius = hazard.radius + Math.sin(state.elapsedMs * 0.01 + hazard.pulse) * 4 + 10;
     if (distSq(state.player.x, state.player.y - 20, hazard.x, hazard.y) > (pulseRadius + 16) * (pulseRadius + 16)) {
       return false;
+    }
+    if (empowered) {
+      bumpScore(state, 22, hazard.x, hazard.y, "BOOM");
+      awardSlash(state, hazard.x, hazard.y, "#ffd9b3");
+      state.screenShakeMs = Math.max(state.screenShakeMs, 120);
+      return true;
     }
     killPlayer(state, "You triggered a bomb.");
     return true;
@@ -799,6 +820,7 @@ export function createInitialNinjumpState(seed: number): NinjumpState {
     streakCount: 0,
     bonusTimerMs: 0,
     bonusLabel: "",
+    empoweredUntilLand: false,
     screenShakeMs: 0,
     hitStopMs: 0
   };
@@ -965,7 +987,12 @@ function renderBarrier(ctx: CanvasRenderingContext2D, barrier: BarrierHazard, st
   ctx.fillRect(x + 4, screenY - barrier.height / 2 + 4, barrier.width - 8, 4);
 }
 
-function renderWallEnemy(ctx: CanvasRenderingContext2D, enemy: WallEnemyHazard, state: NinjumpState) {
+function renderWallEnemy(
+  ctx: CanvasRenderingContext2D,
+  enemy: WallEnemyHazard,
+  state: NinjumpState,
+  sprites: NinjumpSprites
+) {
   const screenY = enemy.y - state.cameraY + Math.sin(state.elapsedMs * 0.006 + enemy.bobPhase) * 3;
   const x = enemy.side === "left" ? PLAYFIELD_LEFT + enemy.xOffset : PLAYFIELD_RIGHT - enemy.xOffset;
   ctx.save();
@@ -974,16 +1001,15 @@ function renderWallEnemy(ctx: CanvasRenderingContext2D, enemy: WallEnemyHazard, 
     ctx.scale(-1, 1);
   }
   if (enemy.enemyType === "ninja") {
-    ctx.fillStyle = "#1d4ed8";
-    ctx.fillRect(-12, -16, 24, 30);
-    ctx.fillStyle = "#dbeafe";
-    ctx.fillRect(-4, -20, 8, 8);
-    ctx.strokeStyle = "#dbeafe";
+    const frames = sprites.run;
+    const frameIndex = Math.floor(state.elapsedMs / 90) % frames.length;
+    const image = frames[frameIndex] ?? frames[0];
+    ctx.filter = "hue-rotate(120deg) saturate(0.9) brightness(0.9)";
+    ctx.drawImage(image, -24, -30, 48, 60);
+    ctx.filter = "none";
+    ctx.strokeStyle = "rgba(123, 241, 168, 0.9)";
     ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-16, -2);
-    ctx.lineTo(16, -2);
-    ctx.stroke();
+    ctx.strokeRect(-18, -24, 36, 44);
   } else {
     ctx.fillStyle = "#705025";
     ctx.beginPath();
@@ -1085,7 +1111,7 @@ function renderPickup(ctx: CanvasRenderingContext2D, pickup: PickupHazard, state
   }
 }
 
-function renderHazards(ctx: CanvasRenderingContext2D, state: NinjumpState, palette: Palette) {
+function renderHazards(ctx: CanvasRenderingContext2D, state: NinjumpState, palette: Palette, sprites: NinjumpSprites) {
   for (const hazard of state.hazards) {
     const screenY = hazard.y - state.cameraY;
     if (screenY < -100 || screenY > NINJUMP_HEIGHT + 100) {
@@ -1095,7 +1121,7 @@ function renderHazards(ctx: CanvasRenderingContext2D, state: NinjumpState, palet
     if (hazard.kind === "barrier") {
       renderBarrier(ctx, hazard, state);
     } else if (hazard.kind === "wall-enemy") {
-      renderWallEnemy(ctx, hazard, state);
+      renderWallEnemy(ctx, hazard, state, sprites);
     } else if (hazard.kind === "bird") {
       renderBird(ctx, hazard, state);
     } else if (hazard.kind === "star") {
@@ -1151,7 +1177,7 @@ function renderPlayer(ctx: CanvasRenderingContext2D, state: NinjumpState, sprite
   ctx.translate(screenX, screenY - 12);
   if (state.player.wallSide === "left") {
     ctx.rotate(Math.PI / 2);
-    ctx.scale(1, -1);
+    ctx.scale(-1, 1);
   } else if (state.player.wallSide === "right") {
     ctx.rotate(-Math.PI / 2);
   } else {
@@ -1200,7 +1226,7 @@ export function renderNinjumpScene(ctx: CanvasRenderingContext2D, state: Ninjump
   ctx.translate(shakeX, shakeY);
   renderBackground(ctx, state, palette);
   renderWalls(ctx, palette);
-  renderHazards(ctx, state, palette);
+  renderHazards(ctx, state, palette, sprites);
   renderSlashEffects(ctx, state);
   renderPlayer(ctx, state, sprites);
   renderPopups(ctx, state);
