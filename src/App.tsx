@@ -22,6 +22,7 @@ const InvadersRoom = lazy(() => import("./pages/InvadersRoom"));
 const Leaderboard = lazy(() => import("./pages/Leaderboard"));
 const Lobby = lazy(() => import("./pages/Lobby"));
 const Login = lazy(() => import("./pages/Login"));
+const NinjumpArcade = lazy(() => import("./pages/NinjumpArcade"));
 const Pong = lazy(() => import("./pages/Pong"));
 const Pool = lazy(() => import("./pages/Pool"));
 const Profile = lazy(() => import("./pages/Profile"));
@@ -158,6 +159,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <ElevatorShaftEscape />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/arcade/ninjump"
+            element={
+              <ProtectedRoute>
+                <NinjumpArcade />
               </ProtectedRoute>
             }
           />
