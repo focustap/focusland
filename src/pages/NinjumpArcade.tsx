@@ -175,7 +175,7 @@ const NinjumpArcade: React.FC = () => {
     let last = performance.now();
     let jumpQueued = false;
     let finished = false;
-    let prevScore = state.score;
+    let prevSlashCount = state.slashEffects.length;
     let prevShielded = state.player.shielded;
     let prevBonusTimer = state.bonusTimerMs;
     let prevAlive = state.player.alive;
@@ -253,7 +253,7 @@ const NinjumpArcade: React.FC = () => {
         stepNinjumpState(state, { jumpQueued }, deltaMs);
       }
 
-      if (phase === "playing" && state.score > prevScore) {
+      if (phase === "playing" && state.slashEffects.length > prevSlashCount) {
         const slashAudio = slashAudioRef.current;
         if (slashAudio) {
           slashAudio.currentTime = 0;
@@ -288,7 +288,7 @@ const NinjumpArcade: React.FC = () => {
       jumpQueued = false;
       renderNinjumpScene(ctx, state, sprites);
       updateHud();
-      prevScore = state.score;
+      prevSlashCount = state.slashEffects.length;
       prevShielded = state.player.shielded;
       prevBonusTimer = state.bonusTimerMs;
       prevAlive = state.player.alive;

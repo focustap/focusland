@@ -442,11 +442,12 @@ function createWallEnemy(state: NinjumpState, y: number, enemyType: "ninja" | "s
 }
 
 function createBird(state: NinjumpState, y: number, difficulty: number): BirdHazard {
+  const margin = 28;
   return {
     id: state.nextHazardId++,
     kind: "bird",
     enemyType: "bird",
-    x: randBetween(state.rngState + y * 0.17, PLAYFIELD_LEFT + 82, PLAYFIELD_RIGHT - 82),
+    x: randBetween(state.rngState + y * 0.17, PLAYFIELD_LEFT + 82 + margin, PLAYFIELD_RIGHT - 82 - margin),
     y,
     vx: randBetween(state.rngState + y * 0.21, -36 - difficulty * 2, 36 + difficulty * 2),
     vy: 170 + difficulty * 18,
@@ -569,6 +570,7 @@ function updateMovingHazards(state: NinjumpState, deltaMs: number) {
     if (hazard.kind === "bird") {
       hazard.x += hazard.vx * dt;
       hazard.y += hazard.vy * dt;
+      hazard.x = clamp(hazard.x, PLAYFIELD_LEFT + 34, PLAYFIELD_RIGHT - 34);
     } else if (hazard.kind === "star") {
       hazard.x += hazard.vx * dt;
       hazard.spin += dt * 8;
@@ -668,11 +670,13 @@ function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
 
   if (hazard.kind === "barrier") {
     const x = hazard.side === "left" ? PLAYFIELD_LEFT : PLAYFIELD_RIGHT - hazard.width;
+    const insetX = Math.max(4, hazard.width * 0.14);
+    const insetY = Math.max(2, hazard.height * 0.18);
     const rect = {
-      left: x,
-      right: x + hazard.width,
-      top: hazard.y - hazard.height / 2,
-      bottom: hazard.y + hazard.height / 2
+      left: x + insetX,
+      right: x + hazard.width - insetX,
+      top: hazard.y - hazard.height / 2 + insetY,
+      bottom: hazard.y + hazard.height / 2 - insetY
     };
     if (intersectsRect(player, rect)) {
       if (empowered) {
@@ -691,11 +695,14 @@ function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
     const x = hazard.side === "left"
       ? PLAYFIELD_LEFT + hazard.xOffset
       : PLAYFIELD_RIGHT - hazard.xOffset;
+    const halfWidth = hazard.enemyType === "ninja" ? 11 : 10;
+    const top = hazard.enemyType === "ninja" ? hazard.y - 14 : hazard.y - 12;
+    const bottom = hazard.enemyType === "ninja" ? hazard.y + 16 : hazard.y + 12;
     const rect = {
-      left: x - 16,
-      right: x + 16,
-      top: hazard.y - 18,
-      bottom: hazard.y + 18
+      left: x - halfWidth,
+      right: x + halfWidth,
+      top,
+      bottom
     };
     if (!intersectsRect(player, rect)) {
       return false;
@@ -711,13 +718,15 @@ function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
   }
 
   if (hazard.kind === "bird") {
-    const radius = 18;
-    if (distSq(state.player.x, state.player.y - 24, hazard.x, hazard.y) > (radius + 18) * (radius + 18)) {
+    const birdCenterX = hazard.x;
+    const birdCenterY = hazard.y + 1;
+    const hitRadius = 14;
+    if (distSq(state.player.x, state.player.y - 26, birdCenterX, birdCenterY) > (hitRadius + 14) * (hitRadius + 14)) {
       return false;
     }
 
     if (empowered || isAirborneKillWindow(state)) {
-      registerEnemyDefeat(state, "bird", hazard.x, hazard.y);
+      registerEnemyDefeat(state, "bird", birdCenterX, birdCenterY);
       return true;
     }
 
@@ -726,7 +735,8 @@ function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
   }
 
   if (hazard.kind === "star") {
-    if (distSq(state.player.x, state.player.y - 28, hazard.x, hazard.y) > (hazard.size + 15) * (hazard.size + 15)) {
+    const hitRadius = Math.max(8, hazard.size - 2);
+    if (distSq(state.player.x, state.player.y - 28, hazard.x, hazard.y) > (hitRadius + 12) * (hitRadius + 12)) {
       return false;
     }
     if (empowered) {
@@ -739,8 +749,8 @@ function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
   }
 
   if (hazard.kind === "bomb") {
-    const pulseRadius = hazard.radius + Math.sin(state.elapsedMs * 0.01 + hazard.pulse) * 4 + 10;
-    if (distSq(state.player.x, state.player.y - 20, hazard.x, hazard.y) > (pulseRadius + 16) * (pulseRadius + 16)) {
+    const coreRadius = Math.max(12, hazard.radius - 2);
+    if (distSq(state.player.x, state.player.y - 20, hazard.x, hazard.y) > (coreRadius + 13) * (coreRadius + 13)) {
       return false;
     }
     if (empowered) {
@@ -1021,8 +1031,8 @@ function renderWallEnemy(
     ctx.scale(-1, 1);
   }
   if (enemy.enemyType === "ninja") {
-    const frames = sprites.idle;
-    const frameIndex = Math.floor(state.elapsedMs / 180) % frames.length;
+    const frames = sprites.run;
+    const frameIndex = Math.floor(state.elapsedMs / 140) % frames.length;
     const image = frames[frameIndex] ?? frames[0];
     ctx.filter = "hue-rotate(120deg) saturate(0.9) brightness(0.9)";
     ctx.drawImage(image, -24, -30, 48, 60);
@@ -1045,6 +1055,11 @@ function renderWallEnemy(
 function renderBird(ctx: CanvasRenderingContext2D, bird: BirdHazard, state: NinjumpState) {
   const wing = Math.sin(state.elapsedMs * 0.016 + bird.flapPhase) * 10;
   const screenY = bird.y - state.cameraY;
+  const shadowY = Math.min(NINJUMP_HEIGHT - 18, screenY + 54);
+  ctx.fillStyle = "rgba(16, 24, 39, 0.16)";
+  ctx.beginPath();
+  ctx.ellipse(bird.x, shadowY, 18, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.save();
   ctx.translate(bird.x, screenY);
   if (bird.vx < 0) {
@@ -1065,6 +1080,14 @@ function renderBird(ctx: CanvasRenderingContext2D, bird: BirdHazard, state: Ninj
 
 function renderStar(ctx: CanvasRenderingContext2D, star: ProjectileHazard, state: NinjumpState) {
   const screenY = star.y - state.cameraY;
+  const warningEdge = star.vx > 0 ? PLAYFIELD_LEFT + 10 : PLAYFIELD_RIGHT - 10;
+  const warningAlpha = 0.28 + 0.2 * Math.sin(state.elapsedMs * 0.025 + star.spin);
+  ctx.strokeStyle = `rgba(255, 235, 166, ${warningAlpha})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(warningEdge, screenY - 12);
+  ctx.lineTo(warningEdge, screenY + 12);
+  ctx.stroke();
   ctx.save();
   ctx.translate(star.x, screenY);
   ctx.rotate(star.spin + state.elapsedMs * 0.012);
@@ -1096,6 +1119,10 @@ function renderBomb(ctx: CanvasRenderingContext2D, bomb: BombHazard, state: Ninj
   ctx.fill();
   ctx.fillStyle = "#ff7a3d";
   ctx.fillRect(bomb.x - 2, screenY - bomb.radius - 10, 4, 10);
+  ctx.fillStyle = pulse > 0.55 ? "#ffd28c" : "#ff8a4c";
+  ctx.beginPath();
+  ctx.arc(bomb.x, screenY, 4 + pulse * 2, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function renderPickup(ctx: CanvasRenderingContext2D, pickup: PickupHazard, state: NinjumpState, palette: Palette) {
