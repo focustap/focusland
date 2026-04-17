@@ -413,15 +413,14 @@ function createWallEnemy(state: NinjumpState, y: number, enemyType: "ninja" | "s
 }
 
 function createBird(state: NinjumpState, y: number, difficulty: number): BirdHazard {
-  const fromLeft = random(state.rngState + y * 0.19) > 0.5;
   return {
     id: state.nextHazardId++,
     kind: "bird",
     enemyType: "bird",
-    x: fromLeft ? PLAYFIELD_LEFT - 32 : PLAYFIELD_RIGHT + 32,
+    x: randBetween(state.rngState + y * 0.17, PLAYFIELD_LEFT + 82, PLAYFIELD_RIGHT - 82),
     y,
-    vx: fromLeft ? 140 + difficulty * 18 : -(140 + difficulty * 18),
-    vy: 28 + difficulty * 4,
+    vx: randBetween(state.rngState + y * 0.21, -36 - difficulty * 2, 36 + difficulty * 2),
+    vy: 170 + difficulty * 18,
     flapPhase: randBetween(state.rngState + y * 0.23, 0, Math.PI * 2)
   };
 }
@@ -468,51 +467,50 @@ function spawnBand(state: NinjumpState) {
   const roll = random(state.rngState + y * 0.01);
 
   if (state.score < 160) {
-    if (roll < 0.55) {
-      state.hazards.push(createBarrier(state, y, difficulty));
-    } else if (roll < 0.8) {
+    if (roll < 0.42) {
+      state.hazards.push(createBird(state, y, difficulty));
+    } else if (roll < 0.64) {
       state.hazards.push(createWallEnemy(state, y, "ninja"));
+    } else if (roll < 0.84) {
+      state.hazards.push(createBarrier(state, y, difficulty));
     } else {
       state.hazards.push(createPickup(state, y, roll > 0.92 ? "shield" : "orb"));
     }
   } else if (state.score < 420) {
-    if (roll < 0.28) {
-      state.hazards.push(createBarrier(state, y, difficulty));
-      state.hazards.push(createStar(state, y - 34, difficulty));
-    } else if (roll < 0.5) {
+    if (roll < 0.34) {
+      state.hazards.push(createBird(state, y, difficulty));
+    } else if (roll < 0.52) {
       state.hazards.push(createWallEnemy(state, y, "ninja"));
     } else if (roll < 0.68) {
-      state.hazards.push(createBird(state, y, difficulty));
-    } else if (roll < 0.82) {
       state.hazards.push(createWallEnemy(state, y, "squirrel"));
+    } else if (roll < 0.82) {
+      state.hazards.push(createBarrier(state, y, difficulty));
     } else {
       state.hazards.push(createPickup(state, y, roll > 0.94 ? "shield" : "orb"));
     }
   } else {
-    if (roll < 0.18) {
-      state.hazards.push(createBarrier(state, y, difficulty));
-      state.hazards.push(createBarrier(state, y - 48, difficulty));
-    } else if (roll < 0.34) {
-      state.hazards.push(createWallEnemy(state, y, "ninja"));
-      state.hazards.push(createStar(state, y - 18, difficulty));
-    } else if (roll < 0.49) {
+    if (roll < 0.22) {
       state.hazards.push(createBird(state, y, difficulty));
-    } else if (roll < 0.63) {
+    } else if (roll < 0.35) {
+      state.hazards.push(createBarrier(state, y, difficulty));
+    } else if (roll < 0.48) {
+      state.hazards.push(createWallEnemy(state, y, "ninja"));
+    } else if (roll < 0.6) {
       state.hazards.push(createWallEnemy(state, y, "squirrel"));
-    } else if (roll < 0.76) {
-      state.hazards.push(createBomb(state, y, difficulty));
-    } else if (roll < 0.88) {
+    } else if (roll < 0.72) {
       state.hazards.push(createStar(state, y, difficulty));
+    } else if (roll < 0.84) {
+      state.hazards.push(createBomb(state, y, difficulty));
     } else {
       state.hazards.push(createPickup(state, y, roll > 0.97 ? "shield" : "orb"));
     }
   }
 
-  if (random(state.rngState + y * 0.73) > 0.86 && state.score > 300) {
-    state.hazards.push(createBird(state, y - 62, difficulty + 1));
+  if (random(state.rngState + y * 0.73) > 0.92 && state.score > 520) {
+    state.hazards.push(createBird(state, y - 92, difficulty + 1));
   }
 
-  state.nextSpawnY -= randBetween(state.rngState + y * 0.07, 98, Math.max(118, 162 - difficulty * 3.8));
+  state.nextSpawnY -= randBetween(state.rngState + y * 0.07, 146, Math.max(168, 222 - difficulty * 4.2));
   state.rngState += 9973;
 }
 
@@ -543,7 +541,7 @@ function updateMovingHazards(state: NinjumpState, deltaMs: number) {
 
   state.hazards = state.hazards.filter((hazard) => {
     if (hazard.kind === "bird") {
-      return hazard.x > PLAYFIELD_LEFT - 120 && hazard.x < PLAYFIELD_RIGHT + 120;
+      return hazard.x > PLAYFIELD_LEFT - 120 && hazard.x < PLAYFIELD_RIGHT + 120 && hazard.y < state.cameraY + NINJUMP_HEIGHT + 120;
     }
     if (hazard.kind === "star") {
       return hazard.x > PLAYFIELD_LEFT - 100 && hazard.x < PLAYFIELD_RIGHT + 100;
@@ -1138,9 +1136,9 @@ function renderPlayer(ctx: CanvasRenderingContext2D, state: NinjumpState, sprite
   ctx.save();
   ctx.translate(screenX, screenY - 12);
   if (state.player.wallSide === "left") {
-    ctx.rotate(-Math.PI / 2);
-  } else if (state.player.wallSide === "right") {
     ctx.rotate(Math.PI / 2);
+  } else if (state.player.wallSide === "right") {
+    ctx.rotate(-Math.PI / 2);
   } else {
     ctx.rotate(clamp(state.player.vx / 700, -0.45, 0.45));
     if (state.player.facing < 0) {
