@@ -9,7 +9,7 @@ const PLAYER_HIT_WIDTH = 28;
 const PLAYER_HIT_HEIGHT = 60;
 const WALL_RUN_SPEED = 248;
 const JUMP_VX = 410;
-const JUMP_VY = 590;
+const JUMP_VY = 660;
 const GRAVITY = 1500;
 const WALL_ATTACH_BOOST = 296;
 const FALL_MARGIN = 108;
@@ -69,6 +69,7 @@ type PlayerState = {
   shielded: boolean;
   shieldFlashMs: number;
   animationMs: number;
+  spinMs: number;
   deathTimerMs: number;
   trailMs: number;
 };
@@ -495,6 +496,7 @@ const SPAWN_PATTERNS: SpawnPattern[] = [
   { minScore: 0, maxScore: 160, entries: [{ kind: "bird", yOffset: 0 }] },
   { minScore: 0, maxScore: 180, entries: [{ kind: "wall-ninja", yOffset: 0 }] },
   { minScore: 0, maxScore: 240, entries: [{ kind: "barrier", yOffset: 0 }] },
+  { minScore: 0, maxScore: 220, entries: [{ kind: "shield", yOffset: 0 }] },
   { minScore: 120, maxScore: 420, entries: [{ kind: "bird", yOffset: 0 }, { kind: "orb", yOffset: -64 }] },
   { minScore: 160, maxScore: 520, entries: [{ kind: "wall-ninja", yOffset: 0 }, { kind: "bird", yOffset: -92 }] },
   { minScore: 220, maxScore: 620, entries: [{ kind: "wall-squirrel", yOffset: 0 }, { kind: "barrier", yOffset: -74 }] },
@@ -504,7 +506,7 @@ const SPAWN_PATTERNS: SpawnPattern[] = [
   { minScore: 620, maxScore: 9999, entries: [{ kind: "bomb", yOffset: 0 }, { kind: "bird", yOffset: -100 }] },
   { minScore: 760, maxScore: 9999, entries: [{ kind: "wall-squirrel", yOffset: 0 }, { kind: "bomb", yOffset: -84 }, { kind: "orb", yOffset: -144 }] },
   { minScore: 900, maxScore: 9999, entries: [{ kind: "bird", yOffset: 0 }, { kind: "bird", yOffset: -108 }] },
-  { minScore: 1000, maxScore: 9999, entries: [{ kind: "shield", yOffset: 0 }] }
+  { minScore: 760, maxScore: 9999, entries: [{ kind: "shield", yOffset: 0 }] }
 ];
 
 function spawnEntry(state: NinjumpState, kind: SpawnEntryKind, y: number, difficulty: number) {
@@ -596,6 +598,7 @@ function attachToWall(state: NinjumpState, side: WallSide) {
   state.player.vy = -Math.max(WALL_ATTACH_BOOST, WALL_RUN_SPEED * (1 + state.speedRamp * 0.04));
   state.player.facing = side === "left" ? 1 : -1;
   state.player.trailMs = 150;
+  state.player.spinMs = 0;
   extendCombo(state, 1);
   state.score += 4 + Math.floor(state.combo * 1.2);
 }
@@ -606,11 +609,13 @@ function updatePlayer(state: NinjumpState, input: NinjumpInput, deltaMs: number)
 
   if (state.player.alive && input.jumpQueued && state.player.wallSide) {
     const direction = state.player.wallSide === "left" ? 1 : -1;
+    const carriedUpwardSpeed = WALL_RUN_SPEED * speedScale;
     state.player.wallSide = null;
     state.player.vx = JUMP_VX * direction * speedScale;
-    state.player.vy = -JUMP_VY;
+    state.player.vy = -Math.max(JUMP_VY, carriedUpwardSpeed + 140);
     state.player.facing = direction;
     state.player.trailMs = 220;
+    state.player.spinMs = 240;
     state.statusText = "Leap.";
   }
 
@@ -633,6 +638,7 @@ function updatePlayer(state: NinjumpState, input: NinjumpInput, deltaMs: number)
   state.player.animationMs += deltaMs;
   state.player.trailMs = Math.max(0, state.player.trailMs - deltaMs);
   state.player.shieldFlashMs = Math.max(0, state.player.shieldFlashMs - deltaMs);
+  state.player.spinMs = Math.max(0, state.player.spinMs - deltaMs);
 
   const climbed = Math.max(0, state.startY - state.player.y);
   state.bestHeight = Math.max(state.bestHeight, climbed);
@@ -695,9 +701,9 @@ function handleHazardCollision(state: NinjumpState, hazard: Hazard) {
     const x = hazard.side === "left"
       ? PLAYFIELD_LEFT + hazard.xOffset
       : PLAYFIELD_RIGHT - hazard.xOffset;
-    const halfWidth = hazard.enemyType === "ninja" ? 11 : 10;
-    const top = hazard.enemyType === "ninja" ? hazard.y - 14 : hazard.y - 12;
-    const bottom = hazard.enemyType === "ninja" ? hazard.y + 16 : hazard.y + 12;
+    const halfWidth = hazard.enemyType === "ninja" ? 14 : 12;
+    const top = hazard.enemyType === "ninja" ? hazard.y - 16 : hazard.y - 13;
+    const bottom = hazard.enemyType === "ninja" ? hazard.y + 18 : hazard.y + 13;
     const rect = {
       left: x - halfWidth,
       right: x + halfWidth,
@@ -826,6 +832,7 @@ export function createInitialNinjumpState(seed: number): NinjumpState {
       shielded: false,
       shieldFlashMs: 0,
       animationMs: 0,
+      spinMs: 0,
       deathTimerMs: 0,
       trailMs: 0
     },
@@ -1225,7 +1232,8 @@ function renderPlayer(ctx: CanvasRenderingContext2D, state: NinjumpState, sprite
   } else if (state.player.wallSide === "right") {
     ctx.rotate(-Math.PI / 2);
   } else {
-    ctx.rotate(clamp(state.player.vx / 700, -0.45, 0.45));
+    const spinProgress = state.player.spinMs > 0 ? (1 - state.player.spinMs / 240) * Math.PI * 2 : 0;
+    ctx.rotate(clamp(state.player.vx / 700, -0.45, 0.45) + spinProgress * state.player.facing);
     if (state.player.facing < 0) {
       ctx.scale(-1, 1);
     }
