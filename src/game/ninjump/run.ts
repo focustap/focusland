@@ -18,6 +18,7 @@ const MAX_DELTA_MS = 33;
 const COMBO_WINDOW_MS = 1050;
 const BONUS_TIME_MS = 1800;
 const SHIELD_FLASH_MS = 260;
+const START_MERCY_MS = 4200;
 
 export type WallSide = "left" | "right";
 export type EnemyType = "ninja" | "bird" | "squirrel";
@@ -195,6 +196,7 @@ export type NinjumpState = {
   bonusTimerMs: number;
   bonusLabel: string;
   empoweredUntilLand: boolean;
+  mercyTimerMs: number;
   screenShakeMs: number;
   hitStopMs: number;
 };
@@ -314,6 +316,10 @@ function isAirborneKillWindow(state: NinjumpState) {
   return state.player.wallSide === null && Math.abs(state.player.vx) > 140 && state.player.vy < 280;
 }
 
+function hasStartMercy(state: NinjumpState) {
+  return state.mercyTimerMs > 0;
+}
+
 function awardPopup(state: NinjumpState, x: number, y: number, text: string, color: string) {
   state.popups.push({
     id: state.nextHazardId++,
@@ -403,6 +409,15 @@ function consumeShield(state: NinjumpState, reason: string) {
 
 function killPlayer(state: NinjumpState, reason: string) {
   if (!state.player.alive) {
+    return;
+  }
+  if (hasStartMercy(state)) {
+    preserveAirMomentum(state, JUMP_VX * 0.84);
+    state.player.vy = Math.min(state.player.vy, -320);
+    state.player.trailMs = 160;
+    state.screenShakeMs = Math.max(state.screenShakeMs, 70);
+    awardPopup(state, state.player.x, state.player.y - 52, "MERCY", "#ffe9a6");
+    state.statusText = "Opening grace saved the run.";
     return;
   }
   if (consumeShield(state, reason)) {
@@ -549,8 +564,27 @@ function spawnBand(state: NinjumpState) {
   const difficulty = 1 + Math.min(14, state.score / 145);
   const y = state.nextSpawnY;
   const availablePatterns = SPAWN_PATTERNS.filter((pattern) => state.score >= pattern.minScore && state.score < pattern.maxScore);
-  const patternIndex = Math.floor(random(state.rngState + y * 0.01) * availablePatterns.length) % availablePatterns.length;
-  const pattern = availablePatterns[patternIndex];
+  const filteredPatterns = availablePatterns.filter((pattern) => {
+    if (!hasStartMercy(state)) {
+      return true;
+    }
+    const hasBomb = pattern.entries.some((entry) => entry.kind === "bomb");
+    const hasStar = pattern.entries.some((entry) => entry.kind === "star");
+    const hasBarrier = pattern.entries.some((entry) => entry.kind === "barrier");
+    const enemyCount = pattern.entries.filter((entry) => entry.kind === "bird" || entry.kind === "wall-ninja" || entry.kind === "wall-squirrel").length;
+    const pickupCount = pattern.entries.filter((entry) => entry.kind === "shield" || entry.kind === "orb").length;
+
+    if (hasBomb || hasStar) {
+      return false;
+    }
+    if (hasBarrier && enemyCount > 0) {
+      return false;
+    }
+    return enemyCount <= 1 || pickupCount > 0;
+  });
+  const patternPool = filteredPatterns.length > 0 ? filteredPatterns : availablePatterns;
+  const patternIndex = Math.floor(random(state.rngState + y * 0.01) * patternPool.length) % patternPool.length;
+  const pattern = patternPool[patternIndex];
 
   for (const entry of pattern.entries) {
     spawnEntry(state, entry.kind, y + entry.yOffset, difficulty);
@@ -659,6 +693,8 @@ function updatePlayer(state: NinjumpState, input: NinjumpInput, deltaMs: number)
 }
 
 function updateTimers(state: NinjumpState, deltaMs: number) {
+  state.mercyTimerMs = Math.max(0, state.mercyTimerMs - deltaMs);
+
   if (state.comboTimerMs > 0) {
     state.comboTimerMs -= deltaMs;
     if (state.comboTimerMs <= 0) {
@@ -865,6 +901,7 @@ export function createInitialNinjumpState(seed: number): NinjumpState {
     bonusTimerMs: 0,
     bonusLabel: "",
     empoweredUntilLand: false,
+    mercyTimerMs: START_MERCY_MS,
     screenShakeMs: 0,
     hitStopMs: 0
   };
@@ -1102,6 +1139,13 @@ function renderStar(ctx: CanvasRenderingContext2D, star: ProjectileHazard, state
   ctx.moveTo(warningEdge, screenY - 12);
   ctx.lineTo(warningEdge, screenY + 12);
   ctx.stroke();
+  ctx.fillStyle = `rgba(255, 235, 166, ${warningAlpha * 0.9})`;
+  ctx.beginPath();
+  ctx.moveTo(warningEdge + (star.vx > 0 ? 0 : -10), screenY);
+  ctx.lineTo(warningEdge + (star.vx > 0 ? 10 : 0), screenY - 7);
+  ctx.lineTo(warningEdge + (star.vx > 0 ? 10 : 0), screenY + 7);
+  ctx.closePath();
+  ctx.fill();
   ctx.save();
   ctx.translate(star.x, screenY);
   ctx.rotate(star.spin + state.elapsedMs * 0.012);
@@ -1137,6 +1181,11 @@ function renderBomb(ctx: CanvasRenderingContext2D, bomb: BombHazard, state: Ninj
   ctx.beginPath();
   ctx.arc(bomb.x, screenY, 4 + pulse * 2, 0, Math.PI * 2);
   ctx.fill();
+  ctx.strokeStyle = `rgba(255, 126, 61, ${0.32 + pulse * 0.36})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(bomb.x, screenY, bomb.radius + 18 + pulse * 10, 0, Math.PI * 2);
+  ctx.stroke();
 }
 
 function renderPickup(ctx: CanvasRenderingContext2D, pickup: PickupHazard, state: NinjumpState, palette: Palette) {
@@ -1228,6 +1277,15 @@ function renderPlayer(ctx: CanvasRenderingContext2D, state: NinjumpState, sprite
     ctx.lineWidth = 6;
     ctx.beginPath();
     ctx.arc(screenX, screenY - 22, 34, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  if (hasStartMercy(state)) {
+    const alpha = 0.36 + 0.14 * Math.sin(state.elapsedMs * 0.02);
+    ctx.strokeStyle = `rgba(255,233,166,${alpha})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(screenX, screenY - 22, 42, 0, Math.PI * 2);
     ctx.stroke();
   }
 
