@@ -361,7 +361,12 @@ function registerEnemyDefeat(state: NinjumpState, enemyType: EnemyType, x: numbe
 
   extendCombo(state, enemyType === "bird" ? 2 : 1);
   bumpScore(state, enemyType === "bird" ? 34 : 26, x, y, enemyType === "bird" ? "SLASH" : "+26");
-  state.player.vy = -Math.max(448, Math.abs(state.player.vy) * 0.74);
+  const carriedUpwardSpeed = Math.max(
+    state.player.wallSide === null ? -state.player.vy : 0,
+    WALL_RUN_SPEED * (1 + state.speedRamp * 0.12)
+  );
+  preserveAirMomentum(state, JUMP_VX * 0.9);
+  state.player.vy = -Math.max(520, carriedUpwardSpeed);
   state.player.trailMs = 180;
   state.screenShakeMs = Math.max(state.screenShakeMs, 120);
   state.hitStopMs = Math.max(state.hitStopMs, 50);
