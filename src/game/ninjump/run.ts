@@ -7,13 +7,13 @@ export const PLAYER_DRAW_HEIGHT = 74;
 
 const PLAYER_HIT_WIDTH = 28;
 const PLAYER_HIT_HEIGHT = 60;
-const WALL_RUN_SPEED = 248;
-const JUMP_VX = 410;
-const JUMP_VY = 660;
-const GRAVITY = 1500;
-const WALL_ATTACH_BOOST = 296;
+const WALL_RUN_SPEED = 320;
+const JUMP_VX = 500;
+const JUMP_VY = 760;
+const GRAVITY = 1820;
+const WALL_ATTACH_BOOST = 368;
 const FALL_MARGIN = 108;
-const SPAWN_BUFFER = 1300;
+const SPAWN_BUFFER = 1450;
 const MAX_DELTA_MS = 33;
 const COMBO_WINDOW_MS = 1050;
 const BONUS_TIME_MS = 1800;
@@ -455,8 +455,8 @@ function createBird(state: NinjumpState, y: number, difficulty: number): BirdHaz
     enemyType: "bird",
     x: randBetween(state.rngState + y * 0.17, PLAYFIELD_LEFT + 82 + margin, PLAYFIELD_RIGHT - 82 - margin),
     y,
-    vx: randBetween(state.rngState + y * 0.21, -36 - difficulty * 2, 36 + difficulty * 2),
-    vy: 170 + difficulty * 18,
+    vx: randBetween(state.rngState + y * 0.21, -60 - difficulty * 4, 60 + difficulty * 4),
+    vy: 240 + difficulty * 24,
     flapPhase: randBetween(state.rngState + y * 0.23, 0, Math.PI * 2)
   };
 }
@@ -468,7 +468,7 @@ function createStar(state: NinjumpState, y: number, difficulty: number): Project
     kind: "star",
     x: fromLeft ? PLAYFIELD_LEFT - 24 : PLAYFIELD_RIGHT + 24,
     y,
-    vx: fromLeft ? 210 + difficulty * 24 : -(210 + difficulty * 24),
+    vx: fromLeft ? 280 + difficulty * 28 : -(280 + difficulty * 28),
     size: randBetween(state.rngState + y * 0.33, 11, 15),
     spin: randBetween(state.rngState + y * 0.35, 0, Math.PI * 2)
   };
@@ -502,15 +502,17 @@ const SPAWN_PATTERNS: SpawnPattern[] = [
   { minScore: 0, maxScore: 180, entries: [{ kind: "wall-ninja", yOffset: 0 }] },
   { minScore: 0, maxScore: 240, entries: [{ kind: "barrier", yOffset: 0 }] },
   { minScore: 0, maxScore: 220, entries: [{ kind: "shield", yOffset: 0 }] },
+  { minScore: 80, maxScore: 300, entries: [{ kind: "bird", yOffset: 0 }, { kind: "wall-ninja", yOffset: -84 }] },
   { minScore: 120, maxScore: 420, entries: [{ kind: "bird", yOffset: 0 }, { kind: "orb", yOffset: -64 }] },
   { minScore: 160, maxScore: 520, entries: [{ kind: "wall-ninja", yOffset: 0 }, { kind: "bird", yOffset: -92 }] },
+  { minScore: 180, maxScore: 520, entries: [{ kind: "barrier", yOffset: 0 }, { kind: "wall-ninja", yOffset: -84 }] },
   { minScore: 220, maxScore: 620, entries: [{ kind: "wall-squirrel", yOffset: 0 }, { kind: "barrier", yOffset: -74 }] },
-  { minScore: 280, maxScore: 9999, entries: [{ kind: "bird", yOffset: 0 }, { kind: "star", yOffset: -62 }] },
-  { minScore: 420, maxScore: 9999, entries: [{ kind: "barrier", yOffset: 0 }, { kind: "bird", yOffset: -96 }] },
-  { minScore: 520, maxScore: 9999, entries: [{ kind: "wall-ninja", yOffset: 0 }, { kind: "star", yOffset: -70 }] },
-  { minScore: 620, maxScore: 9999, entries: [{ kind: "bomb", yOffset: 0 }, { kind: "bird", yOffset: -100 }] },
-  { minScore: 760, maxScore: 9999, entries: [{ kind: "wall-squirrel", yOffset: 0 }, { kind: "bomb", yOffset: -84 }, { kind: "orb", yOffset: -144 }] },
-  { minScore: 900, maxScore: 9999, entries: [{ kind: "bird", yOffset: 0 }, { kind: "bird", yOffset: -108 }] },
+  { minScore: 240, maxScore: 9999, entries: [{ kind: "bird", yOffset: 0 }, { kind: "star", yOffset: -62 }] },
+  { minScore: 340, maxScore: 9999, entries: [{ kind: "barrier", yOffset: 0 }, { kind: "bird", yOffset: -96 }] },
+  { minScore: 420, maxScore: 9999, entries: [{ kind: "wall-ninja", yOffset: 0 }, { kind: "star", yOffset: -70 }] },
+  { minScore: 520, maxScore: 9999, entries: [{ kind: "bomb", yOffset: 0 }, { kind: "bird", yOffset: -100 }] },
+  { minScore: 640, maxScore: 9999, entries: [{ kind: "wall-squirrel", yOffset: 0 }, { kind: "bomb", yOffset: -84 }, { kind: "orb", yOffset: -144 }] },
+  { minScore: 760, maxScore: 9999, entries: [{ kind: "bird", yOffset: 0 }, { kind: "bird", yOffset: -108 }] },
   { minScore: 760, maxScore: 9999, entries: [{ kind: "shield", yOffset: 0 }] }
 ];
 
@@ -544,7 +546,7 @@ function spawnEntry(state: NinjumpState, kind: SpawnEntryKind, y: number, diffic
 }
 
 function spawnBand(state: NinjumpState) {
-  const difficulty = 1 + Math.min(14, state.score / 180);
+  const difficulty = 1 + Math.min(14, state.score / 145);
   const y = state.nextSpawnY;
   const availablePatterns = SPAWN_PATTERNS.filter((pattern) => state.score >= pattern.minScore && state.score < pattern.maxScore);
   const patternIndex = Math.floor(random(state.rngState + y * 0.01) * availablePatterns.length) % availablePatterns.length;
@@ -554,7 +556,7 @@ function spawnBand(state: NinjumpState) {
     spawnEntry(state, entry.kind, y + entry.yOffset, difficulty);
   }
 
-  state.nextSpawnY -= randBetween(state.rngState + y * 0.07, 146, Math.max(168, 222 - difficulty * 4.2));
+  state.nextSpawnY -= randBetween(state.rngState + y * 0.07, 118, Math.max(144, 188 - difficulty * 4.8));
   state.rngState += 9973;
 }
 
@@ -610,7 +612,7 @@ function attachToWall(state: NinjumpState, side: WallSide) {
 
 function updatePlayer(state: NinjumpState, input: NinjumpInput, deltaMs: number) {
   const dt = deltaMs / 1000;
-  const speedScale = 1 + Math.min(1.35, state.score / 1500);
+  const speedScale = 1.08 + Math.min(1.55, state.score / 1100);
 
   if (state.player.alive && input.jumpQueued && state.player.wallSide) {
     const direction = state.player.wallSide === "left" ? 1 : -1;
@@ -648,7 +650,7 @@ function updatePlayer(state: NinjumpState, input: NinjumpInput, deltaMs: number)
   const climbed = Math.max(0, state.startY - state.player.y);
   state.bestHeight = Math.max(state.bestHeight, climbed);
   state.score = Math.max(state.score, Math.floor(climbed / 13));
-  state.speedRamp = 1 + Math.floor(state.score / 260);
+  state.speedRamp = 1 + Math.floor(state.score / 180);
   state.cameraY = Math.min(state.cameraY, lerp(state.cameraY, state.player.y - NINJUMP_HEIGHT * 0.38, 0.2));
 
   if (state.player.y > state.cameraY + NINJUMP_HEIGHT - FALL_MARGIN) {
