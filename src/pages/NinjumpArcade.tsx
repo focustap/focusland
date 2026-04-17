@@ -82,6 +82,11 @@ const NinjumpArcade: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const spritesRef = useRef<NinjumpSprites | null>(null);
   const bestScoreRef = useRef(loadLocalBest());
+  const jumpAudioRef = useRef<HTMLAudioElement | null>(null);
+  const slashAudioRef = useRef<HTMLAudioElement | null>(null);
+  const bonusAudioRef = useRef<HTMLAudioElement | null>(null);
+  const shieldAudioRef = useRef<HTMLAudioElement | null>(null);
+  const loseAudioRef = useRef<HTMLAudioElement | null>(null);
   const [phase, setPhase] = useState<PagePhase>("loading");
   const [hud, setHud] = useState<HudSnapshot>(DEFAULT_HUD);
   const [status, setStatus] = useState("Loading ninja frames.");
@@ -127,6 +132,29 @@ const NinjumpArcade: React.FC = () => {
   }, [bestScore]);
 
   useEffect(() => {
+    const makeAudio = (path: string, volume: number) => {
+      const audio = new Audio(path);
+      audio.volume = volume;
+      return audio;
+    };
+
+    jumpAudioRef.current = makeAudio(`${assetBase}assets/kenney/sfx/impactPunch_medium_000.ogg`, 0.18);
+    slashAudioRef.current = makeAudio(`${assetBase}assets/kenney/sfx/impactPunch_heavy_001.ogg`, 0.22);
+    bonusAudioRef.current = makeAudio(`${assetBase}assets/kenney/sfx/impactBell_heavy_003.ogg`, 0.28);
+    shieldAudioRef.current = makeAudio(`${assetBase}assets/kenney/sfx/impactMining_002.ogg`, 0.22);
+    loseAudioRef.current = makeAudio(`${assetBase}assets/kenney/sfx/impactPlate_heavy_001.ogg`, 0.24);
+
+    return () => {
+      [jumpAudioRef, slashAudioRef, bonusAudioRef, shieldAudioRef, loseAudioRef].forEach((ref) => {
+        if (ref.current) {
+          ref.current.pause();
+          ref.current.src = "";
+        }
+      });
+    };
+  }, [assetBase]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     const sprites = spritesRef.current;
     if (!canvas || !sprites || phase === "loading") {
@@ -147,6 +175,10 @@ const NinjumpArcade: React.FC = () => {
     let last = performance.now();
     let jumpQueued = false;
     let finished = false;
+    let prevScore = state.score;
+    let prevShielded = state.player.shielded;
+    let prevBonusTimer = state.bonusTimerMs;
+    let prevAlive = state.player.alive;
 
     const updateHud = () => {
       const snapshot = getNinjumpHud(state);
@@ -191,6 +223,13 @@ const NinjumpArcade: React.FC = () => {
       }
       if (!finished) {
         jumpQueued = true;
+        if (phase !== "loading") {
+          const jumpAudio = jumpAudioRef.current;
+          if (jumpAudio) {
+            jumpAudio.currentTime = 0;
+            void jumpAudio.play().catch(() => undefined);
+          }
+        }
       }
     };
 
@@ -214,9 +253,45 @@ const NinjumpArcade: React.FC = () => {
         stepNinjumpState(state, { jumpQueued }, deltaMs);
       }
 
+      if (phase === "playing" && state.score > prevScore) {
+        const slashAudio = slashAudioRef.current;
+        if (slashAudio) {
+          slashAudio.currentTime = 0;
+          void slashAudio.play().catch(() => undefined);
+        }
+      }
+
+      if (phase === "playing" && prevShielded && !state.player.shielded) {
+        const shieldAudio = shieldAudioRef.current;
+        if (shieldAudio) {
+          shieldAudio.currentTime = 0;
+          void shieldAudio.play().catch(() => undefined);
+        }
+      }
+
+      if (phase === "playing" && prevBonusTimer <= 0 && state.bonusTimerMs > 0) {
+        const bonusAudio = bonusAudioRef.current;
+        if (bonusAudio) {
+          bonusAudio.currentTime = 0;
+          void bonusAudio.play().catch(() => undefined);
+        }
+      }
+
+      if (phase === "playing" && prevAlive && !state.player.alive) {
+        const loseAudio = loseAudioRef.current;
+        if (loseAudio) {
+          loseAudio.currentTime = 0;
+          void loseAudio.play().catch(() => undefined);
+        }
+      }
+
       jumpQueued = false;
       renderNinjumpScene(ctx, state, sprites);
       updateHud();
+      prevScore = state.score;
+      prevShielded = state.player.shielded;
+      prevBonusTimer = state.bonusTimerMs;
+      prevAlive = state.player.alive;
 
       if (state.phase === "gameOver" && phase === "playing") {
         finishRun();
@@ -292,6 +367,17 @@ const NinjumpArcade: React.FC = () => {
 
             <div className="ninjump-frame">
               <canvas ref={canvasRef} className="ninjump-canvas" width={NINJUMP_WIDTH} height={NINJUMP_HEIGHT} />
+
+              {phase === "playing" && (hud.bonusTimerMs > 0 || hud.streakCount >= 2) ? (
+                <div className={`ninjump-combo-banner ${hud.bonusTimerMs > 0 ? "is-live" : ""}`}>
+                  <strong>{hud.bonusTimerMs > 0 ? hud.bonusLabel : `${titleLabel} streak`}</strong>
+                  <span>
+                    {hud.bonusTimerMs > 0
+                      ? "Kill-through launch active until you land"
+                      : `${hud.streakCount}/3 of the same type`}
+                  </span>
+                </div>
+              ) : null}
 
               {phase !== "playing" ? (
                 <div className="ninjump-overlay">

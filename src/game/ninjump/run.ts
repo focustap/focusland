@@ -155,6 +155,19 @@ type Popup = {
   vy: number;
 };
 
+type SpawnEntryKind = "bird" | "wall-ninja" | "wall-squirrel" | "barrier" | "star" | "bomb" | "shield" | "orb";
+
+type SpawnEntry = {
+  kind: SpawnEntryKind;
+  yOffset: number;
+};
+
+type SpawnPattern = {
+  minScore: number;
+  maxScore: number;
+  entries: SpawnEntry[];
+};
+
 export type NinjumpState = {
   seed: number;
   phase: RunPhase;
@@ -477,53 +490,60 @@ function createPickup(state: NinjumpState, y: number, pickupType: PickupType): P
   };
 }
 
+const SPAWN_PATTERNS: SpawnPattern[] = [
+  { minScore: 0, maxScore: 160, entries: [{ kind: "bird", yOffset: 0 }] },
+  { minScore: 0, maxScore: 180, entries: [{ kind: "wall-ninja", yOffset: 0 }] },
+  { minScore: 0, maxScore: 240, entries: [{ kind: "barrier", yOffset: 0 }] },
+  { minScore: 120, maxScore: 420, entries: [{ kind: "bird", yOffset: 0 }, { kind: "orb", yOffset: -64 }] },
+  { minScore: 160, maxScore: 520, entries: [{ kind: "wall-ninja", yOffset: 0 }, { kind: "bird", yOffset: -92 }] },
+  { minScore: 220, maxScore: 620, entries: [{ kind: "wall-squirrel", yOffset: 0 }, { kind: "barrier", yOffset: -74 }] },
+  { minScore: 280, maxScore: 9999, entries: [{ kind: "bird", yOffset: 0 }, { kind: "star", yOffset: -62 }] },
+  { minScore: 420, maxScore: 9999, entries: [{ kind: "barrier", yOffset: 0 }, { kind: "bird", yOffset: -96 }] },
+  { minScore: 520, maxScore: 9999, entries: [{ kind: "wall-ninja", yOffset: 0 }, { kind: "star", yOffset: -70 }] },
+  { minScore: 620, maxScore: 9999, entries: [{ kind: "bomb", yOffset: 0 }, { kind: "bird", yOffset: -100 }] },
+  { minScore: 760, maxScore: 9999, entries: [{ kind: "wall-squirrel", yOffset: 0 }, { kind: "bomb", yOffset: -84 }, { kind: "orb", yOffset: -144 }] },
+  { minScore: 900, maxScore: 9999, entries: [{ kind: "bird", yOffset: 0 }, { kind: "bird", yOffset: -108 }] },
+  { minScore: 1000, maxScore: 9999, entries: [{ kind: "shield", yOffset: 0 }] }
+];
+
+function spawnEntry(state: NinjumpState, kind: SpawnEntryKind, y: number, difficulty: number) {
+  switch (kind) {
+    case "bird":
+      state.hazards.push(createBird(state, y, difficulty));
+      break;
+    case "wall-ninja":
+      state.hazards.push(createWallEnemy(state, y, "ninja"));
+      break;
+    case "wall-squirrel":
+      state.hazards.push(createWallEnemy(state, y, "squirrel"));
+      break;
+    case "barrier":
+      state.hazards.push(createBarrier(state, y, difficulty));
+      break;
+    case "star":
+      state.hazards.push(createStar(state, y, difficulty));
+      break;
+    case "bomb":
+      state.hazards.push(createBomb(state, y, difficulty));
+      break;
+    case "shield":
+      state.hazards.push(createPickup(state, y, "shield"));
+      break;
+    case "orb":
+      state.hazards.push(createPickup(state, y, "orb"));
+      break;
+  }
+}
+
 function spawnBand(state: NinjumpState) {
   const difficulty = 1 + Math.min(14, state.score / 180);
   const y = state.nextSpawnY;
-  const roll = random(state.rngState + y * 0.01);
+  const availablePatterns = SPAWN_PATTERNS.filter((pattern) => state.score >= pattern.minScore && state.score < pattern.maxScore);
+  const patternIndex = Math.floor(random(state.rngState + y * 0.01) * availablePatterns.length) % availablePatterns.length;
+  const pattern = availablePatterns[patternIndex];
 
-  if (state.score < 160) {
-    if (roll < 0.42) {
-      state.hazards.push(createBird(state, y, difficulty));
-    } else if (roll < 0.64) {
-      state.hazards.push(createWallEnemy(state, y, "ninja"));
-    } else if (roll < 0.84) {
-      state.hazards.push(createBarrier(state, y, difficulty));
-    } else {
-      state.hazards.push(createPickup(state, y, roll > 0.92 ? "shield" : "orb"));
-    }
-  } else if (state.score < 420) {
-    if (roll < 0.34) {
-      state.hazards.push(createBird(state, y, difficulty));
-    } else if (roll < 0.52) {
-      state.hazards.push(createWallEnemy(state, y, "ninja"));
-    } else if (roll < 0.68) {
-      state.hazards.push(createWallEnemy(state, y, "squirrel"));
-    } else if (roll < 0.82) {
-      state.hazards.push(createBarrier(state, y, difficulty));
-    } else {
-      state.hazards.push(createPickup(state, y, roll > 0.94 ? "shield" : "orb"));
-    }
-  } else {
-    if (roll < 0.22) {
-      state.hazards.push(createBird(state, y, difficulty));
-    } else if (roll < 0.35) {
-      state.hazards.push(createBarrier(state, y, difficulty));
-    } else if (roll < 0.48) {
-      state.hazards.push(createWallEnemy(state, y, "ninja"));
-    } else if (roll < 0.6) {
-      state.hazards.push(createWallEnemy(state, y, "squirrel"));
-    } else if (roll < 0.72) {
-      state.hazards.push(createStar(state, y, difficulty));
-    } else if (roll < 0.84) {
-      state.hazards.push(createBomb(state, y, difficulty));
-    } else {
-      state.hazards.push(createPickup(state, y, roll > 0.97 ? "shield" : "orb"));
-    }
-  }
-
-  if (random(state.rngState + y * 0.73) > 0.92 && state.score > 520) {
-    state.hazards.push(createBird(state, y - 92, difficulty + 1));
+  for (const entry of pattern.entries) {
+    spawnEntry(state, entry.kind, y + entry.yOffset, difficulty);
   }
 
   state.nextSpawnY -= randBetween(state.rngState + y * 0.07, 146, Math.max(168, 222 - difficulty * 4.2));
@@ -1001,15 +1021,12 @@ function renderWallEnemy(
     ctx.scale(-1, 1);
   }
   if (enemy.enemyType === "ninja") {
-    const frames = sprites.run;
-    const frameIndex = Math.floor(state.elapsedMs / 90) % frames.length;
+    const frames = sprites.idle;
+    const frameIndex = Math.floor(state.elapsedMs / 180) % frames.length;
     const image = frames[frameIndex] ?? frames[0];
     ctx.filter = "hue-rotate(120deg) saturate(0.9) brightness(0.9)";
     ctx.drawImage(image, -24, -30, 48, 60);
     ctx.filter = "none";
-    ctx.strokeStyle = "rgba(123, 241, 168, 0.9)";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(-18, -24, 36, 44);
   } else {
     ctx.fillStyle = "#705025";
     ctx.beginPath();
