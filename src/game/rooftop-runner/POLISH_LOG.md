@@ -30,3 +30,4 @@
 - 2026-04-19: Initial inspection complete. Existing strengths are momentum verbs and route variety; biggest need is cohesive polish rather than more mechanics.
 - 2026-04-20: Discarded the prior Rooftop Runner direction instead of continuing to patch it. The current rebuild is now a clean-sheet side-view rooftop parkour runner with game-specific generated visuals, longer roof traversal spaces, rooftop encounter clusters, and occasional larger roof transitions.
 - 2026-04-20: Replaced the old side-panel page framing with a new full-stage presentation and support deck underneath so the game no longer inherits the previous layout language.
+- 2026-04-20: Started the external art pass using newly sourced online CC0 assets copied into `public/assets/rooftop-runner/`, replacing the temporary generated runner with a sourced player sprite set and swapping several rooftop objects over to sourced textures.

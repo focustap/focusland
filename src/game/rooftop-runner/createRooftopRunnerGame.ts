@@ -128,7 +128,7 @@ type Pickup = {
   id: number;
   x: number;
   y: number;
-  sprite: Phaser.GameObjects.Arc;
+  sprite: Phaser.GameObjects.Image;
   taken: boolean;
 };
 
@@ -136,7 +136,7 @@ const GAME_WIDTH = 1280;
 const GAME_HEIGHT = 720;
 const PLAYER_X = 240;
 const BASE_GROUND_Y = 562;
-const RUNNER_SCALE = 1.14;
+const RUNNER_SCALE = 2.2;
 const BASE_SPEED = 330;
 const MAX_SPEED = 610;
 const JUMP_VELOCITY = -760;
@@ -408,7 +408,24 @@ class RooftopRunnerScene extends Phaser.Scene {
     this.callbacks = callbacks;
   }
 
-  preload() {}
+  preload() {
+    const base = `${import.meta.env.BASE_URL}assets/rooftop-runner`;
+    this.load.image("rr-run-0", `${base}/player/run-1.png`);
+    this.load.image("rr-run-1", `${base}/player/run-2.png`);
+    this.load.image("rr-jump-0", `${base}/player/jump.png`);
+    this.load.image("rr-slide-0", `${base}/player/slide.png`);
+    this.load.image("rr-hit-0", `${base}/player/hurt.png`);
+    this.load.image("rr-prop-guard", `${base}/props/guard-1.png`);
+    this.load.image("rr-prop-lowWall", `${base}/props/fence.png`);
+    this.load.image("rr-prop-vent", `${base}/props/boxWarning.png`);
+    this.load.image("rr-prop-ac", `${base}/props/box.png`);
+    this.load.image("rr-prop-barrier", `${base}/props/boxWarning.png`);
+    this.load.image("rr-prop-antenna", `${base}/props/ropeVertical.png`);
+    this.load.image("rr-roof-brick", `${base}/props/brickWall.png`);
+    this.load.image("rr-roof-fence", `${base}/props/fenceBroken.png`);
+    this.load.image("rr-roof-cable", `${base}/props/ropeHorizontal.png`);
+    this.load.image("rr-coin", `${base}/props/coin.png`);
+  }
 
   create() {
     this.cameras.main.setRoundPixels(true);
@@ -430,127 +447,46 @@ class RooftopRunnerScene extends Phaser.Scene {
   }
 
   private buildArtTextures() {
-    if (!this.textures.exists("rr-run-0")) {
-      this.buildRunnerTextures();
+    if (!this.anims.exists("rr-run")) {
+      this.anims.create({
+        key: "rr-run",
+        frames: [{ key: "rr-run-0" }, { key: "rr-run-1" }],
+        frameRate: 8,
+        repeat: -1
+      });
+      this.anims.create({
+        key: "rr-jump",
+        frames: [{ key: "rr-jump-0" }],
+        frameRate: 1,
+        repeat: -1
+      });
+      this.anims.create({
+        key: "rr-slide",
+        frames: [{ key: "rr-slide-0" }],
+        frameRate: 1,
+        repeat: -1
+      });
+      this.anims.create({
+        key: "rr-hit",
+        frames: [{ key: "rr-hit-0" }],
+        frameRate: 1,
+        repeat: 0
+      });
     }
-    if (!this.textures.exists("rr-prop-lowWall")) {
+    if (
+      !this.textures.exists("rr-prop-skylight") ||
+      !this.textures.exists("rr-prop-billboard") ||
+      !this.textures.exists("rr-prop-umbrella")
+    ) {
       this.buildPropTextures();
     }
   }
 
-  private buildRunnerTextures() {
-    const drawRunner = (key: string, leftLeg: number, rightLeg: number, lean: number, slide = false, jump = false) => {
-      const g = this.make.graphics({ x: 0, y: 0, add: false });
-      g.clear();
-
-      const bodyColor = 0xf2f5f7;
-      const accentColor = 0xff5a4b;
-      const dark = 0x1c2330;
-      const sole = 0x43c6d7;
-
-      const rootX = 48;
-      const rootY = 76;
-
-      g.fillStyle(bodyColor, 1);
-      g.lineStyle(4, dark, 1);
-
-      if (slide) {
-        g.fillRoundedRect(16, 54, 56, 20, 8);
-        g.strokeRoundedRect(16, 54, 56, 20, 8);
-        g.fillRect(64, 42, 12, 10);
-        g.strokeRect(64, 42, 12, 10);
-        g.fillCircle(30, 40, 10);
-        g.strokeCircle(30, 40, 10);
-        g.fillStyle(accentColor, 1);
-        g.fillTriangle(34, 48, 56, 52, 42, 64);
-        g.fillStyle(dark, 1);
-        g.fillRect(10, 66, 26, 8);
-        g.fillRect(42, 66, 30, 8);
-        g.fillStyle(sole, 1);
-        g.fillRect(46, 70, 28, 5);
-      } else {
-        g.fillRoundedRect(34 + lean, 28, 20, 34, 8);
-        g.strokeRoundedRect(34 + lean, 28, 20, 34, 8);
-        g.fillCircle(46 + lean, 17, 11);
-        g.strokeCircle(46 + lean, 17, 11);
-
-        g.fillStyle(accentColor, 1);
-        g.fillTriangle(56 + lean, 30, 76 + lean, 36, 57 + lean, 46);
-        g.fillRect(40 + lean, 29, 6, 33);
-
-        g.fillStyle(dark, 1);
-        g.lineStyle(6, dark, 1);
-        g.beginPath();
-        g.moveTo(34 + lean, 40);
-        g.lineTo(22 + lean, 52 + leftLeg * 0.35);
-        g.strokePath();
-        g.beginPath();
-        g.moveTo(54 + lean, 40);
-        g.lineTo(66 + lean, 52 + rightLeg * 0.25);
-        g.strokePath();
-        g.beginPath();
-        g.moveTo(40 + lean, 61);
-        g.lineTo(31 + lean, 80 + leftLeg);
-        g.strokePath();
-        g.beginPath();
-        g.moveTo(50 + lean, 61);
-        g.lineTo(62 + lean, 80 + rightLeg);
-        g.strokePath();
-
-        g.fillStyle(sole, 1);
-        g.fillRect(23 + lean, 79 + leftLeg, 16, 5);
-        g.fillRect(55 + lean, 79 + rightLeg, 16, 5);
-
-        if (jump) {
-          g.fillStyle(accentColor, 0.22);
-          g.fillCircle(70, 28, 18);
-        }
-      }
-
-      g.generateTexture(key, 96, 96);
-      g.destroy();
-    };
-
-    drawRunner("rr-run-0", 0, -6, -3);
-    drawRunner("rr-run-1", -7, 4, -1);
-    drawRunner("rr-run-2", -2, 8, 1);
-    drawRunner("rr-run-3", 8, -2, 3);
-    drawRunner("rr-run-4", 4, -8, 1);
-    drawRunner("rr-run-5", -5, 0, -2);
-    drawRunner("rr-jump-0", -12, 6, 4, false, true);
-    drawRunner("rr-jump-1", 6, -10, 6, false, true);
-    drawRunner("rr-slide-0", 0, 0, 0, true);
-    drawRunner("rr-slide-1", 0, 0, 0, true);
-    drawRunner("rr-hit-0", -5, 10, -4, false, true);
-
-    this.anims.create({
-      key: "rr-run",
-      frames: Array.from({ length: 6 }, (_, index) => ({ key: `rr-run-${index}` })),
-      frameRate: 16,
-      repeat: -1
-    });
-    this.anims.create({
-      key: "rr-jump",
-      frames: [{ key: "rr-jump-0" }, { key: "rr-jump-1" }],
-      frameRate: 8,
-      repeat: -1
-    });
-    this.anims.create({
-      key: "rr-slide",
-      frames: [{ key: "rr-slide-0" }, { key: "rr-slide-1" }],
-      frameRate: 10,
-      repeat: -1
-    });
-    this.anims.create({
-      key: "rr-hit",
-      frames: [{ key: "rr-hit-0" }, { key: "rr-jump-0" }],
-      frameRate: 10,
-      repeat: 0
-    });
-  }
-
   private buildPropTextures() {
     const build = (key: string, width: number, height: number, painter: (g: Phaser.GameObjects.Graphics) => void) => {
+      if (this.textures.exists(key)) {
+        return;
+      }
       const g = this.make.graphics({ x: 0, y: 0, add: false });
       painter(g);
       g.generateTexture(key, width, height);
@@ -714,8 +650,8 @@ class RooftopRunnerScene extends Phaser.Scene {
     this.player.setDepth(22);
     this.player.setOrigin(0.5, 0.9);
     this.player.setScale(RUNNER_SCALE);
-    this.player.body.setSize(28, 72, true);
-    (this.player.body as Phaser.Physics.Arcade.Body).offset.set(34, 14);
+    this.player.body.setSize(16, 28, true);
+    (this.player.body as Phaser.Physics.Arcade.Body).offset.set(32, 48);
     this.player.play("rr-run");
   }
 
@@ -896,11 +832,36 @@ class RooftopRunnerScene extends Phaser.Scene {
       roof.decorations.push(gravel);
     }
 
+    const brickCount = Math.max(8, Math.floor(roof.width / 120));
+    for (let index = 0; index < brickCount; index += 1) {
+      const brick = this.add
+        .image(roof.x + 38 + index * (roof.width / brickCount), roof.y + 54 + ((index % 3) - 1) * 4, "rr-roof-brick")
+        .setDepth(11)
+        .setScale(1.3)
+        .setAlpha(0.2);
+      roof.decorations.push(brick);
+    }
+
+    const fenceCount = Math.max(3, Math.floor(roof.width / 380));
+    for (let index = 0; index < fenceCount; index += 1) {
+      const fence = this.add
+        .image(roof.x + 84 + index * (roof.width / fenceCount), roof.y - 10, "rr-roof-fence")
+        .setDepth(14)
+        .setScale(1.35)
+        .setAlpha(0.55);
+      roof.decorations.push(fence);
+    }
+
     if (randomRange(0, 1) > 0.45) {
-      const cable = this.add
-        .rectangle(roof.x + roof.width / 2, roof.y - 2, roof.width - 120, 3, district.propBase, 0.3)
-        .setDepth(12);
-      roof.decorations.push(cable);
+      const cableCount = Math.max(4, Math.floor(roof.width / 220));
+      for (let index = 0; index < cableCount; index += 1) {
+        const cable = this.add
+          .image(roof.x + 100 + index * (roof.width / cableCount), roof.y - 2, "rr-roof-cable")
+          .setDepth(12)
+          .setScale(1.55, 1)
+          .setAlpha(0.35);
+        roof.decorations.push(cable);
+      }
     }
   }
 
@@ -934,9 +895,16 @@ class RooftopRunnerScene extends Phaser.Scene {
   private addEncounter(roof: Roof, district: DistrictDefinition, kind: ObstacleKind, x: number) {
     const config = this.encounterConfig(kind);
     const sprite = this.add.image(x, roof.y - config.groundOffset, `rr-prop-${kind}`).setDepth(16);
-    sprite.setTint(config.primaryTint ?? district.propBase, config.primaryTint ?? district.propBase, config.secondaryTint ?? district.propAccent, config.secondaryTint ?? district.propAccent);
-    if (kind === "guard") {
-      sprite.setTint(0x1f2835, 0x1f2835, district.propAccent, district.propAccent);
+    sprite.setScale(config.scale ?? 1);
+    sprite.setOrigin(0.5, 1);
+
+    if (kind === "skylight" || kind === "billboard" || kind === "umbrella") {
+      sprite.setTint(
+        config.primaryTint ?? district.propBase,
+        config.primaryTint ?? district.propBase,
+        config.secondaryTint ?? district.propAccent,
+        config.secondaryTint ?? district.propAccent
+      );
     }
 
     this.obstacles.push({
@@ -959,8 +927,11 @@ class RooftopRunnerScene extends Phaser.Scene {
 
   private addPickupArc(x: number, y: number, tint: number) {
     for (let index = 0; index < 3; index += 1) {
-      const pickup = this.add.circle(x + index * 26, y - Math.abs(index - 1) * 12, 8, tint, 0.18).setDepth(18);
-      pickup.setStrokeStyle(3, 0xffffff, 0.84);
+      const pickup = this.add
+        .image(x + index * 26, y - Math.abs(index - 1) * 12, "rr-coin")
+        .setDepth(18)
+        .setScale(1.25);
+      pickup.setTint(tint);
       this.pickups.push({
         id: this.pickupId,
         x: x + index * 26,
@@ -975,23 +946,23 @@ class RooftopRunnerScene extends Phaser.Scene {
   private encounterConfig(kind: ObstacleKind) {
     switch (kind) {
       case "lowWall":
-        return { width: 52, height: 24, action: "vault" as const, groundOffset: 12 };
+        return { width: 58, height: 26, action: "vault" as const, groundOffset: 10, scale: 1.8 };
       case "vent":
-        return { width: 36, height: 32, action: "jump" as const, groundOffset: 20 };
+        return { width: 38, height: 28, action: "jump" as const, groundOffset: 8, scale: 1.4 };
       case "ac":
-        return { width: 48, height: 42, action: "jump" as const, groundOffset: 24 };
+        return { width: 44, height: 32, action: "jump" as const, groundOffset: 8, scale: 1.6 };
       case "skylight":
-        return { width: 62, height: 24, action: "jump" as const, groundOffset: 12 };
+        return { width: 62, height: 24, action: "jump" as const, groundOffset: 12, scale: 1 };
       case "guard":
-        return { width: 28, height: 68, action: "slide" as const, groundOffset: 38 };
+        return { width: 28, height: 58, action: "slide" as const, groundOffset: 2, scale: 1.8 };
       case "antenna":
-        return { width: 22, height: 82, action: "jump" as const, groundOffset: 44 };
+        return { width: 18, height: 72, action: "jump" as const, groundOffset: 4, scale: 1.7 };
       case "billboard":
-        return { width: 72, height: 90, action: "slide" as const, groundOffset: 54 };
+        return { width: 72, height: 90, action: "slide" as const, groundOffset: 54, scale: 1 };
       case "barrier":
-        return { width: 68, height: 30, action: "jump" as const, groundOffset: 14 };
+        return { width: 60, height: 28, action: "jump" as const, groundOffset: 8, scale: 1.6 };
       case "umbrella":
-        return { width: 48, height: 72, action: "jump" as const, groundOffset: 40 };
+        return { width: 48, height: 72, action: "jump" as const, groundOffset: 40, scale: 1 };
       default:
         return { width: 40, height: 40, action: "jump" as const, groundOffset: 20 };
     }
@@ -1197,18 +1168,18 @@ class RooftopRunnerScene extends Phaser.Scene {
     const wantsSlide = this.cursors.down?.isDown || this.slideKey.isDown;
     if (wantsSlide && onFloor && this.vaultMs <= 0) {
       this.slideMs = SLIDE_MS;
-      body.setSize(28, 48, true);
-      body.offset.set(34, 38);
+      body.setSize(18, 20, true);
+      body.offset.set(30, 56);
       this.player.play("rr-slide", true);
       this.speed = Math.min(MAX_SPEED, this.speed + 0.32 * delta);
     } else if (this.vaultMs > 0) {
-      body.setSize(28, 60, true);
-      body.offset.set(34, 22);
+      body.setSize(16, 24, true);
+      body.offset.set(32, 50);
       this.player.play("rr-jump", true);
       body.velocity.x = this.speed + 90;
     } else {
-      body.setSize(28, 72, true);
-      body.offset.set(34, 14);
+      body.setSize(16, 28, true);
+      body.offset.set(32, 48);
       if (!onFloor) {
         this.player.play("rr-jump", true);
       } else {
