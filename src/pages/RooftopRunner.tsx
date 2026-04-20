@@ -2,31 +2,58 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import NavBar from "../components/NavBar";
 import { recordArcadeResult } from "../lib/progression";
 
-type GamePhase = "title" | "playing" | "gameOver";
+type GamePhase = "title" | "playing" | "paused" | "gameOver";
 type DistrictTier = 0 | 1 | 2 | 3;
-type AreaType =
-  | "skylineSprint"
-  | "constructionGauntlet"
-  | "clutteredRoofs"
-  | "wallRunDistrict"
-  | "needleAlleys"
-  | "openChase"
-  | "industrialHazards"
-  | "eliteFlow";
-type PlayerAction =
-  | "running"
-  | "jumping"
-  | "falling"
-  | "sliding"
-  | "wallSliding"
-  | "grappling"
-  | "vaulting";
+type Lane = "low" | "mid" | "high";
+type DistrictId =
+  | "apartments"
+  | "construction"
+  | "neon"
+  | "industrial"
+  | "billboard"
+  | "glass"
+  | "crane"
+  | "storm";
+type PlayerAction = "run" | "jump" | "fall" | "slide" | "wall" | "grapple" | "vault" | "hurt";
 type SurfaceKind = "roof" | "ledge" | "grapple-bar" | "anchor-wire";
 type GateResponse = "slide" | "jump" | "grapple";
-type ObstacleKind = "low-barrier" | "slide-sign" | "slide-gap" | "air-hazard" | "route-gate";
+type ObstacleKind = "vault" | "slide-sign" | "slide-tunnel" | "air-hazard" | "route-gate";
 type HookPhase = "idle" | "extending" | "attached" | "retracting";
 
 type Vec2 = { x: number; y: number };
+
+type DistrictDefinition = {
+  id: DistrictId;
+  name: string;
+  subtitle: string;
+  emphasis: string;
+  accent: string;
+  accentSoft: string;
+  skyTop: string;
+  skyMid: string;
+  skyBottom: string;
+  haze: string;
+  glow: string;
+  layerA: string;
+  layerB: string;
+  layerC: string;
+  platformTop: string;
+  platformFace: string;
+  platformTrim: string;
+  window: string;
+  sign: string;
+  fogAlpha: number;
+  gapBias: number;
+  widthBias: number;
+  midChance: number;
+  highChance: number;
+  slideChance: number;
+  gateChance: number;
+  airChance: number;
+  grappleBias: number;
+  wind: number;
+  skylineMode: "apartments" | "scaffold" | "neon" | "industrial" | "billboards" | "glass" | "crane" | "storm";
+};
 
 type Surface = {
   id: string;
@@ -51,7 +78,8 @@ type Platform = {
   y: number;
   width: number;
   height: number;
-  lane: "low" | "mid" | "high";
+  lane: Lane;
+  district: DistrictId;
   surface: Surface;
   leftWall: Wall;
   rightWall: Wall;
@@ -60,17 +88,19 @@ type Platform = {
 type Obstacle = {
   id: string;
   kind: ObstacleKind;
+  district: DistrictId;
   x: number;
   y: number;
   width: number;
   height: number;
-  lane: "low" | "mid" | "high";
+  lane: Lane;
   vaultable?: boolean;
   slideClearance?: boolean;
   cleared?: boolean;
   gapY?: number;
   gapHeight?: number;
   response?: GateResponse;
+  severity: number;
 };
 
 type Pickup = {
@@ -78,14 +108,15 @@ type Pickup = {
   x: number;
   y: number;
   collected: boolean;
-  lane: "low" | "mid" | "high";
+  lane: Lane;
+  district: DistrictId;
 };
 
 type Chunk = {
   id: number;
   startX: number;
   endX: number;
-  areaType: AreaType;
+  district: DistrictId;
   platforms: Platform[];
   grappleSurfaces: Surface[];
   walls: Wall[];
@@ -120,7 +151,7 @@ type FlowState = {
   grappleShots: number;
   grappleHits: number;
   topRouteTicks: number;
-  missions: string[];
+  nearMisses: number;
 };
 
 type PlayerState = {
@@ -142,9 +173,12 @@ type PlayerState = {
   wallContactGraceMs: number;
   lastWallJumpSide: -1 | 0 | 1;
   lastWallJumpAt: number;
-  wallReusePenaltyCount: number;
   grappleCooldownMs: number;
   hardLandingMs: number;
+  invulnerableMs: number;
+  hurtMs: number;
+  guard: number;
+  maxGuard: number;
   hook: HookState;
 };
 
@@ -153,7 +187,7 @@ type RunnerState = {
   player: PlayerState;
   chunks: Chunk[];
   camera: Vec2;
-  activeArea: AreaType;
+  activeDistrict: DistrictId;
   score: number;
   distance: number;
   coins: number;
@@ -165,7 +199,9 @@ type RunnerState = {
   totalTimeMs: number;
   landingPulseMs: number;
   wallScrapeMs: number;
-  lastSurfaceKind: SurfaceKind | null;
+  hitFlashMs: number;
+  windPulseMs: number;
+  districtIndex: number;
 };
 
 type HudState = {
@@ -174,12 +210,14 @@ type HudState = {
   coins: number;
   speed: number;
   districtTier: DistrictTier;
-  areaType: AreaType;
+  districtId: DistrictId;
   combo: number;
   bestCombo: number;
   hookReady: boolean;
   hookAccuracy: number;
   styleScore: number;
+  guard: number;
+  phaseLabel: string;
 };
 
 type RunSummary = {
@@ -191,6 +229,7 @@ type RunSummary = {
   bestCombo: number;
   accuracy: number;
   styleScore: number;
+  districtName: string;
 };
 
 type InputState = {
@@ -210,68 +249,306 @@ type SegmentHit = {
   surface: Surface;
 };
 
-type ChunkTemplate = {
-  areaType: AreaType;
-  lowGap: number;
-  lowWidth: number;
-  nextLowY: number;
-  midEnabled: boolean;
-  midX: number;
-  midY: number;
-  midWidth: number;
-  highEnabled: boolean;
-  highX: number;
-  highY: number;
-  highWidth: number;
-  lowBarrier: boolean;
-  slideSign: boolean;
-  airHazard: boolean;
-  poleBar: boolean;
+type SpriteBank = {
+  run: HTMLImageElement[];
+  jump: HTMLImageElement[];
+  slide: HTMLImageElement[];
+  hurt: HTMLImageElement[];
 };
 
 const WIDTH = 960;
 const HEIGHT = 540;
 const PLAYER_SCREEN_X = 250;
-const LOCAL_BEST_KEY = "focusland-rooftop-runner-best-v2";
-const GRAVITY = 1900;
-const BASE_RUN_SPEED = 320;
-const MAX_SPEED = 720;
-const JUMP_SPEED = 760;
-const WALL_SLIDE_SPEED = 170;
-const WALL_JUMP_X = 430;
-const WALL_JUMP_Y = 650;
-const HOOK_SPEED = 1450;
-const HOOK_MAX_RANGE = 390;
-const HOOK_MISS_COOLDOWN = 220;
-const HOOK_HIT_COOLDOWN = 440;
-const COYOTE_MS = 110;
-const JUMP_BUFFER_MS = 120;
-const SLIDE_MS = 420;
-const SLIDE_CHAIN_MS = 180;
+const LOCAL_BEST_KEY = "focusland-rooftop-runner-best-v3";
+const GRAVITY = 1980;
+const BASE_RUN_SPEED = 330;
+const MAX_SPEED = 780;
+const JUMP_SPEED = 800;
+const WALL_SLIDE_SPEED = 165;
+const WALL_JUMP_X = 460;
+const WALL_JUMP_Y = 670;
+const HOOK_SPEED = 1520;
+const HOOK_MAX_RANGE = 420;
+const HOOK_MISS_COOLDOWN = 240;
+const HOOK_HIT_COOLDOWN = 360;
+const COYOTE_MS = 120;
+const JUMP_BUFFER_MS = 125;
+const SLIDE_MS = 520;
+const SLIDE_CHAIN_MS = 220;
 const WALL_CONTACT_GRACE_MS = 120;
 const SAME_WALL_LOCK_MS = 520;
-const COMBO_DECAY_MS = 1550;
-const DISTRICT_THRESHOLDS = [500, 1000, 1500] as const;
-const DISTRICT_NAMES = ["Sketch Block", "Pencil Plaza", "Hookline Heights", "Midnight Margin"] as const;
-const AREA_ORDER: AreaType[] = [
-  "openChase",
-  "constructionGauntlet",
-  "skylineSprint",
-  "clutteredRoofs",
-  "needleAlleys",
-  "wallRunDistrict",
-  "industrialHazards",
-  "eliteFlow"
-] as const;
-const AREA_NAMES: Record<AreaType, string> = {
-  skylineSprint: "Skyline Sprint",
-  constructionGauntlet: "Construction Gauntlet",
-  clutteredRoofs: "Cluttered Roofs",
-  wallRunDistrict: "Wall Run District",
-  needleAlleys: "Needle Alleys",
-  openChase: "Open Chase",
-  industrialHazards: "Industrial Hazards",
-  eliteFlow: "Elite Flow"
+const COMBO_DECAY_MS = 1700;
+const DISTRICT_THRESHOLDS = [450, 1100, 2200] as const;
+const DISTRICT_FLOW_NAMES = ["Street Heat", "Skyline Heat", "Chase Heat", "Legend Heat"] as const;
+
+const DISTRICT_ORDER: DistrictId[] = [
+  "apartments",
+  "construction",
+  "neon",
+  "industrial",
+  "billboard",
+  "glass",
+  "crane",
+  "storm"
+];
+
+const DISTRICTS: Record<DistrictId, DistrictDefinition> = {
+  apartments: {
+    id: "apartments",
+    name: "Dense Apartment Roofs",
+    subtitle: "Tight hops, laundry lines, fast reactions.",
+    emphasis: "Short hops and cluttered low-route reads.",
+    accent: "#ffd27c",
+    accentSoft: "rgba(255, 210, 124, 0.2)",
+    skyTop: "#1d2944",
+    skyMid: "#516991",
+    skyBottom: "#f2b57c",
+    haze: "rgba(255, 222, 182, 0.12)",
+    glow: "rgba(255, 199, 118, 0.24)",
+    layerA: "rgba(35, 44, 68, 0.22)",
+    layerB: "rgba(21, 28, 45, 0.42)",
+    layerC: "rgba(14, 19, 30, 0.78)",
+    platformTop: "#8fa7c8",
+    platformFace: "#1d283b",
+    platformTrim: "#4d617d",
+    window: "rgba(255, 221, 169, 0.28)",
+    sign: "#f7c56e",
+    fogAlpha: 0.12,
+    gapBias: -10,
+    widthBias: 24,
+    midChance: 0.48,
+    highChance: 0.22,
+    slideChance: 0.38,
+    gateChance: 0.18,
+    airChance: 0.08,
+    grappleBias: 0.18,
+    wind: 0,
+    skylineMode: "apartments"
+  },
+  construction: {
+    id: "construction",
+    name: "Construction Zone",
+    subtitle: "Scaffolds, orange warnings, low tunnels.",
+    emphasis: "Slide lanes, scaffold recoveries, awkward edges.",
+    accent: "#ff9a3d",
+    accentSoft: "rgba(255, 154, 61, 0.24)",
+    skyTop: "#233148",
+    skyMid: "#4b6780",
+    skyBottom: "#e6a46d",
+    haze: "rgba(255, 180, 110, 0.12)",
+    glow: "rgba(255, 158, 61, 0.18)",
+    layerA: "rgba(58, 67, 82, 0.25)",
+    layerB: "rgba(42, 50, 63, 0.48)",
+    layerC: "rgba(24, 28, 37, 0.82)",
+    platformTop: "#c3d0de",
+    platformFace: "#26303f",
+    platformTrim: "#8c6b50",
+    window: "rgba(255, 191, 128, 0.2)",
+    sign: "#ffae52",
+    fogAlpha: 0.1,
+    gapBias: 8,
+    widthBias: 12,
+    midChance: 0.7,
+    highChance: 0.35,
+    slideChance: 0.7,
+    gateChance: 0.3,
+    airChance: 0.12,
+    grappleBias: 0.28,
+    wind: 0,
+    skylineMode: "scaffold"
+  },
+  neon: {
+    id: "neon",
+    name: "Neon Night District",
+    subtitle: "Bright signs, cable bars, and skyline glow.",
+    emphasis: "Upper-route grapples and high-speed aerial chains.",
+    accent: "#66e0ff",
+    accentSoft: "rgba(102, 224, 255, 0.22)",
+    skyTop: "#120f2d",
+    skyMid: "#30265f",
+    skyBottom: "#d95e9d",
+    haze: "rgba(110, 212, 255, 0.1)",
+    glow: "rgba(121, 224, 255, 0.24)",
+    layerA: "rgba(40, 26, 75, 0.24)",
+    layerB: "rgba(26, 18, 58, 0.46)",
+    layerC: "rgba(16, 11, 35, 0.82)",
+    platformTop: "#7bc4ff",
+    platformFace: "#171d39",
+    platformTrim: "#33568f",
+    window: "rgba(113, 234, 255, 0.35)",
+    sign: "#6fe9ff",
+    fogAlpha: 0.14,
+    gapBias: 4,
+    widthBias: -10,
+    midChance: 0.52,
+    highChance: 0.72,
+    slideChance: 0.24,
+    gateChance: 0.48,
+    airChance: 0.2,
+    grappleBias: 0.65,
+    wind: 0,
+    skylineMode: "neon"
+  },
+  industrial: {
+    id: "industrial",
+    name: "Industrial Roofworks",
+    subtitle: "Steam vents, pipe lanes, heavy machinery.",
+    emphasis: "Air hazards and chunky, readable low-line pressure.",
+    accent: "#ff8461",
+    accentSoft: "rgba(255, 132, 97, 0.2)",
+    skyTop: "#25262d",
+    skyMid: "#4c505d",
+    skyBottom: "#db815d",
+    haze: "rgba(255, 145, 99, 0.1)",
+    glow: "rgba(255, 120, 84, 0.18)",
+    layerA: "rgba(53, 52, 58, 0.22)",
+    layerB: "rgba(33, 31, 38, 0.44)",
+    layerC: "rgba(19, 18, 23, 0.82)",
+    platformTop: "#a0aab7",
+    platformFace: "#242933",
+    platformTrim: "#6a727f",
+    window: "rgba(255, 173, 127, 0.18)",
+    sign: "#ff8d64",
+    fogAlpha: 0.12,
+    gapBias: 18,
+    widthBias: 18,
+    midChance: 0.44,
+    highChance: 0.24,
+    slideChance: 0.4,
+    gateChance: 0.22,
+    airChance: 0.48,
+    grappleBias: 0.16,
+    wind: 0,
+    skylineMode: "industrial"
+  },
+  billboard: {
+    id: "billboard",
+    name: "Billboard District",
+    subtitle: "Huge sign frames and narrow timing windows.",
+    emphasis: "Readable route gates and frame threading.",
+    accent: "#ffe16b",
+    accentSoft: "rgba(255, 225, 107, 0.22)",
+    skyTop: "#20264b",
+    skyMid: "#51649c",
+    skyBottom: "#f8ba77",
+    haze: "rgba(255, 232, 140, 0.12)",
+    glow: "rgba(255, 223, 107, 0.18)",
+    layerA: "rgba(37, 49, 83, 0.24)",
+    layerB: "rgba(22, 31, 55, 0.44)",
+    layerC: "rgba(13, 19, 33, 0.8)",
+    platformTop: "#a6bdd6",
+    platformFace: "#1f2841",
+    platformTrim: "#536d8d",
+    window: "rgba(255, 245, 187, 0.24)",
+    sign: "#ffe670",
+    fogAlpha: 0.1,
+    gapBias: 10,
+    widthBias: -18,
+    midChance: 0.56,
+    highChance: 0.42,
+    slideChance: 0.22,
+    gateChance: 0.62,
+    airChance: 0.14,
+    grappleBias: 0.3,
+    wind: 0,
+    skylineMode: "billboards"
+  },
+  glass: {
+    id: "glass",
+    name: "Glass Tower Roofs",
+    subtitle: "Slick ledges, long jumps, reflective facades.",
+    emphasis: "Narrow landings and precision skyline lines.",
+    accent: "#9fe7ff",
+    accentSoft: "rgba(159, 231, 255, 0.22)",
+    skyTop: "#17324d",
+    skyMid: "#4c83aa",
+    skyBottom: "#d9a87a",
+    haze: "rgba(187, 240, 255, 0.14)",
+    glow: "rgba(160, 229, 255, 0.2)",
+    layerA: "rgba(41, 83, 110, 0.22)",
+    layerB: "rgba(26, 53, 72, 0.46)",
+    layerC: "rgba(14, 27, 38, 0.82)",
+    platformTop: "#d8edf7",
+    platformFace: "#1e3247",
+    platformTrim: "#7aa5bd",
+    window: "rgba(200, 244, 255, 0.32)",
+    sign: "#8be6ff",
+    fogAlpha: 0.16,
+    gapBias: 22,
+    widthBias: -30,
+    midChance: 0.4,
+    highChance: 0.58,
+    slideChance: 0.18,
+    gateChance: 0.34,
+    airChance: 0.16,
+    grappleBias: 0.36,
+    wind: 0,
+    skylineMode: "glass"
+  },
+  crane: {
+    id: "crane",
+    name: "Crane and Scaffold Span",
+    subtitle: "Vertical climbs, hanging bars, exposed air.",
+    emphasis: "Wall recoveries and grapple-heavy traversal setpieces.",
+    accent: "#ffcb6a",
+    accentSoft: "rgba(255, 203, 106, 0.2)",
+    skyTop: "#1f263b",
+    skyMid: "#566e8b",
+    skyBottom: "#edb27a",
+    haze: "rgba(255, 223, 157, 0.1)",
+    glow: "rgba(255, 201, 106, 0.18)",
+    layerA: "rgba(47, 59, 79, 0.22)",
+    layerB: "rgba(28, 36, 52, 0.46)",
+    layerC: "rgba(14, 19, 30, 0.82)",
+    platformTop: "#bac6d6",
+    platformFace: "#1a2436",
+    platformTrim: "#6c7d95",
+    window: "rgba(255, 220, 159, 0.16)",
+    sign: "#ffc66b",
+    fogAlpha: 0.09,
+    gapBias: 14,
+    widthBias: -14,
+    midChance: 0.72,
+    highChance: 0.68,
+    slideChance: 0.22,
+    gateChance: 0.44,
+    airChance: 0.16,
+    grappleBias: 0.72,
+    wind: 0.1,
+    skylineMode: "crane"
+  },
+  storm: {
+    id: "storm",
+    name: "Storm High-Rise Run",
+    subtitle: "Rain, wind drag, and electric skyline tension.",
+    emphasis: "Long reads under pressure with subtle wind drift.",
+    accent: "#94d6ff",
+    accentSoft: "rgba(148, 214, 255, 0.22)",
+    skyTop: "#0d1224",
+    skyMid: "#273b62",
+    skyBottom: "#5678a7",
+    haze: "rgba(164, 211, 255, 0.1)",
+    glow: "rgba(133, 214, 255, 0.12)",
+    layerA: "rgba(29, 42, 70, 0.22)",
+    layerB: "rgba(19, 30, 53, 0.48)",
+    layerC: "rgba(9, 14, 25, 0.84)",
+    platformTop: "#a5b8d1",
+    platformFace: "#182132",
+    platformTrim: "#5e7392",
+    window: "rgba(196, 221, 255, 0.18)",
+    sign: "#9ee1ff",
+    fogAlpha: 0.18,
+    gapBias: 28,
+    widthBias: -8,
+    midChance: 0.46,
+    highChance: 0.52,
+    slideChance: 0.3,
+    gateChance: 0.52,
+    airChance: 0.24,
+    grappleBias: 0.34,
+    wind: 0.22,
+    skylineMode: "storm"
+  }
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -292,12 +569,16 @@ function normalize(vec: Vec2) {
 }
 
 function noise(seed: number) {
-  const value = Math.sin(seed * 12.9898) * 43758.5453;
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
   return value - Math.floor(value);
 }
 
 function between(seed: number, min: number, max: number) {
   return min + noise(seed) * (max - min);
+}
+
+function pick<T>(seed: number, items: T[]) {
+  return items[Math.floor(noise(seed) * items.length) % items.length];
 }
 
 function getTier(score: number): DistrictTier {
@@ -320,11 +601,11 @@ function saveLocalBest(score: number) {
 }
 
 function getBaseSpeed(tier: DistrictTier) {
-  return BASE_RUN_SPEED + tier * 34;
+  return BASE_RUN_SPEED + tier * 38;
 }
 
 function getPlayerHeight(action: PlayerAction) {
-  return action === "sliding" ? 34 : 64;
+  return action === "slide" ? 38 : 76;
 }
 
 function getPlayerBounds(player: PlayerState) {
@@ -341,7 +622,7 @@ function createSurface(id: string, x1: number, y1: number, x2: number, y2: numbe
   return { id, x1, y1, x2, y2, kind, reward };
 }
 
-function makePlatform(id: string, x: number, y: number, width: number, lane: "low" | "mid" | "high"): Platform {
+function makePlatform(id: string, district: DistrictId, x: number, y: number, width: number, lane: Lane): Platform {
   const height = HEIGHT - y + 130;
   const surfaceKind: SurfaceKind = lane === "high" ? "ledge" : "roof";
   return {
@@ -351,80 +632,47 @@ function makePlatform(id: string, x: number, y: number, width: number, lane: "lo
     width,
     height,
     lane,
-    surface: createSurface(`${id}-surface`, x, y, x + width, y, surfaceKind, lane === "high" ? 16 : lane === "mid" ? 10 : 6),
+    district,
+    surface: createSurface(`${id}-surface`, x, y, x + width, y, surfaceKind, lane === "high" ? 18 : lane === "mid" ? 12 : 7),
     leftWall: { id: `${id}-wall-left`, x, top: y, bottom: y + height },
     rightWall: { id: `${id}-wall-right`, x: x + width, top: y, bottom: y + height }
   };
 }
 
-function getAreaTypeForChunk(id: number, seed: number): AreaType {
-  const block = Math.floor(id / 3);
-  const rotation = Math.floor(noise(seed * 0.37) * AREA_ORDER.length);
-  const wobble = Math.floor(noise(seed * 0.71 + block * 1.91) * AREA_ORDER.length);
-  return AREA_ORDER[(rotation + block + wobble) % AREA_ORDER.length];
+function getDistrictForChunk(id: number, seed: number): DistrictDefinition {
+  const group = Math.floor(id / 2);
+  return DISTRICTS[DISTRICT_ORDER[group % DISTRICT_ORDER.length]];
 }
 
-function getGateResponseForChunk(id: number): GateResponse {
+function getGateResponseForChunk(id: number, district: DistrictId): GateResponse {
+  if (district === "construction") return pick(id * 1.31, ["slide", "slide", "jump"]);
+  if (district === "billboard") return pick(id * 1.77, ["jump", "slide", "grapple"]);
+  if (district === "crane") return pick(id * 1.93, ["grapple", "jump", "grapple"]);
+  if (district === "storm") return pick(id * 2.11, ["jump", "grapple", "slide"]);
   const localIndex = ((id % 3) + 3) % 3;
   if (localIndex === 0) return "slide";
   if (localIndex === 1) return "jump";
   return "grapple";
 }
 
-function getChunkTemplate(id: number, seed: number, tier: DistrictTier): ChunkTemplate {
-  const routeSeed = id * 97 + seed * 13.37;
-  const early = id < 3;
-  const areaType = getAreaTypeForChunk(id, seed);
-  const midEnabled = early ? id !== 0 : noise(routeSeed + 1) > 0.2 || tier >= 1;
-  const highEnabled = early ? id >= 1 : noise(routeSeed + 2) > 0.42 || tier >= 2;
+function getAllPlatforms(chunks: Chunk[]) {
+  return chunks.flatMap((chunk) => chunk.platforms);
+}
 
-  const areaLowGapBias =
-    areaType === "skylineSprint" ? 26 :
-    areaType === "openChase" ? 18 :
-    areaType === "needleAlleys" ? 8 :
-    areaType === "constructionGauntlet" ? -4 :
-    0;
-  const areaHighBias =
-    areaType === "skylineSprint" || areaType === "eliteFlow" ? 0.22 :
-    areaType === "constructionGauntlet" ? -0.08 :
-    areaType === "openChase" ? 0.1 :
-    0;
-  const areaMidBias =
-    areaType === "constructionGauntlet" || areaType === "clutteredRoofs" ? 0.18 :
-    areaType === "openChase" ? -0.08 :
-    0;
+function getAllWalls(chunks: Chunk[]) {
+  return chunks.flatMap((chunk) => chunk.walls);
+}
 
-  return {
-    areaType,
-    lowGap: Math.round(46 + areaLowGapBias + between(routeSeed + 3, 0, tier >= 2 ? 44 : 26)),
-    lowWidth: Math.round(228 + between(routeSeed + 4, tier >= 2 ? -12 : 0, 42) + (areaType === "openChase" ? 32 : areaType === "needleAlleys" ? -24 : 0)),
-    nextLowY: 372 + Math.round(between(routeSeed + 5, -14, 14)),
-    midEnabled: midEnabled || noise(routeSeed + 101) < areaMidBias,
-    midX: 156 + Math.round(between(routeSeed + 6, -18, 24)),
-    midY: 302 + Math.round(between(routeSeed + 7, -14, 10)),
-    midWidth: 160 + Math.round(between(routeSeed + 8, -8, 26)) + (areaType === "constructionGauntlet" ? 12 : areaType === "needleAlleys" ? -18 : 0),
-    highEnabled: highEnabled || noise(routeSeed + 102) < areaHighBias,
-    highX: 330 + Math.round(between(routeSeed + 9, -20, 26)),
-    highY: 222 + Math.round(between(routeSeed + 10, -16, 18)),
-    highWidth: 148 + Math.round(between(routeSeed + 11, -12, 20)) + (areaType === "skylineSprint" ? 10 : areaType === "needleAlleys" ? -12 : 0),
-    lowBarrier:
-      (!early && noise(routeSeed + 12) > 0.46) ||
-      areaType === "clutteredRoofs" ||
-      areaType === "eliteFlow",
-    slideSign:
-      (tier >= 1 && !early && noise(routeSeed + 13) > 0.54) ||
-      areaType === "constructionGauntlet" ||
-      areaType === "needleAlleys",
-    airHazard:
-      (tier >= 2 && noise(routeSeed + 14) > 0.7) ||
-      areaType === "industrialHazards" ||
-      areaType === "eliteFlow",
-    poleBar:
-      (tier >= 2 && noise(routeSeed + 15) > 0.4) ||
-      areaType === "skylineSprint" ||
-      areaType === "wallRunDistrict" ||
-      areaType === "eliteFlow"
-  };
+function getAllObstacles(chunks: Chunk[]) {
+  return chunks.flatMap((chunk) => chunk.obstacles);
+}
+
+function getAllPickups(chunks: Chunk[]) {
+  return chunks.flatMap((chunk) => chunk.pickups);
+}
+
+function getAllGrappleSurfaces(chunks: Chunk[]) {
+  return chunks.flatMap((chunk) => chunk.grappleSurfaces);
 }
 
 function createChunk(id: number, startX: number, tier: DistrictTier, seed: number): Chunk {
@@ -433,77 +681,64 @@ function createChunk(id: number, startX: number, tier: DistrictTier, seed: numbe
   const walls: Wall[] = [];
   const obstacles: Obstacle[] = [];
   const pickups: Pickup[] = [];
+  const district = getDistrictForChunk(id, seed);
+  const difficulty = clamp(tier + id / 8, 0, 6);
+  const routeSeed = id * 97 + seed * 13.37;
+  const early = id < 2;
 
-  const template = getChunkTemplate(id, seed, tier);
-  const areaType = template.areaType;
-  const lowA = makePlatform(
-    `${id}-low-a`,
-    startX + 0,
-    376 + Math.round(between(id * 11 + seed * 1.7, -8, 10)),
-    Math.max(210, template.lowWidth),
-    "low"
-  );
-  const lowB = makePlatform(
-    `${id}-low-b`,
-    lowA.x + lowA.width + template.lowGap,
-    template.nextLowY,
-    Math.max(196, template.lowWidth - 18),
-    "low"
-  );
+  const lowGap = Math.round(54 + district.gapBias + between(routeSeed + 3, 0, 18 + difficulty * 10));
+  const lowWidth = Math.round(232 + district.widthBias + between(routeSeed + 4, -26, 48));
+  const nextLowY = 370 + Math.round(between(routeSeed + 5, -18, 16));
+  const lowY = 376 + Math.round(between(routeSeed + 6, -10, 12));
+  const lowA = makePlatform(`${id}-low-a`, district.id, startX, lowY, Math.max(188, lowWidth), "low");
+  const lowB = makePlatform(`${id}-low-b`, district.id, lowA.x + lowA.width + lowGap, nextLowY, Math.max(178, lowWidth - 18), "low");
   platforms.push(lowA, lowB);
 
-  if (template.midEnabled) {
+  const midEnabled = early ? id !== 0 : noise(routeSeed + 7) < district.midChance + tier * 0.05;
+  const highEnabled = early ? id >= 1 : noise(routeSeed + 8) < district.highChance + tier * 0.04;
+
+  if (midEnabled) {
     const mid = makePlatform(
       `${id}-mid`,
-      startX + template.midX,
-      template.midY,
-      template.midWidth,
+      district.id,
+      startX + 150 + Math.round(between(routeSeed + 9, -22, 28)),
+      294 + Math.round(between(routeSeed + 10, -18, 18)),
+      152 + Math.round(between(routeSeed + 11, -16, 28)),
       "mid"
     );
     platforms.push(mid);
-    grappleSurfaces.push(
-      createSurface(`${mid.id}-bar`, mid.x + 18, mid.y - 74, mid.x + mid.width - 18, mid.y - 74, "grapple-bar", 18)
-    );
-    walls.push(mid.leftWall, mid.rightWall);
+    grappleSurfaces.push(createSurface(`${mid.id}-bar`, mid.x + 18, mid.y - 72, mid.x + mid.width - 18, mid.y - 72, "grapple-bar", 18));
     pickups.push({
       id: `${mid.id}-coin`,
       x: mid.x + mid.width / 2,
       y: mid.y - 28,
       collected: false,
-      lane: "mid"
+      lane: "mid",
+      district: district.id
     });
-
-    if (id > 1 || tier >= 1) {
-      const rescueX1 = lowA.x + lowA.width + 26;
-      const rescueX2 = Math.min(lowB.x - 22, rescueX1 + 84);
-      if (rescueX2 > rescueX1 + 24) {
-        grappleSurfaces.push(
-          createSurface(`${mid.id}-rescue-bar`, rescueX1, mid.y - 52, rescueX2, mid.y - 52, "grapple-bar", 20)
-        );
-      }
-    }
   }
 
-  if (template.highEnabled) {
+  if (highEnabled) {
     const high = makePlatform(
       `${id}-high`,
-      startX + template.highX,
-      template.highY,
-      template.highWidth,
+      district.id,
+      startX + 332 + Math.round(between(routeSeed + 12, -26, 32)),
+      212 + Math.round(between(routeSeed + 13, -22, 18)),
+      136 + Math.round(between(routeSeed + 14, -18, 20)),
       "high"
     );
     platforms.push(high);
     grappleSurfaces.push(
-      createSurface(`${high.id}-ledge`, high.x + 12, high.y - 88, high.x + high.width - 12, high.y - 88, "anchor-wire", 26),
-      createSurface(`${high.id}-bar`, high.x + 28, high.y - 42, high.x + high.width - 20, high.y - 42, "grapple-bar", 22)
+      createSurface(`${high.id}-ledge`, high.x + 10, high.y - 86, high.x + high.width - 10, high.y - 86, "anchor-wire", 24),
+      createSurface(`${high.id}-bar`, high.x + 22, high.y - 38, high.x + high.width - 20, high.y - 38, "grapple-bar", 20)
     );
-    walls.push(high.leftWall, high.rightWall);
     pickups.push({
       id: `${high.id}-coin`,
       x: high.x + high.width / 2,
-      y: high.y - 26,
+      y: high.y - 24,
       collected: false,
-      lane: "high"
+      lane: "high",
+      district: district.id
     });
   }
 
@@ -511,126 +746,89 @@ function createChunk(id: number, startX: number, tier: DistrictTier, seed: numbe
     walls.push(platform.leftWall, platform.rightWall);
   });
 
-  if (template.lowBarrier) {
+  const shouldSlide = !early && noise(routeSeed + 15) < district.slideChance;
+  const shouldGate = !early && noise(routeSeed + 16) < district.gateChance;
+  const shouldAir = !early && noise(routeSeed + 17) < district.airChance + (tier >= 2 ? 0.05 : 0);
+  const shouldVault = !early && noise(routeSeed + 18) < 0.48;
+  const shouldGrapple = noise(routeSeed + 19) < district.grappleBias;
+
+  if (shouldVault) {
     obstacles.push({
-      id: `${lowB.id}-low`,
-      kind: "low-barrier",
-      x: lowB.x + lowB.width * (areaType === "clutteredRoofs" ? 0.4 : 0.62),
+      id: `${lowB.id}-vault`,
+      kind: "vault",
+      district: district.id,
+      x: lowB.x + lowB.width * (district.id === "apartments" ? 0.42 : 0.62),
       y: lowB.y,
-      width: areaType === "clutteredRoofs" ? 56 : 40,
-      height: areaType === "clutteredRoofs" ? 28 : 24,
+      width: district.id === "glass" ? 42 : 54,
+      height: district.id === "glass" ? 20 : 28,
       lane: "low",
-      vaultable: true
+      vaultable: true,
+      severity: 1
     });
-
-    if (areaType === "clutteredRoofs" || areaType === "eliteFlow") {
-      obstacles.push({
-        id: `${lowB.id}-low-2`,
-        kind: "low-barrier",
-        x: lowB.x + lowB.width * 0.78,
-        y: lowB.y,
-        width: 48,
-        height: 26,
-        lane: "low",
-        vaultable: true
-      });
-    }
   }
 
-  if (template.slideSign) {
-    const slidePlatform = platforms.find((platform) => platform.lane === "mid") ?? lowB;
+  if (shouldSlide) {
+    const slidePlatform = platforms.find((platform) => platform.lane === (district.id === "construction" || district.id === "billboard" ? "mid" : "low")) ?? lowB;
     obstacles.push({
-      id: `${slidePlatform.id}-slide`,
+      id: `${slidePlatform.id}-sign`,
       kind: "slide-sign",
-      x: slidePlatform.x + slidePlatform.width * (areaType === "constructionGauntlet" ? 0.48 : 0.56),
-      y: slidePlatform.y - (areaType === "constructionGauntlet" ? 46 : 34),
-      width: areaType === "constructionGauntlet" ? 92 : 70,
-      height: areaType === "constructionGauntlet" ? 24 : 18,
+      district: district.id,
+      x: slidePlatform.x + slidePlatform.width * 0.54,
+      y: slidePlatform.y - (district.id === "construction" ? 52 : 38),
+      width: district.id === "construction" ? 96 : 76,
+      height: district.id === "construction" ? 24 : 18,
       lane: slidePlatform.lane,
-      slideClearance: true
+      slideClearance: true,
+      severity: 1
     });
 
-    if (slidePlatform.width > 140 || areaType === "constructionGauntlet" || areaType === "needleAlleys") {
-      obstacles.push({
-        id: `${slidePlatform.id}-tunnel`,
-        kind: "slide-gap",
-        x: slidePlatform.x + slidePlatform.width * (areaType === "needleAlleys" ? 0.64 : 0.74),
-        y: slidePlatform.y - (areaType === "constructionGauntlet" ? 34 : 26),
-        width: areaType === "needleAlleys" ? 76 : 92,
-        height: areaType === "constructionGauntlet" ? 34 : 24,
-        lane: slidePlatform.lane,
-        slideClearance: true
-      });
-
-      if (areaType === "constructionGauntlet" || areaType === "eliteFlow") {
-        obstacles.push({
-          id: `${slidePlatform.id}-tunnel-2`,
-          kind: "slide-gap",
-          x: slidePlatform.x + slidePlatform.width * 0.86,
-          y: slidePlatform.y - 30,
-          width: 70,
-          height: 28,
-          lane: slidePlatform.lane,
-          slideClearance: true
-        });
-      }
-    }
+    obstacles.push({
+      id: `${slidePlatform.id}-tunnel`,
+      kind: "slide-tunnel",
+      district: district.id,
+      x: slidePlatform.x + slidePlatform.width * (district.id === "construction" ? 0.7 : 0.76),
+      y: slidePlatform.y - (district.id === "construction" ? 34 : 26),
+      width: district.id === "construction" ? 94 : 84,
+      height: district.id === "construction" ? 34 : 24,
+      lane: slidePlatform.lane,
+      slideClearance: true,
+      severity: 1
+    });
   }
 
-  if (template.airHazard) {
+  if (shouldAir) {
     const airPlatform = platforms.find((platform) => platform.lane === "high") ?? platforms.find((platform) => platform.lane === "mid");
     if (airPlatform) {
       obstacles.push({
         id: `${airPlatform.id}-air`,
         kind: "air-hazard",
-        x: airPlatform.x + airPlatform.width * 0.58,
-        y: airPlatform.y - between(id * 73 + seed * 3.1, 92, 126),
-        width: 42,
-        height: 18,
-        lane: airPlatform.lane
+        district: district.id,
+        x: airPlatform.x + airPlatform.width * 0.6,
+        y: airPlatform.y - between(routeSeed + 20, 86, 124),
+        width: district.id === "industrial" ? 54 : district.id === "storm" ? 46 : 40,
+        height: district.id === "industrial" ? 28 : 20,
+        lane: airPlatform.lane,
+        severity: district.id === "storm" ? 2 : 1
       });
     }
   }
 
-  if (template.poleBar) {
-    const poleX = startX + 248 + Math.round(between(id * 79 + seed * 2.4, -10, 18));
-    const poleY = 154 + Math.round(between(id * 83 + seed * 1.9, -8, 8));
-    grappleSurfaces.push(
-      createSurface(`${id}-pole-crossbar`, poleX - 42, poleY, poleX + 42, poleY, "grapple-bar", 30)
-    );
-  }
-
-  if (areaType === "skylineSprint" || areaType === "eliteFlow") {
-    const skyBarX = startX + 210;
-    const skyBarY = 138 + Math.round(between(id * 91 + seed, -12, 16));
-    grappleSurfaces.push(
-      createSurface(`${id}-skyline-bar`, skyBarX, skyBarY, skyBarX + 116, skyBarY, "grapple-bar", 32)
-    );
-  }
-
-  if (areaType === "wallRunDistrict") {
-    const wallBase = platforms.find((platform) => platform.lane === "mid") ?? lowB;
-    grappleSurfaces.push(
-      createSurface(`${wallBase.id}-wallrun-bar`, wallBase.x + wallBase.width * 0.62, wallBase.y - 70, wallBase.x + wallBase.width * 0.9, wallBase.y - 70, "grapple-bar", 20)
-    );
-  }
-
-  if (id >= 3) {
-    const gateResponse = getGateResponseForChunk(id);
-    const gateX = lowA.x + lowA.width + template.lowGap * 0.5;
-    const gateWidth = Math.min(58, Math.max(42, template.lowGap - 18));
-    const gateGapHeight =
-      gateResponse === "slide" ? 38 :
-      gateResponse === "jump" ? 58 :
-      64;
+  if (shouldGate) {
+    const gateResponse = getGateResponseForChunk(id, district.id);
+    const gateX = lowA.x + lowA.width + lowGap * 0.5;
+    const gateWidth = Math.min(70, Math.max(48, lowGap - 16));
+    const gateGapHeight = gateResponse === "slide" ? 40 : gateResponse === "jump" ? 64 : 72;
     const gateGapY =
-      gateResponse === "slide" ? lowA.y - 34 :
-      gateResponse === "jump" ? lowA.y - 108 :
-      154 + Math.round(between(id * 111 + seed, -10, 18));
+      gateResponse === "slide"
+        ? lowA.y - 34
+        : gateResponse === "jump"
+          ? lowA.y - 116
+          : 152 + Math.round(between(routeSeed + 21, -10, 20));
 
     obstacles.push({
       id: `${id}-route-gate-${gateResponse}`,
       kind: "route-gate",
+      district: district.id,
       x: gateX,
       y: 0,
       width: gateWidth,
@@ -638,29 +836,59 @@ function createChunk(id: number, startX: number, tier: DistrictTier, seed: numbe
       lane: gateResponse === "grapple" ? "high" : gateResponse === "jump" ? "mid" : "low",
       gapY: gateGapY,
       gapHeight: gateGapHeight,
-      response: gateResponse
+      response: gateResponse,
+      severity: gateResponse === "grapple" ? 2 : 1
     });
 
     if (gateResponse === "grapple") {
-      grappleSurfaces.push(
-        createSurface(`${id}-gate-grapple-bar`, gateX - 52, gateGapY - 30, gateX + 52, gateGapY - 30, "grapple-bar", 26)
-      );
+      grappleSurfaces.push(createSurface(`${id}-gate-grapple-bar`, gateX - 56, gateGapY - 28, gateX + 56, gateGapY - 28, "grapple-bar", 24));
     }
   }
 
+  if (shouldGrapple) {
+    const barX = startX + 210 + Math.round(between(routeSeed + 22, -16, 26));
+    const barY = district.id === "storm" ? 140 : district.id === "neon" ? 132 : 148;
+    grappleSurfaces.push(createSurface(`${id}-theme-bar`, barX, barY, barX + 116, barY, "grapple-bar", 30));
+  }
+
+  if (district.id === "crane") {
+    const craneX = startX + 280;
+    grappleSurfaces.push(
+      createSurface(`${id}-crane-hook`, craneX - 42, 128, craneX + 42, 128, "grapple-bar", 32),
+      createSurface(`${id}-crane-wire`, craneX + 22, 186, craneX + 92, 186, "anchor-wire", 22)
+    );
+  }
+
+  if (district.id === "storm") {
+    grappleSurfaces.push(createSurface(`${id}-storm-wire`, startX + 196, 162, startX + 302, 162, "anchor-wire", 20));
+  }
+
   const endX = Math.max(...platforms.map((platform) => platform.x + platform.width)) + 40;
-  return { id, startX, endX, areaType, platforms, grappleSurfaces, walls, obstacles, pickups };
+  return { id, startX, endX, district: district.id, platforms, grappleSurfaces, walls, obstacles, pickups };
 }
 
 function createInitialChunks(seed: number): Chunk[] {
   const chunks: Chunk[] = [];
   let cursor = 0;
-  for (let i = 0; i < 6; i += 1) {
+  for (let i = 0; i < 7; i += 1) {
     const chunk = createChunk(i, cursor, 0, seed);
     chunks.push(chunk);
     cursor = chunk.endX + 40;
   }
   return chunks;
+}
+
+function makeEmptyHook(): HookState {
+  return {
+    phase: "idle",
+    origin: { x: 0, y: 0 },
+    tip: { x: 0, y: 0 },
+    target: null,
+    travelDir: { x: 0, y: 0 },
+    ropeLength: 0,
+    ttlMs: 0,
+    hitSurfaceId: null
+  };
 }
 
 function createInitialState(seed: number): RunnerState {
@@ -670,12 +898,12 @@ function createInitialState(seed: number): RunnerState {
   return {
     seed,
     player: {
-      position: { x: firstPlatform.x + 72, y: firstPlatform.y },
+      position: { x: firstPlatform.x + 78, y: firstPlatform.y },
       velocity: { x: getBaseSpeed(0), y: 0 },
-      action: "running",
+      action: "run",
       facing: 1,
-      width: 26,
-      height: 64,
+      width: 32,
+      height: 76,
       contacts: {
         grounded: true,
         leftWall: false,
@@ -687,37 +915,31 @@ function createInitialState(seed: number): RunnerState {
       vaultTimerMs: 0,
       vaultFrom: null,
       vaultTo: null,
-      coyoteMs: 0,
+      coyoteMs: COYOTE_MS,
       jumpBufferMs: 0,
       wallJumpLockMs: 0,
       wallContactSide: 0,
       wallContactGraceMs: 0,
       lastWallJumpSide: 0,
       lastWallJumpAt: 9999,
-      wallReusePenaltyCount: 0,
       grappleCooldownMs: 0,
       hardLandingMs: 0,
-      hook: {
-        phase: "idle",
-        origin: { x: 0, y: 0 },
-        tip: { x: 0, y: 0 },
-        target: null,
-        travelDir: { x: 0, y: 0 },
-        ropeLength: 0,
-        ttlMs: 0,
-        hitSurfaceId: null
-      }
+      invulnerableMs: 0,
+      hurtMs: 0,
+      guard: 3,
+      maxGuard: 3,
+      hook: makeEmptyHook()
     },
     chunks,
     camera: { x: 0, y: 0 },
-    activeArea: chunks[0]?.areaType ?? "openChase",
+    activeDistrict: chunks[0].district,
     score: 0,
     distance: 0,
     coins: 0,
     tier: 0,
     gameOver: false,
     reason: "",
-    statusText: "Sketch Block is live. Build flow through jumps and clean grapples.",
+    statusText: `${DISTRICTS[chunks[0].district].name}. Build speed before chasing the skyline.`,
     flow: {
       combo: 0,
       bestCombo: 0,
@@ -726,33 +948,40 @@ function createInitialState(seed: number): RunnerState {
       grappleShots: 0,
       grappleHits: 0,
       topRouteTicks: 0,
-      missions: ["Hit upper route", "Land 3 grapples", "Chain 5 flow actions"]
+      nearMisses: 0
     },
     totalTimeMs: 0,
     landingPulseMs: 0,
     wallScrapeMs: 0,
-    lastSurfaceKind: "roof"
+    hitFlashMs: 0,
+    windPulseMs: 0,
+    districtIndex: 0
   };
 }
 
-function getAllPlatforms(chunks: Chunk[]) {
-  return chunks.flatMap((chunk) => chunk.platforms);
-}
-
-function getAllWalls(chunks: Chunk[]) {
-  return chunks.flatMap((chunk) => chunk.walls);
-}
-
-function getAllGrappleSurfaces(chunks: Chunk[]) {
-  return chunks.flatMap((chunk) => chunk.grappleSurfaces);
-}
-
-function getAllObstacles(chunks: Chunk[]) {
-  return chunks.flatMap((chunk) => chunk.obstacles);
-}
-
-function getAllPickups(chunks: Chunk[]) {
-  return chunks.flatMap((chunk) => chunk.pickups);
+function createTitlePreviewState(seed: number): RunnerState {
+  const state = createInitialState(seed);
+  state.camera.x = 80;
+  state.activeDistrict = "neon";
+  state.player.position.x = 420;
+  state.player.position.y = 258;
+  state.player.velocity.x = 520;
+  state.player.velocity.y = -120;
+  state.player.action = "grapple";
+  state.player.hook = {
+    phase: "attached",
+    origin: { x: state.player.position.x, y: state.player.position.y - 46 },
+    tip: { x: 548, y: 136 },
+    target: { x: 548, y: 136 },
+    travelDir: { x: 1, y: -1 },
+    ropeLength: 160,
+    ttlMs: 400,
+    hitSurfaceId: "title-hook"
+  };
+  state.flow.combo = 8;
+  state.flow.bestCombo = 13;
+  state.flow.styleScore = 188;
+  return state;
 }
 
 function getActiveChunk(state: RunnerState) {
@@ -761,13 +990,13 @@ function getActiveChunk(state: RunnerState) {
 
 function ensureWorldAhead(state: RunnerState) {
   let lastChunk = state.chunks[state.chunks.length - 1];
-  while (lastChunk.endX < state.player.position.x + 2200) {
+  while (lastChunk.endX < state.player.position.x + 2300) {
     const nextChunk = createChunk(lastChunk.id + 1, lastChunk.endX + 40, state.tier, state.seed);
     state.chunks.push(nextChunk);
     lastChunk = nextChunk;
   }
 
-  state.chunks = state.chunks.filter((chunk) => chunk.endX > state.player.position.x - 700);
+  state.chunks = state.chunks.filter((chunk) => chunk.endX > state.player.position.x - 760);
 }
 
 function lineIntersection(rayOrigin: Vec2, rayDir: Vec2, maxDistance: number, surface: Surface): SegmentHit | null {
@@ -795,7 +1024,7 @@ function lineIntersection(rayOrigin: Vec2, rayDir: Vec2, maxDistance: number, su
 function queryGrappleSurfaces(state: RunnerState, segmentStart: Vec2, segmentEnd: Vec2, launchDir: Vec2): SegmentHit | null {
   const segmentDelta = { x: segmentEnd.x - segmentStart.x, y: segmentEnd.y - segmentStart.y };
   const segmentLength = Math.max(1, length(segmentDelta));
-  if (launchDir.x < 0.02 || launchDir.y > 0.65) {
+  if (launchDir.x < 0.02 || launchDir.y > 0.7) {
     return null;
   }
 
@@ -839,7 +1068,7 @@ function queryNearbyWalls(state: RunnerState) {
   return { leftWall, rightWall };
 }
 
-function getCurrentLane(state: RunnerState): "low" | "mid" | "high" | null {
+function getCurrentLane(state: RunnerState): Lane | null {
   const platformId = state.player.contacts.platformId;
   if (!platformId) return null;
   if (platformId.includes("high")) return "high";
@@ -873,33 +1102,63 @@ function awardFlow(state: RunnerState, amount: number, style: number, label?: st
 }
 
 function triggerVault(state: RunnerState, obstacle: Obstacle) {
-  state.player.action = "vaulting";
-  state.player.vaultTimerMs = 170;
+  state.player.action = "vault";
+  state.player.vaultTimerMs = 190;
   state.player.vaultFrom = { ...state.player.position };
-  state.player.vaultTo = { x: obstacle.x + obstacle.width / 2 + 22, y: obstacle.y };
-  state.player.velocity.x = Math.max(state.player.velocity.x, getBaseSpeed(state.tier) + 80);
+  state.player.vaultTo = { x: obstacle.x + obstacle.width / 2 + 26, y: obstacle.y };
+  state.player.velocity.x = Math.max(state.player.velocity.x, getBaseSpeed(state.tier) + 110);
   state.player.velocity.y = -40;
-  awardFlow(state, 1, 22, "Clean vault.");
+  obstacle.cleared = true;
+  awardFlow(state, 1, 24, "Clean vault kept the line alive.");
 }
 
 function tryStartSlide(state: RunnerState) {
-  if (!state.player.contacts.grounded || state.player.velocity.x < 250 || state.player.action === "sliding") {
+  if (!state.player.contacts.grounded || state.player.velocity.x < 250 || state.player.action === "slide") {
     return;
   }
-  state.player.action = "sliding";
+  state.player.action = "slide";
   state.player.slideTimerMs = SLIDE_MS;
-  state.player.height = getPlayerHeight("sliding");
-  state.player.velocity.x = Math.min(MAX_SPEED + 80, Math.max(state.player.velocity.x, getBaseSpeed(state.tier) + 125));
-  awardFlow(state, 1, 14, "Slide locked the line in.");
+  state.player.height = getPlayerHeight("slide");
+  state.player.velocity.x = Math.min(MAX_SPEED + 70, Math.max(state.player.velocity.x, getBaseSpeed(state.tier) + 140));
+  awardFlow(state, 1, 14, "Slide locked in. Keep it smooth.");
+}
+
+function applyPlayerHit(state: RunnerState, reason: string, severity: number, fatal = false) {
+  const player = state.player;
+  if (player.invulnerableMs > 0 || state.gameOver) {
+    return;
+  }
+
+  const remainingGuard = player.guard - severity;
+  if (fatal || remainingGuard < 0) {
+    state.gameOver = true;
+    state.reason = reason;
+    return;
+  }
+
+  player.guard = remainingGuard;
+  player.invulnerableMs = 850;
+  player.hurtMs = 280;
+  player.action = "hurt";
+  player.velocity.x = Math.max(getBaseSpeed(state.tier) * 0.86, player.velocity.x - 170 - severity * 40);
+  player.velocity.y = Math.min(player.velocity.y, -190 - severity * 40);
+  state.flow.combo = Math.max(0, state.flow.combo - (severity === 2 ? 5 : 3));
+  state.flow.comboTimerMs = Math.min(state.flow.comboTimerMs, 600);
+  state.hitFlashMs = 220;
+  state.statusText = `${reason} Guard ${player.guard}/${player.maxGuard}.`;
+
+  if (player.guard === 0) {
+    state.statusText = `${reason} One more mistake ends the run.`;
+  }
 }
 
 function tryStartGrapple(state: RunnerState, input: InputState) {
   if (state.player.hook.phase !== "idle" || state.player.grappleCooldownMs > 0) {
     return;
   }
-  const hand = { x: state.player.position.x + 8, y: state.player.position.y - state.player.height + 22 };
+  const hand = { x: state.player.position.x + 8, y: state.player.position.y - state.player.height + 24 };
   const direction = normalize({ x: input.aimWorld.x - hand.x, y: input.aimWorld.y - hand.y });
-  if (direction.x < 0.04 || input.aimWorld.y > hand.y - 16) {
+  if (direction.x < 0.04 || input.aimWorld.y > hand.y - 8) {
     return;
   }
   state.flow.grappleShots += 1;
@@ -910,10 +1169,10 @@ function tryStartGrapple(state: RunnerState, input: InputState) {
     target: null,
     travelDir: direction,
     ropeLength: 0,
-    ttlMs: 440,
+    ttlMs: 460,
     hitSurfaceId: null
   };
-  state.player.action = "grappling";
+  state.player.action = "grapple";
 }
 
 function updateHook(state: RunnerState, dt: number, input: InputState) {
@@ -943,31 +1202,31 @@ function updateHook(state: RunnerState, dt: number, input: InputState) {
       hook.hitSurfaceId = hit.surface.id;
       state.player.grappleCooldownMs = HOOK_HIT_COOLDOWN;
       state.flow.grappleHits += 1;
-      awardFlow(state, 2, 28, "Grapple hit. Keep the line moving.");
+      awardFlow(state, 2, 30, "Grapple connected. Chase the upper route.");
       return;
     }
 
     if (hook.ropeLength >= HOOK_MAX_RANGE || hook.ttlMs <= 0) {
       hook.phase = "retracting";
       state.player.grappleCooldownMs = HOOK_MISS_COOLDOWN;
-      state.statusText = "Missed grapple.";
+      state.statusText = "Missed grapple. Stay grounded and rebuild.";
     }
     return;
   }
 
   if (hook.phase === "attached" && hook.target) {
-    const toTarget = { x: hook.target.x - state.player.position.x, y: hook.target.y - (state.player.position.y - state.player.height * 0.4) };
+    const toTarget = { x: hook.target.x - state.player.position.x, y: hook.target.y - (state.player.position.y - state.player.height * 0.38) };
     const dist = Math.max(1, length(toTarget));
     const dir = normalize(toTarget);
-    const tension = clamp((dist - 18) / 220, 0, 1);
-    state.player.velocity.x += dir.x * (980 + tension * 620) * dt;
-    state.player.velocity.y += dir.y * (760 + tension * 520) * dt;
-    state.player.velocity.x = Math.max(state.player.velocity.x, getBaseSpeed(state.tier) * 0.95);
+    const tension = clamp((dist - 20) / 240, 0, 1);
+    state.player.velocity.x += dir.x * (1020 + tension * 660) * dt;
+    state.player.velocity.y += dir.y * (780 + tension * 540) * dt;
+    state.player.velocity.x = Math.max(state.player.velocity.x, getBaseSpeed(state.tier) * 0.96);
 
-    if (input.jumpPressed && dist < 74) {
-      state.player.velocity.y = -JUMP_SPEED * 0.82;
-      state.player.velocity.x += 120;
-      awardFlow(state, 2, 24, "Jumped out of grapple.");
+    if (input.jumpPressed && dist < 84) {
+      state.player.velocity.y = -JUMP_SPEED * 0.84;
+      state.player.velocity.x = Math.min(MAX_SPEED + 100, state.player.velocity.x + 150);
+      awardFlow(state, 2, 24, "Jumped out of the grapple arc.");
       hook.phase = "retracting";
     } else if (dist < 26 || hook.ttlMs <= 0 || input.hookReleased) {
       awardFlow(state, 1, 18, "Released into flow.");
@@ -980,16 +1239,7 @@ function updateHook(state: RunnerState, dt: number, input: InputState) {
     const toOrigin = { x: hook.origin.x - hook.tip.x, y: hook.origin.y - hook.tip.y };
     const dist = length(toOrigin);
     if (dist < 16) {
-      state.player.hook = {
-        phase: "idle",
-        origin: { x: 0, y: 0 },
-        tip: { x: 0, y: 0 },
-        target: null,
-        travelDir: { x: 0, y: 0 },
-        ropeLength: 0,
-        ttlMs: 0,
-        hitSurfaceId: null
-      };
+      state.player.hook = makeEmptyHook();
       return;
     }
     const dir = normalize(toOrigin);
@@ -1016,11 +1266,12 @@ function resolvePlayerCollisions(state: RunnerState, previousY: number) {
       player.velocity.y = -JUMP_SPEED;
       player.contacts.grounded = false;
       player.jumpBufferMs = 0;
-      player.action = "jumping";
-      awardFlow(state, 1, 8, "Buffered jump.");
+      player.action = "jump";
+      awardFlow(state, 1, 8, "Buffered jump kept the rhythm clean.");
     } else if (hardLanding) {
       state.landingPulseMs = 180;
-      player.hardLandingMs = 120;
+      player.hardLandingMs = 140;
+      player.velocity.x = Math.max(getBaseSpeed(state.tier), player.velocity.x - 20);
     }
   }
 
@@ -1031,9 +1282,6 @@ function resolvePlayerCollisions(state: RunnerState, previousY: number) {
 
   const contactSide: -1 | 0 | 1 = player.contacts.leftWall ? -1 : player.contacts.rightWall ? 1 : 0;
   if (!player.contacts.grounded && contactSide !== 0 && player.velocity.y >= 0) {
-    if (player.wallContactSide !== contactSide) {
-      player.wallReusePenaltyCount = 0;
-    }
     player.wallContactSide = contactSide;
     player.wallContactGraceMs = WALL_CONTACT_GRACE_MS;
   } else if (player.wallContactGraceMs <= 0) {
@@ -1042,23 +1290,22 @@ function resolvePlayerCollisions(state: RunnerState, previousY: number) {
 
   if (!player.contacts.grounded) {
     if (player.velocity.y > 0 && (player.contacts.leftWall || player.contacts.rightWall)) {
-      player.action = "wallSliding";
+      player.action = "wall";
       player.velocity.y = Math.min(player.velocity.y, WALL_SLIDE_SPEED);
       state.wallScrapeMs = 70;
-    } else {
-      player.action = player.velocity.y < 0 ? "jumping" : player.hook.phase === "attached" ? "grappling" : "falling";
+    } else if (player.hurtMs <= 0) {
+      player.action = player.velocity.y < 0 ? "jump" : player.hook.phase === "attached" ? "grapple" : "fall";
     }
-  } else if (player.action !== "vaulting" && player.action !== "sliding") {
+  } else if (player.action !== "vault" && player.action !== "slide" && player.hurtMs <= 0) {
     player.wallContactSide = 0;
     player.wallContactGraceMs = 0;
-    player.wallReusePenaltyCount = 0;
-    player.action = "running";
+    player.action = "run";
   }
 }
 
 function updateScoringAndCombo(state: RunnerState, dtMs: number) {
   const lane = getCurrentLane(state);
-  const comboDrain = lane === "low" && state.tier >= 1 ? 1.5 : lane === "mid" ? 1.05 : 1;
+  const comboDrain = lane === "low" && state.tier >= 1 ? 1.65 : lane === "mid" ? 1.08 : 1;
   state.flow.comboTimerMs = Math.max(0, state.flow.comboTimerMs - dtMs * comboDrain);
   if (state.flow.comboTimerMs === 0) {
     state.flow.combo = 0;
@@ -1066,26 +1313,76 @@ function updateScoringAndCombo(state: RunnerState, dtMs: number) {
 
   if (lane === "high") {
     state.flow.topRouteTicks += dtMs;
-    state.flow.styleScore += dtMs / 200;
+    state.flow.styleScore += dtMs / 185;
+  } else if (lane === "mid") {
+    state.flow.styleScore += dtMs / 260;
   } else if (lane === "low" && state.tier >= 1) {
-    state.flow.styleScore = Math.max(0, state.flow.styleScore - dtMs / 420);
+    state.flow.styleScore = Math.max(0, state.flow.styleScore - dtMs / 450);
   }
 
-  state.distance = Math.max(0, Math.floor((state.player.position.x - 70) / 10));
-  const comboBonus = state.flow.combo * 12 + Math.floor(state.flow.styleScore);
-  state.score = Math.max(0, Math.floor(state.distance * 1.15 + state.coins * 24 + comboBonus));
+  state.distance = Math.max(0, Math.floor((state.player.position.x - 80) / 10));
+  const comboBonus = state.flow.combo * 14 + Math.floor(state.flow.styleScore);
+  const guardBonus = state.player.guard * 18;
+  state.score = Math.max(0, Math.floor(state.distance * 1.22 + state.coins * 34 + comboBonus + guardBonus));
 
   const nextTier = getTier(state.score);
   if (nextTier !== state.tier) {
     state.tier = nextTier;
-    awardFlow(state, 2, 22, `${DISTRICT_NAMES[nextTier]} unlocked. The upper line is worth more now.`);
+    state.player.guard = Math.min(state.player.maxGuard, state.player.guard + 1);
+    awardFlow(state, 2, 26, `${DISTRICT_FLOW_NAMES[nextTier]} reached. Guard restored by 1.`);
   }
+}
+
+function getObstacleRect(obstacle: Obstacle) {
+  if (obstacle.kind === "slide-sign") {
+    return {
+      left: obstacle.x - obstacle.width / 2,
+      right: obstacle.x + obstacle.width / 2,
+      top: obstacle.y - 4,
+      bottom: obstacle.y + obstacle.height
+    };
+  }
+  if (obstacle.kind === "slide-tunnel") {
+    return {
+      left: obstacle.x - obstacle.width / 2,
+      right: obstacle.x + obstacle.width / 2,
+      top: obstacle.y,
+      bottom: obstacle.y + obstacle.height
+    };
+  }
+  if (obstacle.kind === "vault") {
+    return {
+      left: obstacle.x - obstacle.width / 2,
+      right: obstacle.x + obstacle.width / 2,
+      top: obstacle.y - obstacle.height,
+      bottom: obstacle.y
+    };
+  }
+  if (obstacle.kind === "air-hazard") {
+    return {
+      left: obstacle.x - obstacle.width / 2,
+      right: obstacle.x + obstacle.width / 2,
+      top: obstacle.y - obstacle.height,
+      bottom: obstacle.y + obstacle.height
+    };
+  }
+  return {
+    left: obstacle.x - obstacle.width / 2,
+    right: obstacle.x + obstacle.width / 2,
+    top: 0,
+    bottom: HEIGHT
+  };
+}
+
+function intersects(bounds: ReturnType<typeof getPlayerBounds>, rect: ReturnType<typeof getObstacleRect>) {
+  return bounds.right > rect.left && bounds.left < rect.right && bounds.bottom > rect.top && bounds.top < rect.bottom;
 }
 
 function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: number) {
   const dt = dtMs / 1000;
   const player = state.player;
   const previousY = player.position.y;
+  const activeDistrict = DISTRICTS[state.activeDistrict];
 
   player.height = getPlayerHeight(player.action);
   player.jumpBufferMs = Math.max(0, player.jumpBufferMs - dtMs);
@@ -1097,9 +1394,13 @@ function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: numbe
   player.grappleCooldownMs = Math.max(0, player.grappleCooldownMs - dtMs);
   player.coyoteMs = Math.max(0, player.coyoteMs - dtMs);
   player.hardLandingMs = Math.max(0, player.hardLandingMs - dtMs);
+  player.invulnerableMs = Math.max(0, player.invulnerableMs - dtMs);
+  player.hurtMs = Math.max(0, player.hurtMs - dtMs);
   state.landingPulseMs = Math.max(0, state.landingPulseMs - dtMs);
   state.wallScrapeMs = Math.max(0, state.wallScrapeMs - dtMs);
+  state.hitFlashMs = Math.max(0, state.hitFlashMs - dtMs);
   state.totalTimeMs += dtMs;
+  state.windPulseMs += dtMs;
 
   if (input.jumpPressed) {
     player.jumpBufferMs = JUMP_BUFFER_MS;
@@ -1108,13 +1409,13 @@ function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: numbe
     tryStartSlide(state);
   }
 
-  if (player.action === "vaulting" && player.vaultFrom && player.vaultTo && player.vaultTimerMs > 0) {
-    const progress = 1 - player.vaultTimerMs / 170;
+  if (player.action === "vault" && player.vaultFrom && player.vaultTo && player.vaultTimerMs > 0) {
+    const progress = 1 - player.vaultTimerMs / 190;
     player.position.x = lerp(player.vaultFrom.x, player.vaultTo.x, progress);
-    player.position.y = lerp(player.vaultFrom.y, player.vaultTo.y, progress) - Math.sin(progress * Math.PI) * 16;
-    player.velocity.x = Math.max(player.velocity.x, getBaseSpeed(state.tier) + 40);
+    player.position.y = lerp(player.vaultFrom.y, player.vaultTo.y, progress) - Math.sin(progress * Math.PI) * 18;
+    player.velocity.x = Math.max(player.velocity.x, getBaseSpeed(state.tier) + 80);
     if (player.vaultTimerMs <= 0) {
-      player.action = "running";
+      player.action = "run";
       player.vaultFrom = null;
       player.vaultTo = null;
     }
@@ -1126,9 +1427,10 @@ function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: numbe
   if ((player.contacts.grounded || player.coyoteMs > 0) && player.jumpBufferMs > 0) {
     player.velocity.y = -JUMP_SPEED;
     player.contacts.grounded = false;
-    player.action = "jumping";
+    player.action = "jump";
     player.jumpBufferMs = 0;
     player.coyoteMs = 0;
+    player.velocity.x = Math.min(MAX_SPEED + 70, player.velocity.x + 18);
     awardFlow(state, 1, 8, "Clean jump.");
   } else if (!player.contacts.grounded && player.jumpBufferMs > 0) {
     const sameWallLocked =
@@ -1136,7 +1438,7 @@ function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: numbe
       player.wallContactSide === player.lastWallJumpSide &&
       player.lastWallJumpAt < SAME_WALL_LOCK_MS;
     const canWallJump =
-      player.action === "wallSliding" &&
+      player.action === "wall" &&
       player.wallContactSide !== 0 &&
       player.wallContactGraceMs > 0 &&
       player.velocity.y >= -10 &&
@@ -1147,15 +1449,14 @@ function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: numbe
       player.velocity.x = player.wallContactSide === -1 ? WALL_JUMP_X : -WALL_JUMP_X;
       player.wallJumpLockMs = 180;
       player.jumpBufferMs = 0;
-      player.action = "jumping";
+      player.action = "jump";
       player.lastWallJumpSide = player.wallContactSide;
       player.lastWallJumpAt = 0;
-      player.wallReusePenaltyCount += 1;
       player.wallContactGraceMs = 0;
-      awardFlow(state, 2, 20, "Wall kick kept the route alive.");
+      awardFlow(state, 2, 22, "Wall kick saved the route.");
     } else if (sameWallLocked) {
       player.jumpBufferMs = 0;
-      state.statusText = "You need a fresh wall for another kick.";
+      state.statusText = "Fresh wall only. Find the next surface.";
     }
   }
 
@@ -1165,29 +1466,37 @@ function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: numbe
     player.velocity.y += GRAVITY * dt;
   }
 
+  if (!player.contacts.grounded && activeDistrict.wind > 0) {
+    const gust = Math.sin((state.windPulseMs + state.player.position.x * 0.08) / 310) * activeDistrict.wind * 80;
+    player.velocity.x += gust * dt;
+    if (player.action !== "wall") {
+      player.velocity.y += Math.cos((state.windPulseMs + state.player.position.x) / 420) * activeDistrict.wind * 28 * dt;
+    }
+  }
+
   const targetRunSpeed = getBaseSpeed(state.tier);
-  const speedBlend = player.contacts.grounded ? 0.18 : 0.06;
+  const speedBlend = player.contacts.grounded ? 0.2 : 0.08;
   if (player.wallJumpLockMs <= 0) {
     player.velocity.x = lerp(player.velocity.x, Math.max(targetRunSpeed, player.velocity.x), speedBlend);
   }
 
-  if (player.action === "sliding") {
-    player.velocity.x = Math.max(player.velocity.x - 26 * dt, targetRunSpeed + 80);
-    player.height = getPlayerHeight("sliding");
-    if (input.jumpPressed && player.slideTimerMs < SLIDE_CHAIN_MS) {
-      player.velocity.y = -JUMP_SPEED * 0.84;
-      player.velocity.x = Math.min(MAX_SPEED + 70, player.velocity.x + 35);
-      player.action = "jumping";
+  if (player.action === "slide") {
+    player.velocity.x = Math.max(player.velocity.x - 20 * dt, targetRunSpeed + 96);
+    player.height = getPlayerHeight("slide");
+    if (input.jumpPressed && player.slideTimerMs < SLIDE_CHAIN_MS + 110) {
+      player.velocity.y = -JUMP_SPEED * 0.82;
+      player.velocity.x = Math.min(MAX_SPEED + 90, player.velocity.x + 45);
+      player.action = "jump";
       player.slideTimerMs = 0;
       player.jumpBufferMs = 0;
-      awardFlow(state, 2, 18, "Slide-hop kept the pace up.");
+      awardFlow(state, 2, 20, "Slide-hop preserved the burst.");
     }
     if (player.slideTimerMs <= 0) {
-      player.action = player.contacts.grounded ? "running" : "falling";
+      player.action = player.contacts.grounded ? "run" : "fall";
       player.height = getPlayerHeight(player.action);
     }
   } else if (!player.contacts.grounded && player.hook.phase !== "attached") {
-    player.velocity.x = Math.max(targetRunSpeed * 0.9, player.velocity.x - 82 * dt);
+    player.velocity.x = Math.max(targetRunSpeed * 0.92, player.velocity.x - 74 * dt);
   }
 
   const vaultable = getAllObstacles(state.chunks).find(
@@ -1211,24 +1520,27 @@ function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: numbe
   player.facing = player.velocity.x >= 0 ? 1 : -1;
   const movedBounds = getPlayerBounds(player);
 
-  const blockingSlideObstacle = getAllObstacles(state.chunks).find(
-    (obstacle) =>
-      !obstacle.cleared &&
-      (obstacle.kind === "slide-sign" || obstacle.kind === "slide-gap") &&
-      movedBounds.right > obstacle.x - obstacle.width / 2 &&
-      movedBounds.left < obstacle.x + obstacle.width / 2 &&
-      movedBounds.bottom > obstacle.y &&
-      movedBounds.top < obstacle.y + obstacle.height
-  );
-  if (blockingSlideObstacle && player.action !== "sliding") {
-    state.gameOver = true;
-    state.reason = blockingSlideObstacle.kind === "slide-gap"
-      ? "You hit the low tunnel because you stayed tall."
-      : "You clipped a low sign instead of sliding.";
-  } else if (blockingSlideObstacle && player.action === "sliding") {
-    blockingSlideObstacle.cleared = true;
-    player.velocity.x = Math.min(MAX_SPEED + 90, player.velocity.x + 24);
-    awardFlow(state, 2, 20, "Threaded the slide line.");
+  const slideHit = getAllObstacles(state.chunks).find((obstacle) => {
+    if (obstacle.cleared || (obstacle.kind !== "slide-sign" && obstacle.kind !== "slide-tunnel")) {
+      return false;
+    }
+    return intersects(movedBounds, getObstacleRect(obstacle));
+  });
+  if (slideHit && player.action !== "slide") {
+    slideHit.cleared = true;
+    applyPlayerHit(
+      state,
+      slideHit.kind === "slide-tunnel" ? "You stayed tall through the tunnel." : "You clipped the low sign.",
+      slideHit.severity
+    );
+  } else if (slideHit && player.action === "slide") {
+    slideHit.cleared = true;
+    player.velocity.x = Math.min(MAX_SPEED + 100, player.velocity.x + 28);
+    awardFlow(state, 2, 22, "Threaded the slide line.");
+    if (Math.abs(movedBounds.top - (slideHit.y + 2)) < 12) {
+      state.flow.nearMisses += 1;
+      state.flow.styleScore += 12;
+    }
   }
 
   const routeGate = getAllObstacles(state.chunks).find((obstacle) => {
@@ -1246,36 +1558,38 @@ function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: numbe
     if (fullyInsideGap) {
       routeGate.cleared = true;
       if (routeGate.response === "slide") {
-        player.velocity.x = Math.min(MAX_SPEED + 100, player.velocity.x + 28);
+        player.velocity.x = Math.min(MAX_SPEED + 100, player.velocity.x + 32);
         awardFlow(state, 2, 24, "Slide gate cleared clean.");
       } else if (routeGate.response === "jump") {
-        awardFlow(state, 2, 22, "Jump gate cleared.");
+        awardFlow(state, 2, 24, "Jump gate snapped into place.");
       } else {
-        awardFlow(state, 3, 28, "Grapple gate cleared.");
+        awardFlow(state, 3, 30, "Grapple gate cleared.");
       }
     } else {
-      state.gameOver = true;
-      state.reason =
+      routeGate.cleared = true;
+      applyPlayerHit(
+        state,
         routeGate.response === "slide"
-          ? "You missed the low gate. Slide was the line."
+          ? "Missed the low gate. Slide was the line."
           : routeGate.response === "jump"
-            ? "You stayed too low for the jump gate."
-            : "You missed the high gate. Grapple the opening.";
+            ? "Stayed too low for the jump gate."
+            : "Missed the high gate. Grapple was the answer.",
+        routeGate.severity,
+        state.player.guard === 0 && routeGate.response === "grapple"
+      );
     }
   }
 
   const airHazard = getAllObstacles(state.chunks).find(
-    (obstacle) =>
-      !obstacle.cleared &&
-      obstacle.kind === "air-hazard" &&
-      movedBounds.right > obstacle.x - obstacle.width / 2 &&
-      movedBounds.left < obstacle.x + obstacle.width / 2 &&
-      movedBounds.top < obstacle.y + obstacle.height &&
-      movedBounds.bottom > obstacle.y - obstacle.height
+    (obstacle) => !obstacle.cleared && obstacle.kind === "air-hazard" && intersects(movedBounds, getObstacleRect(obstacle))
   );
   if (airHazard) {
-    state.gameOver = true;
-    state.reason = "You got tagged by an air hazard.";
+    airHazard.cleared = true;
+    applyPlayerHit(
+      state,
+      airHazard.district === "industrial" ? "Steam blast clipped you." : airHazard.district === "storm" ? "Storm hazard broke your line." : "Air hazard tagged you.",
+      airHazard.severity
+    );
   }
 
   const pickup = getAllPickups(state.chunks).find(
@@ -1287,28 +1601,30 @@ function updatePlayerMovement(state: RunnerState, input: InputState, dtMs: numbe
   if (pickup) {
     pickup.collected = true;
     state.coins += 1;
-    awardFlow(state, 1, 14, "Picked the better line.");
+    state.player.guard = Math.min(state.player.maxGuard, state.player.guard + (state.coins % 10 === 0 ? 1 : 0));
+    awardFlow(state, 1, 14, "Picked the cleaner line.");
   }
 
   resolvePlayerCollisions(state, previousY);
   ensureWorldAhead(state);
   const activeChunk = getActiveChunk(state);
-  if (activeChunk && activeChunk.areaType !== state.activeArea) {
-    state.activeArea = activeChunk.areaType;
-    state.statusText = `${AREA_NAMES[activeChunk.areaType]} coming up. Read the rooftops.`;
+  if (activeChunk && activeChunk.district !== state.activeDistrict) {
+    state.activeDistrict = activeChunk.district;
+    state.statusText = `${DISTRICTS[activeChunk.district].name}. ${DISTRICTS[activeChunk.district].emphasis}`;
   } else if (activeChunk) {
-    state.activeArea = activeChunk.areaType;
+    state.activeDistrict = activeChunk.district;
   }
+
   updateScoringAndCombo(state, dtMs);
 
   const lane = getCurrentLane(state);
   if (lane === "low" && state.tier >= 1 && !player.contacts.grounded) {
-    state.statusText = "You dropped to the safety line. Find a clean recovery route.";
+    state.statusText = "You dropped to the safety line. Reclaim the upper route.";
   }
 
-  if (player.position.y > HEIGHT + 140) {
+  if (player.position.y > HEIGHT + 150) {
     state.gameOver = true;
-    state.reason = "You missed the route and fell out of the run.";
+    state.reason = "You missed the route and fell out of the city.";
   }
 }
 
@@ -1330,295 +1646,434 @@ function drawRectStroke(ctx: CanvasRenderingContext2D, x: number, y: number, wid
   ctx.restore();
 }
 
-function renderBackground(ctx: CanvasRenderingContext2D, tier: DistrictTier, areaType: AreaType = "openChase", cameraX = 0, speed = 0) {
-  const topColor =
-    areaType === "industrialHazards" ? "#2d2f3d" :
-    areaType === "constructionGauntlet" ? "#314b63" :
-    areaType === "skylineSprint" ? "#1d2742" :
-    areaType === "eliteFlow" ? "#231f4d" :
-    "#243453";
-  const midColor =
-    areaType === "industrialHazards" ? "#5a4a4a" :
-    areaType === "constructionGauntlet" ? "#58708c" :
-    areaType === "openChase" ? "#52658e" :
-    "#45557c";
-  const bottomColor =
-    areaType === "industrialHazards" ? "#e88a5d" :
-    areaType === "skylineSprint" ? "#f0b783" :
-    areaType === "needleAlleys" ? "#eab08a" :
-    "#f0b783";
+function renderSkylineLayer(
+  ctx: CanvasRenderingContext2D,
+  district: DistrictDefinition,
+  color: string,
+  baseY: number,
+  width: number,
+  factor: number,
+  cameraX: number,
+  timeMs: number,
+  depth: number
+) {
+  ctx.fillStyle = color;
+  const spacing = width + 32;
+  const scroll = (cameraX * factor) % spacing;
+  for (let i = -2; i < 15; i += 1) {
+    const x = i * spacing - scroll;
+    const wobble = Math.sin((i + depth) * 1.73) * 18;
+    const towerHeight = 120 + wobble + (i % 4) * 28 + depth * 18;
+    if (district.skylineMode === "glass") {
+      ctx.fillRect(x, baseY - towerHeight, width, towerHeight);
+      ctx.fillStyle = district.window;
+      for (let row = 0; row < Math.floor(towerHeight / 18); row += 1) {
+        ctx.fillRect(x + 12, baseY - towerHeight + 10 + row * 18, width - 24, 3);
+      }
+      ctx.fillStyle = color;
+      ctx.fillRect(x + width - 16, baseY - towerHeight - 20, 8, 20);
+    } else if (district.skylineMode === "billboards") {
+      ctx.fillRect(x, baseY - towerHeight, width, towerHeight);
+      ctx.fillRect(x + 16, baseY - towerHeight - 44, width - 32, 28);
+      ctx.fillStyle = district.sign;
+      ctx.fillRect(x + 22, baseY - towerHeight - 38, width - 44, 16);
+      ctx.fillStyle = color;
+      drawLine(ctx, x + 30, baseY - towerHeight - 16, x + 30, baseY - towerHeight, 3, 0.9);
+      drawLine(ctx, x + width - 30, baseY - towerHeight - 16, x + width - 30, baseY - towerHeight, 3, 0.9);
+    } else if (district.skylineMode === "crane") {
+      ctx.fillRect(x, baseY - towerHeight, width * 0.7, towerHeight);
+      drawLine(ctx, x + width * 0.72, baseY - towerHeight - 80, x + width * 0.72, baseY - 6, 3, 0.9);
+      drawLine(ctx, x + width * 0.72, baseY - towerHeight - 74, x + width * 1.16, baseY - towerHeight - 92, 3, 0.9);
+      drawLine(ctx, x + width * 1.02, baseY - towerHeight - 90, x + width * 1.02, baseY - towerHeight - 18, 2, 0.6);
+    } else if (district.skylineMode === "storm") {
+      ctx.fillRect(x, baseY - towerHeight, width, towerHeight);
+      if (i % 5 === 0 && (timeMs / 260 + i) % 9 < 0.25) {
+        ctx.strokeStyle = "rgba(226, 244, 255, 0.65)";
+        drawLine(ctx, x + width * 0.55, baseY - towerHeight - 48, x + width * 0.44, baseY - towerHeight + 10, 2.2, 1);
+      }
+    } else if (district.skylineMode === "scaffold") {
+      ctx.fillRect(x, baseY - towerHeight, width * 0.72, towerHeight);
+      ctx.strokeStyle = district.platformTrim;
+      for (let row = 0; row < Math.floor(towerHeight / 26); row += 1) {
+        drawLine(ctx, x + width * 0.78, baseY - towerHeight + row * 24, x + width * 0.98, baseY - towerHeight + row * 24 + 18, 2, 0.55);
+        drawLine(ctx, x + width * 0.98, baseY - towerHeight + row * 24, x + width * 0.78, baseY - towerHeight + row * 24 + 18, 2, 0.55);
+      }
+    } else {
+      ctx.fillRect(x, baseY - towerHeight, width, towerHeight);
+      ctx.fillStyle = district.window;
+      const flicker = 0.75 + Math.sin((timeMs + i * 100) / 420) * 0.15;
+      ctx.globalAlpha = flicker;
+      for (let row = 0; row < Math.floor(towerHeight / 22); row += 1) {
+        for (let col = 0; col < 3; col += 1) {
+          if ((row + col + i) % 2 === 0) {
+            ctx.fillRect(x + 10 + col * 18, baseY - towerHeight + 10 + row * 20, 10, 7);
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      if (district.skylineMode === "neon") {
+        ctx.fillStyle = district.sign;
+        ctx.fillRect(x + 12, baseY - towerHeight + 28, width - 24, 6);
+        ctx.fillStyle = color;
+      }
+      if (district.skylineMode === "industrial") {
+        ctx.fillRect(x + width - 20, baseY - towerHeight - 26, 12, 26);
+        ctx.fillRect(x + width - 28, baseY - towerHeight - 30, 28, 6);
+      }
+    }
+    ctx.fillStyle = color;
+  }
+}
+
+function renderBackground(ctx: CanvasRenderingContext2D, tier: DistrictTier, districtId: DistrictId, cameraX = 0, speed = 0, timeMs = 0) {
+  const district = DISTRICTS[districtId];
   const sky = ctx.createLinearGradient(0, 0, 0, HEIGHT);
-  sky.addColorStop(0, tier >= 2 ? topColor : topColor);
-  sky.addColorStop(0.52, tier >= 2 ? midColor : midColor);
-  sky.addColorStop(1, bottomColor);
+  sky.addColorStop(0, district.skyTop);
+  sky.addColorStop(0.56, district.skyMid);
+  sky.addColorStop(1, district.skyBottom);
   ctx.fillStyle = sky;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  ctx.fillStyle = "rgba(255, 210, 159, 0.12)";
+  ctx.fillStyle = district.haze;
   ctx.beginPath();
-  ctx.arc(WIDTH - 120, 92, 52, 0, Math.PI * 2);
+  ctx.arc(WIDTH - 130, 98, district.id === "storm" ? 44 : 56, 0, Math.PI * 2);
   ctx.fill();
 
-  const layers = [
-    { color: areaType === "constructionGauntlet" ? "rgba(42, 57, 76, 0.28)" : "rgba(19, 26, 43, 0.24)", baseY: 250, height: 140, width: 120, factor: 0.12 },
-    { color: areaType === "industrialHazards" ? "rgba(52, 37, 37, 0.46)" : "rgba(18, 24, 38, 0.42)", baseY: 302, height: 190, width: 92, factor: 0.22 },
-    { color: areaType === "eliteFlow" ? "rgba(18, 15, 43, 0.72)" : "rgba(13, 18, 31, 0.68)", baseY: 356, height: 240, width: 72, factor: 0.36 }
-  ];
+  ctx.fillStyle = district.glow;
+  ctx.beginPath();
+  ctx.ellipse(WIDTH - 120, 112, 120, 46, -0.1, 0, Math.PI * 2);
+  ctx.fill();
 
-  layers.forEach((layer, layerIndex) => {
-    ctx.fillStyle = layer.color;
-    const scroll = (cameraX * layer.factor) % (layer.width + 38);
-    for (let i = -2; i < 14; i += 1) {
-      const x = i * (layer.width + 38) - scroll;
-      const wobble = Math.sin((i + layerIndex * 2.1) * 1.73) * 18;
-      const towerHeight = layer.height + wobble + (i % 3) * 24;
-      ctx.fillRect(x, layer.baseY - towerHeight, layer.width, towerHeight);
-      ctx.fillRect(x + 14, layer.baseY - towerHeight - 18, 22, 18);
-      if (layerIndex > 0) {
-        ctx.fillRect(x + layer.width - 26, layer.baseY - towerHeight - 30, 12, 30);
-      }
-    }
-  });
+  renderSkylineLayer(ctx, district, district.layerA, 252, 124, 0.1, cameraX, timeMs, 0);
+  renderSkylineLayer(ctx, district, district.layerB, 312, 96, 0.21, cameraX, timeMs, 1);
+  renderSkylineLayer(ctx, district, district.layerC, 372, 78, 0.34, cameraX, timeMs, 2);
 
-  ctx.strokeStyle = "rgba(255, 248, 233, 0.08)";
-  for (let i = 0; i < 7; i += 1) {
-    drawLine(ctx, 0, 100 + i * 44, WIDTH, 96 + i * 44, 1, 0.5);
+  ctx.strokeStyle = "rgba(255,255,255,0.08)";
+  for (let i = 0; i < 8; i += 1) {
+    drawLine(ctx, 0, 84 + i * 48, WIDTH, 80 + i * 48, 1, 0.35);
   }
 
-  const speedAlpha = clamp((speed - BASE_RUN_SPEED) / 280, 0, 0.22);
+  if (district.id === "storm") {
+    ctx.strokeStyle = "rgba(186, 223, 255, 0.16)";
+    for (let i = 0; i < 32; i += 1) {
+      const x = ((i * 43 + timeMs * 0.6) % (WIDTH + 80)) - 40;
+      const y = (i * 17 + timeMs * 0.18) % HEIGHT;
+      drawLine(ctx, x, y, x - 8, y + 18, 1.2, 0.9);
+    }
+  }
+
+  const speedAlpha = clamp((speed - BASE_RUN_SPEED) / 260, 0, 0.28);
   if (speedAlpha > 0) {
     ctx.strokeStyle = `rgba(255,255,255,${speedAlpha})`;
-    for (let i = 0; i < 8; i += 1) {
-      drawLine(ctx, 34 + i * 118, 142 + (i % 3) * 56, 88 + i * 118, 138 + (i % 3) * 56, 1.5, 1);
+    for (let i = 0; i < 10; i += 1) {
+      drawLine(ctx, 24 + i * 96, 132 + (i % 4) * 48, 78 + i * 96, 126 + (i % 4) * 48, 1.4, 1);
     }
+  }
+
+  ctx.fillStyle = `rgba(255,255,255,${district.fogAlpha})`;
+  ctx.fillRect(0, HEIGHT - 140, WIDTH, 140);
+}
+
+function renderPlatformDecor(ctx: CanvasRenderingContext2D, platform: Platform, cameraX: number, timeMs: number) {
+  const district = DISTRICTS[platform.district];
+  const x = platform.x - cameraX;
+  const laneMultiplier = platform.lane === "high" ? 1.14 : platform.lane === "mid" ? 1.04 : 1;
+
+  ctx.fillStyle = district.platformFace;
+  ctx.fillRect(x, platform.y, platform.width, platform.height);
+  ctx.fillStyle = district.platformTop;
+  ctx.fillRect(x, platform.y, platform.width, 8);
+  ctx.fillStyle = district.platformTrim;
+  ctx.fillRect(x, platform.y + 12, platform.width, 4);
+  ctx.strokeStyle = "rgba(8, 12, 21, 0.9)";
+  drawRectStroke(ctx, x, platform.y, platform.width, platform.height, 1);
+
+  for (let i = 0; i < Math.floor(platform.width / 42); i += 1) {
+    const propX = x + 16 + i * 36;
+    const bob = Math.sin((timeMs + i * 60) / 260) * 0.4;
+    if (platform.district === "apartments") {
+      ctx.fillStyle = "rgba(220, 227, 239, 0.18)";
+      ctx.fillRect(propX, platform.y + 18 + (i % 2) * 10, 13, 18);
+      ctx.fillStyle = district.sign;
+      ctx.fillRect(propX + 2, platform.y + 22 + bob, 9, 2);
+    } else if (platform.district === "construction") {
+      ctx.strokeStyle = district.sign;
+      drawLine(ctx, propX, platform.y + 12, propX + 12, platform.y + 30, 2, 0.75);
+      drawLine(ctx, propX + 12, platform.y + 12, propX, platform.y + 30, 2, 0.75);
+    } else if (platform.district === "neon") {
+      ctx.fillStyle = district.sign;
+      ctx.fillRect(propX, platform.y + 18, 14, 4);
+      ctx.fillStyle = "rgba(255,255,255,0.1)";
+      ctx.fillRect(propX + 2, platform.y + 24, 10, 10);
+    } else if (platform.district === "industrial") {
+      ctx.fillStyle = "rgba(169, 181, 196, 0.26)";
+      ctx.fillRect(propX, platform.y + 18, 16, 20);
+      ctx.fillStyle = district.sign;
+      ctx.fillRect(propX + 4, platform.y + 12, 8, 6);
+    } else if (platform.district === "billboard") {
+      ctx.strokeStyle = district.sign;
+      drawLine(ctx, propX + 2, platform.y + 8, propX + 2, platform.y + 30, 2, 0.65);
+      drawLine(ctx, propX + 14, platform.y + 8, propX + 14, platform.y + 30, 2, 0.65);
+      ctx.fillStyle = district.sign;
+      ctx.fillRect(propX, platform.y + 10, 16, 10);
+    } else if (platform.district === "glass") {
+      ctx.fillStyle = "rgba(214, 245, 255, 0.2)";
+      ctx.fillRect(propX, platform.y + 16, 8, 24);
+      ctx.fillRect(propX + 10, platform.y + 20, 6, 20);
+    } else if (platform.district === "crane") {
+      ctx.strokeStyle = district.sign;
+      drawLine(ctx, propX + 3, platform.y + 12, propX + 3, platform.y + 34, 2, 0.65);
+      drawLine(ctx, propX + 3, platform.y + 12, propX + 18, platform.y + 12, 2, 0.65);
+    } else if (platform.district === "storm") {
+      ctx.strokeStyle = "rgba(198, 226, 255, 0.24)";
+      drawLine(ctx, propX, platform.y + 16, propX + 12, platform.y + 28, 1.4, 0.7);
+    }
+  }
+
+  ctx.strokeStyle = district.window;
+  for (let row = 0; row < Math.min(4, Math.floor(platform.height / 30)); row += 1) {
+    drawLine(ctx, x + 12, platform.y + 24 + row * 26, x + platform.width - 12, platform.y + 24 + row * 26, 1, 0.35 * laneMultiplier);
   }
 }
 
-function renderPlayer(ctx: CanvasRenderingContext2D, state: RunnerState, cameraX: number) {
+function renderObstacle(ctx: CanvasRenderingContext2D, obstacle: Obstacle, cameraX: number, timeMs: number) {
+  const district = DISTRICTS[obstacle.district];
+  const x = obstacle.x - cameraX - obstacle.width / 2;
+
+  if (obstacle.kind === "vault") {
+    ctx.fillStyle = district.platformTrim;
+    ctx.fillRect(x, obstacle.y - obstacle.height, obstacle.width, obstacle.height);
+    ctx.fillStyle = district.accent;
+    ctx.fillRect(x + 6, obstacle.y - obstacle.height + 6, obstacle.width - 12, 4);
+    ctx.strokeStyle = "rgba(12, 18, 29, 0.9)";
+    drawRectStroke(ctx, x, obstacle.y - obstacle.height, obstacle.width, obstacle.height, 1);
+  } else if (obstacle.kind === "slide-sign") {
+    ctx.strokeStyle = district.sign;
+    drawLine(ctx, x, obstacle.y, x + obstacle.width, obstacle.y, 4, 1);
+    drawLine(ctx, x + 10, obstacle.y, x + 10, obstacle.y + obstacle.height, 2.4, 0.9);
+    drawLine(ctx, x + obstacle.width - 10, obstacle.y, x + obstacle.width - 10, obstacle.y + obstacle.height, 2.4, 0.9);
+    ctx.strokeStyle = "rgba(255,255,255,0.22)";
+    drawLine(ctx, x + 16, obstacle.y - 8, x + obstacle.width - 16, obstacle.y - 8, 1.5, 1);
+  } else if (obstacle.kind === "slide-tunnel") {
+    ctx.fillStyle = "rgba(10, 16, 27, 0.78)";
+    ctx.fillRect(x, obstacle.y, obstacle.width, obstacle.height);
+    ctx.strokeStyle = district.accent;
+    drawRectStroke(ctx, x, obstacle.y, obstacle.width, obstacle.height, 1);
+    drawLine(ctx, x + 14, obstacle.y + obstacle.height / 2, x + obstacle.width - 14, obstacle.y + obstacle.height / 2, 2, 0.5);
+  } else if (obstacle.kind === "air-hazard") {
+    const pulse = 0.75 + Math.sin((timeMs + obstacle.x) / 120) * 0.2;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    if (obstacle.district === "industrial") {
+      ctx.fillStyle = "rgba(255, 130, 91, 0.36)";
+      ctx.beginPath();
+      ctx.ellipse(x + obstacle.width / 2, obstacle.y, obstacle.width / 2, obstacle.height, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = district.accent;
+      drawLine(ctx, x + 10, obstacle.y + 8, x + obstacle.width - 6, obstacle.y - 10, 2.2, 1);
+      drawLine(ctx, x + 10, obstacle.y - 8, x + obstacle.width - 6, obstacle.y + 10, 2.2, 1);
+    } else {
+      ctx.strokeStyle = district.accent;
+      drawLine(ctx, x, obstacle.y, x + obstacle.width / 2, obstacle.y - obstacle.height / 2, 2.4, 1);
+      drawLine(ctx, x + obstacle.width / 2, obstacle.y - obstacle.height / 2, x + obstacle.width, obstacle.y, 2.4, 1);
+      drawLine(ctx, x + obstacle.width * 0.2, obstacle.y + 6, x + obstacle.width * 0.8, obstacle.y - obstacle.height * 0.35 + 6, 1.3, 0.75);
+    }
+    ctx.restore();
+  } else if (obstacle.kind === "route-gate" && obstacle.gapY != null && obstacle.gapHeight != null) {
+    const gateLeft = x;
+    const gapTop = obstacle.gapY;
+    const gapBottom = obstacle.gapY + obstacle.gapHeight;
+    ctx.fillStyle = "rgba(7, 11, 19, 0.88)";
+    ctx.fillRect(gateLeft, 0, obstacle.width, gapTop);
+    ctx.fillRect(gateLeft, gapBottom, obstacle.width, HEIGHT - gapBottom);
+    ctx.strokeStyle =
+      obstacle.response === "slide"
+        ? "#f59e0b"
+        : obstacle.response === "jump"
+          ? "#9ff0a6"
+          : "#74d5ff";
+    drawRectStroke(ctx, gateLeft, 0, obstacle.width, gapTop, 1);
+    drawRectStroke(ctx, gateLeft, gapBottom, obstacle.width, HEIGHT - gapBottom, 1);
+    drawLine(ctx, gateLeft + 8, gapTop, gateLeft + obstacle.width - 8, gapTop, 2.5, 0.85);
+    drawLine(ctx, gateLeft + 8, gapBottom, gateLeft + obstacle.width - 8, gapBottom, 2.5, 0.85);
+    ctx.fillStyle = district.accentSoft;
+    ctx.fillRect(gateLeft - 4, gapTop, obstacle.width + 8, obstacle.gapHeight);
+  }
+}
+
+function getSpriteImage(bank: SpriteBank | null, action: PlayerAction, totalTimeMs: number, velocityY: number) {
+  if (!bank) return null;
+  if (action === "slide") {
+    return bank.slide[Math.floor(totalTimeMs / 55) % bank.slide.length] ?? null;
+  }
+  if (action === "hurt") {
+    return bank.hurt[Math.floor(totalTimeMs / 60) % bank.hurt.length] ?? bank.jump[5] ?? null;
+  }
+  if (action === "jump" || action === "fall" || action === "wall" || action === "grapple" || velocityY !== 0) {
+    const index = velocityY < -40 ? 2 : velocityY > 140 ? 7 : 5;
+    return bank.jump[index] ?? bank.jump[0] ?? null;
+  }
+  return bank.run[Math.floor(totalTimeMs / 75) % bank.run.length] ?? null;
+}
+
+function renderPlayer(ctx: CanvasRenderingContext2D, state: RunnerState, cameraX: number, spriteBank: SpriteBank | null) {
   const player = state.player;
   const x = player.position.x - cameraX;
   const y = player.position.y;
-  const top = y - player.height;
-  const action = player.action;
-  const gait = (state.totalTimeMs / 100) % (Math.PI * 2);
-  const runSwing = Math.sin(gait) * 10;
-  const armSwing = Math.cos(gait) * 8;
-  const lean = action === "grappling" ? 12 : action === "wallSliding" ? (player.contacts.leftWall ? -8 : 8) : action === "jumping" ? 6 : 0;
+  const district = DISTRICTS[state.activeDistrict];
+  const sprite = getSpriteImage(spriteBank, player.action, state.totalTimeMs, player.velocity.y);
+  const width = player.action === "slide" ? 86 : player.action === "wall" ? 80 : 74;
+  const height = player.action === "slide" ? 62 : 96;
+  const alpha = player.invulnerableMs > 0 ? (Math.floor(player.invulnerableMs / 80) % 2 === 0 ? 0.55 : 0.9) : 1;
+  const trailAlpha = clamp((player.velocity.x - BASE_RUN_SPEED) / 300, 0, 0.35);
 
-  ctx.fillStyle = "rgba(10,15,25,0.18)";
+  ctx.fillStyle = "rgba(5, 7, 15, 0.26)";
   ctx.beginPath();
-  ctx.ellipse(x + 1, y + 6, 18, 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(x + 4, y + 7, player.action === "slide" ? 28 : 22, 8, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = "#0b1020";
-  ctx.lineWidth = 3.6;
-  ctx.beginPath();
-  ctx.arc(x, top + 11, 11, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.fillStyle = "#f8f5ed";
-  ctx.beginPath();
-  ctx.arc(x, top + 11, 8.5, 0, Math.PI * 2);
-  ctx.fill();
-  drawLine(ctx, x, top + 23, x + lean * 0.25, top + 46, 3);
-
-  if (action === "sliding") {
-    drawLine(ctx, x, top + 28, x + 20, top + 34, 3);
-    drawLine(ctx, x, top + 28, x - 16, top + 38, 3);
-    drawLine(ctx, x + lean * 0.25, top + 46, x + 18, top + 54, 3);
-    drawLine(ctx, x + lean * 0.25, top + 46, x - 16, top + 52, 3);
-  } else if (action === "wallSliding") {
-    const armDir = player.contacts.leftWall ? -16 : 16;
-    drawLine(ctx, x, top + 30, x + armDir, top + 26, 3);
-    drawLine(ctx, x, top + 30, x - armDir * 0.4, top + 42, 3);
-    drawLine(ctx, x + lean * 0.25, top + 46, x - 8, top + 62, 3);
-    drawLine(ctx, x + lean * 0.25, top + 46, x + 10, top + 60, 3);
-  } else if (action === "grappling" && player.hook.target) {
-    const hookDir = player.hook.target.x - player.position.x > 0 ? 16 : -16;
-    drawLine(ctx, x, top + 28, x + hookDir, top + 20, 3);
-    drawLine(ctx, x, top + 28, x - 12, top + 42, 3);
-    drawLine(ctx, x + lean * 0.25, top + 46, x - 12, top + 60, 3);
-    drawLine(ctx, x + lean * 0.25, top + 46, x + 12, top + 54, 3);
-  } else {
-    drawLine(ctx, x, top + 30, x - 12 + armSwing * 0.25, top + 40, 3);
-    drawLine(ctx, x, top + 30, x + 12 - armSwing * 0.25, top + 38, 3);
-    drawLine(ctx, x + lean * 0.25, top + 46, x - 11 + runSwing, top + 63, 3);
-    drawLine(ctx, x + lean * 0.25, top + 46, x + 11 - runSwing, top + 63, 3);
+  if (trailAlpha > 0) {
+    ctx.strokeStyle = `rgba(255,255,255,${trailAlpha})`;
+    for (let i = 0; i < 4; i += 1) {
+      drawLine(ctx, x - 18 - i * 10, y - 22 + i * 9, x - 42 - i * 10, y - 16 + i * 9, 1.7 - i * 0.2, 1);
+    }
   }
 
-  drawLine(ctx, x - 3, top + 7, x - 3, top + 13, 2);
-  drawLine(ctx, x + 3, top + 7, x + 3, top + 13, 2);
-  ctx.strokeStyle = "#ef4444";
-  drawLine(ctx, x - 2, top + 27, x + 8, top + 34, 1.7, 0.75);
+  if (sprite) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y - (player.action === "slide" ? 34 : 52));
+    if (player.facing === -1) {
+      ctx.scale(-1, 1);
+    }
+    if (player.action === "wall") {
+      ctx.rotate(player.contacts.leftWall ? -0.08 : 0.08);
+    } else if (player.action === "grapple") {
+      ctx.rotate(-0.06);
+    } else if (player.action === "hurt") {
+      ctx.rotate(0.09);
+    }
+    ctx.drawImage(sprite, -width / 2, -height / 2, width, height);
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = district.accent;
+    ctx.fillRect(x - 10, y - 60, 20, 36);
+    ctx.fillStyle = "#f8f4ec";
+    ctx.beginPath();
+    ctx.arc(x, y - 68, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (state.player.hook.phase !== "idle") {
+    ctx.strokeStyle = "#bfeaff";
+    drawLine(ctx, x + 10, y - player.height + 24, state.player.hook.tip.x - cameraX, state.player.hook.tip.y, 2.5, 0.95);
+    ctx.fillStyle = "#74d5ff";
+    ctx.beginPath();
+    ctx.arc(state.player.hook.tip.x - cameraX, state.player.hook.tip.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (state.landingPulseMs > 0) {
+    ctx.strokeStyle = "rgba(255,240,204,0.78)";
+    drawLine(ctx, x - 28, y + 2, x - 4, y + 8, 2.2, 1);
+    drawLine(ctx, x + 4, y + 8, x + 28, y + 2, 2.2, 1);
+  }
+
+  if (state.wallScrapeMs > 0) {
+    ctx.strokeStyle = "rgba(255,194,102,0.84)";
+    drawLine(ctx, x + (player.contacts.leftWall ? -16 : 16), y - 46, x + (player.contacts.leftWall ? -24 : 24), y - 8, 2, 1);
+  }
 }
 
-function renderWorld(ctx: CanvasRenderingContext2D, state: RunnerState, input: InputState) {
+function renderWorld(ctx: CanvasRenderingContext2D, state: RunnerState, input: InputState, spriteBank: SpriteBank | null) {
   const targetCameraX = Math.max(0, state.player.position.x - PLAYER_SCREEN_X + state.player.velocity.x * 0.14);
   state.camera.x = lerp(state.camera.x, targetCameraX, 0.12);
   const cameraX = state.camera.x;
-  renderBackground(ctx, state.tier, state.activeArea, cameraX, state.player.velocity.x);
-
-  ctx.strokeStyle = "#0f172a";
-  ctx.fillStyle = "#151c2f";
+  renderBackground(ctx, state.tier, state.activeDistrict, cameraX, state.player.velocity.x, state.totalTimeMs);
 
   state.chunks.forEach((chunk) => {
     chunk.platforms.forEach((platform) => {
       const x = platform.x - cameraX;
       if (x + platform.width < -60 || x > WIDTH + 60) return;
-      ctx.fillStyle = platform.lane === "high" ? "#202b47" : platform.lane === "mid" ? "#182238" : "#131b2b";
-      ctx.fillRect(x, platform.y, platform.width, platform.height);
-      ctx.fillStyle = platform.lane === "high" ? "#7387b8" : platform.lane === "mid" ? "#5f7398" : "#4c5e80";
-      ctx.fillRect(x, platform.y, platform.width, 6);
-      ctx.strokeStyle = "rgba(9, 14, 25, 0.9)";
-      drawRectStroke(ctx, x, platform.y, platform.width, platform.height, 1);
-      ctx.strokeStyle = "rgba(103, 122, 159, 0.18)";
-      drawLine(ctx, x, platform.y + 18, x + platform.width, platform.y + 18, 2, 1);
-      for (let i = 0; i < Math.floor(platform.width / 54); i += 1) {
-        const ventX = x + 18 + i * 38;
-        const ventY = platform.y + 24 + (i % 2) * 14;
-        ctx.strokeStyle = "rgba(175, 188, 212, 0.32)";
-        drawRectStroke(ctx, ventX, ventY, 12, 18, 0.8);
-      }
-      ctx.strokeStyle = "rgba(198, 211, 235, 0.2)";
-      drawLine(ctx, x + 22, platform.y - 18, x + 22, platform.y, 2, 0.8);
-      drawLine(ctx, x + 22, platform.y - 18, x + 52, platform.y - 18, 2, 0.8);
+      renderPlatformDecor(ctx, platform, cameraX, state.totalTimeMs);
     });
 
     chunk.grappleSurfaces.forEach((surface) => {
       const x1 = surface.x1 - cameraX;
       const x2 = surface.x2 - cameraX;
-      ctx.strokeStyle = surface.kind === "anchor-wire" ? "#9fb8d8" : "#67d4ff";
+      const district = DISTRICTS[chunk.district];
+      ctx.strokeStyle = surface.kind === "anchor-wire" ? "rgba(213, 232, 255, 0.85)" : district.accent;
       drawLine(ctx, x1, surface.y1, x2, surface.y2, surface.kind === "anchor-wire" ? 2.5 : 3.2, 0.98);
       if (surface.kind !== "anchor-wire") {
-        drawLine(ctx, x1, surface.y1 - 5, x2, surface.y2 - 5, 1, 0.42);
+        drawLine(ctx, x1, surface.y1 - 4, x2, surface.y2 - 4, 1, 0.45);
       }
     });
 
     chunk.obstacles.forEach((obstacle) => {
-      const x = obstacle.x - cameraX - obstacle.width / 2;
-      if (obstacle.kind === "low-barrier") {
-        ctx.fillStyle = "#2b364f";
-        ctx.fillRect(x, obstacle.y - obstacle.height, obstacle.width, obstacle.height);
-        ctx.strokeStyle = "#c58f57";
-        drawRectStroke(ctx, x, obstacle.y - obstacle.height, obstacle.width, obstacle.height, 1);
-      } else if (obstacle.kind === "slide-sign") {
-        ctx.strokeStyle = "#ffb04d";
-        drawLine(ctx, x, obstacle.y, x + obstacle.width, obstacle.y, 4, 1);
-        drawLine(ctx, x + 10, obstacle.y, x + 10, obstacle.y + 22, 2.4, 0.9);
-        drawLine(ctx, x + obstacle.width - 10, obstacle.y, x + obstacle.width - 10, obstacle.y + 22, 2.4, 0.9);
-        ctx.strokeStyle = "rgba(255,176,77,0.35)";
-        drawLine(ctx, x + 18, obstacle.y - 7, x + obstacle.width - 18, obstacle.y - 7, 1.5, 1);
-      } else if (obstacle.kind === "slide-gap") {
-        ctx.fillStyle = "rgba(15, 23, 42, 0.78)";
-        ctx.fillRect(x, obstacle.y, obstacle.width, obstacle.height);
-        ctx.strokeStyle = "#7dd3fc";
-        drawRectStroke(ctx, x, obstacle.y, obstacle.width, obstacle.height, 1);
-        drawLine(ctx, x + 14, obstacle.y + obstacle.height / 2, x + obstacle.width - 14, obstacle.y + obstacle.height / 2, 2, 0.5);
-      } else if (obstacle.kind === "route-gate" && obstacle.gapY != null && obstacle.gapHeight != null) {
-        const gateLeft = x;
-        const gapTop = obstacle.gapY;
-        const gapBottom = obstacle.gapY + obstacle.gapHeight;
-        ctx.fillStyle = "rgba(9, 14, 25, 0.88)";
-        ctx.fillRect(gateLeft, 0, obstacle.width, gapTop);
-        ctx.fillRect(gateLeft, gapBottom, obstacle.width, HEIGHT - gapBottom);
-        ctx.strokeStyle =
-          obstacle.response === "slide"
-            ? "#f59e0b"
-            : obstacle.response === "jump"
-              ? "#86efac"
-              : "#67d4ff";
-        drawRectStroke(ctx, gateLeft, 0, obstacle.width, gapTop, 1);
-        drawRectStroke(ctx, gateLeft, gapBottom, obstacle.width, HEIGHT - gapBottom, 1);
-        drawLine(ctx, gateLeft + 6, gapTop, gateLeft + obstacle.width - 6, gapTop, 2.5, 0.85);
-        drawLine(ctx, gateLeft + 6, gapBottom, gateLeft + obstacle.width - 6, gapBottom, 2.5, 0.85);
-        ctx.strokeStyle = "rgba(255,255,255,0.22)";
-        drawLine(ctx, gateLeft + obstacle.width / 2, gapTop + 10, gateLeft + obstacle.width / 2, gapBottom - 10, 1.5, 1);
-      } else {
-        ctx.strokeStyle = "#f87171";
-        drawLine(ctx, x, obstacle.y, x + obstacle.width / 2, obstacle.y - obstacle.height / 2, 2.4, 1);
-        drawLine(ctx, x + obstacle.width / 2, obstacle.y - obstacle.height / 2, x + obstacle.width, obstacle.y, 2.4, 1);
-        drawLine(ctx, x + obstacle.width * 0.2, obstacle.y + 6, x + obstacle.width * 0.8, obstacle.y - obstacle.height * 0.35 + 6, 1.3, 0.75);
+      if (!obstacle.cleared) {
+        renderObstacle(ctx, obstacle, cameraX, state.totalTimeMs);
       }
     });
 
     chunk.pickups.forEach((pickup) => {
       if (pickup.collected) return;
+      const district = DISTRICTS[pickup.district];
       const x = pickup.x - cameraX;
-      ctx.strokeStyle = "#ffd166";
+      const pulse = 0.8 + Math.sin((state.totalTimeMs + pickup.x) / 120) * 0.15;
+      ctx.strokeStyle = district.accent;
       ctx.beginPath();
-      ctx.arc(x, pickup.y, 9, 0, Math.PI * 2);
+      ctx.arc(x, pickup.y, 8, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.strokeStyle = "rgba(255, 209, 102, 0.45)";
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = "rgba(255,255,255,0.5)";
       ctx.beginPath();
-      ctx.arc(x, pickup.y, 14, 0, Math.PI * 2);
+      ctx.arc(x, pickup.y, 13, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.globalAlpha = 1;
     });
   });
 
-  if (state.player.hook.phase !== "idle") {
-    const handX = state.player.position.x - cameraX + 8;
-    const handY = state.player.position.y - state.player.height + 22;
-    ctx.strokeStyle = "#b6e4ff";
-    ctx.lineWidth = 2.6;
-    ctx.beginPath();
-    ctx.moveTo(handX, handY);
-    ctx.quadraticCurveTo((handX + state.player.hook.tip.x - cameraX) / 2, handY - 12, state.player.hook.tip.x - cameraX, state.player.hook.tip.y);
-    ctx.stroke();
-    ctx.fillStyle = "#67d4ff";
-    ctx.beginPath();
-    ctx.arc(state.player.hook.tip.x - cameraX, state.player.hook.tip.y, 4, 0, Math.PI * 2);
-    ctx.fill();
-    if (state.player.hook.phase === "attached") {
-      ctx.strokeStyle = "rgba(103,212,255,0.55)";
-      ctx.beginPath();
-      ctx.arc(state.player.hook.tip.x - cameraX, state.player.hook.tip.y, 10, 0, Math.PI * 2);
-      ctx.stroke();
-    }
+  renderPlayer(ctx, state, cameraX, spriteBank);
+
+  ctx.strokeStyle = "rgba(191, 219, 254, 0.65)";
+  drawLine(ctx, input.aimScreen.x - 8, input.aimScreen.y, input.aimScreen.x + 8, input.aimScreen.y, 1.4);
+  drawLine(ctx, input.aimScreen.x, input.aimScreen.y - 8, input.aimScreen.x, input.aimScreen.y + 8, 1.4);
+
+  if (state.hitFlashMs > 0) {
+    ctx.fillStyle = "rgba(255, 120, 96, 0.16)";
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
   }
-
-  if (state.landingPulseMs > 0) {
-    ctx.strokeStyle = "rgba(255,236,204,0.7)";
-    drawLine(ctx, state.player.position.x - cameraX - 24, state.player.position.y + 2, state.player.position.x - cameraX - 4, state.player.position.y + 8, 2);
-    drawLine(ctx, state.player.position.x - cameraX + 4, state.player.position.y + 8, state.player.position.x - cameraX + 24, state.player.position.y + 2, 2);
-  }
-
-  if (state.wallScrapeMs > 0) {
-    ctx.strokeStyle = "rgba(255,184,107,0.7)";
-    drawLine(ctx, state.player.position.x - cameraX + (state.player.contacts.leftWall ? -14 : 14), state.player.position.y - 48, state.player.position.x - cameraX + (state.player.contacts.leftWall ? -22 : 22), state.player.position.y - 10, 2);
-  }
-
-  const speedLineAlpha = clamp((state.flow.combo - 2) / 8, 0, 0.3);
-  if (speedLineAlpha > 0) {
-    ctx.strokeStyle = `rgba(226,232,240,${speedLineAlpha})`;
-    for (let i = 0; i < 10; i += 1) {
-      const lineY = 120 + i * 26 + ((state.totalTimeMs / 18) % 12);
-      drawLine(ctx, 0, lineY, 44, lineY, 1.2, 1);
-    }
-  }
-
-  renderPlayer(ctx, state, cameraX);
-
-  ctx.strokeStyle = "rgba(191,219,254,0.65)";
-  drawLine(ctx, input.aimScreen.x - 9, input.aimScreen.y, input.aimScreen.x + 9, input.aimScreen.y, 1.5);
-  drawLine(ctx, input.aimScreen.x, input.aimScreen.y - 9, input.aimScreen.x, input.aimScreen.y + 9, 1.5);
 }
 
-function makeEmptyHook(): HookState {
+function makeHudState(): HudState {
   return {
-    phase: "idle",
-    origin: { x: 0, y: 0 },
-    tip: { x: 0, y: 0 },
-    target: null,
-    travelDir: { x: 0, y: 0 },
-    ropeLength: 0,
-    ttlMs: 0,
-    hitSurfaceId: null
+    score: 0,
+    distance: 0,
+    coins: 0,
+    speed: getBaseSpeed(0),
+    districtTier: 0,
+    districtId: "apartments",
+    combo: 0,
+    bestCombo: 0,
+    hookReady: true,
+    hookAccuracy: 0,
+    styleScore: 0,
+    guard: 3,
+    phaseLabel: DISTRICT_FLOW_NAMES[0]
   };
 }
 
 const RooftopRunner: React.FC = () => {
   const assetBase = import.meta.env.BASE_URL;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const stateRef = useRef<RunnerState | null>(null);
+  const spriteBankRef = useRef<SpriteBank | null>(null);
   const bestScoreRef = useRef(loadLocalBest());
+  const autoStartRef = useRef(false);
   const titleAudioRef = useRef<HTMLAudioElement | null>(null);
   const gameplayAudioRef = useRef<HTMLAudioElement | null>(null);
   const bonusAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -1626,21 +2081,10 @@ const RooftopRunner: React.FC = () => {
 
   const [phase, setPhase] = useState<GamePhase>("title");
   const [runSeed, setRunSeed] = useState(0);
+  const [spritesReady, setSpritesReady] = useState(false);
   const [bestScore, setBestScore] = useState(() => loadLocalBest());
-  const [status, setStatus] = useState("Momentum matters. Build flow through upper routes, grapples, and clean landings.");
-  const [hud, setHud] = useState<HudState>({
-    score: 0,
-    distance: 0,
-    coins: 0,
-    speed: getBaseSpeed(0),
-    districtTier: 0,
-    areaType: "openChase",
-    combo: 0,
-    bestCombo: 0,
-    hookReady: true,
-    hookAccuracy: 0,
-    styleScore: 0
-  });
+  const [status, setStatus] = useState("Build speed low, cash in style high, and use mistakes as recoveries instead of endings.");
+  const [hud, setHud] = useState<HudState>(makeHudState);
   const [lastRun, setLastRun] = useState<RunSummary | null>(null);
 
   const titleTrackPath = useMemo(() => `${assetBase}assets/music/town-rush/SwinginSafari.wav`, [assetBase]);
@@ -1655,14 +2099,14 @@ const RooftopRunner: React.FC = () => {
   useEffect(() => {
     const titleTrack = new Audio(titleTrackPath);
     titleTrack.loop = true;
-    titleTrack.volume = 0.25;
+    titleTrack.volume = 0.18;
     const gameplayTrack = new Audio(gameplayTrackPath);
     gameplayTrack.loop = true;
-    gameplayTrack.volume = 0.2;
+    gameplayTrack.volume = 0.15;
     const bonusTrack = new Audio(bonusTrackPath);
-    bonusTrack.volume = 0.45;
+    bonusTrack.volume = 0.38;
     const resultsTrack = new Audio(resultsTrackPath);
-    resultsTrack.volume = 0.3;
+    resultsTrack.volume = 0.24;
 
     titleAudioRef.current = titleTrack;
     gameplayAudioRef.current = gameplayTrack;
@@ -1678,6 +2122,33 @@ const RooftopRunner: React.FC = () => {
   }, [bonusTrackPath, gameplayTrackPath, resultsTrackPath, titleTrackPath]);
 
   useEffect(() => {
+    const makeFrames = async (prefix: "Run" | "Jump" | "Slide" | "Dead") => {
+      const entries = await Promise.all(
+        Array.from({ length: 10 }, (_, index) => {
+          const img = new Image();
+          img.decoding = "async";
+          img.src = `${assetBase}assets/ninjump/ninja/${prefix}__${String(index).padStart(3, "0")}.png`;
+          return img.decode().catch(() => undefined).then(() => img);
+        })
+      );
+      return entries;
+    };
+
+    let cancelled = false;
+    Promise.all([makeFrames("Run"), makeFrames("Jump"), makeFrames("Slide"), makeFrames("Dead")]).then(
+      ([run, jump, slide, hurt]) => {
+        if (cancelled) return;
+        spriteBankRef.current = { run, jump, slide, hurt };
+        setSpritesReady(true);
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assetBase]);
+
+  useEffect(() => {
     if (phase === "title") {
       gameplayAudioRef.current?.pause();
       resultsAudioRef.current?.pause();
@@ -1686,6 +2157,10 @@ const RooftopRunner: React.FC = () => {
       titleAudioRef.current?.pause();
       resultsAudioRef.current?.pause();
       void gameplayAudioRef.current?.play().catch(() => undefined);
+    } else if (phase === "paused") {
+      gameplayAudioRef.current?.pause();
+      titleAudioRef.current?.pause();
+      resultsAudioRef.current?.pause();
     } else {
       gameplayAudioRef.current?.pause();
       titleAudioRef.current?.pause();
@@ -1698,32 +2173,29 @@ const RooftopRunner: React.FC = () => {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || phase === "playing") return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     canvas.width = WIDTH;
     canvas.height = HEIGHT;
-    ctx.clearRect(0, 0, WIDTH, HEIGHT);
-    renderBackground(ctx, hud.districtTier, hud.areaType);
-    ctx.fillStyle = "rgba(10, 15, 26, 0.78)";
-    ctx.fillRect(88, 86, WIDTH - 176, HEIGHT - 172);
-    ctx.strokeStyle = "rgba(147, 197, 253, 0.34)";
-    drawRectStroke(ctx, 88, 86, WIDTH - 176, HEIGHT - 172, 1);
-    ctx.fillStyle = "#f8fafc";
-    ctx.font = "bold 38px PublicPixel, monospace";
-    ctx.fillText("Rooftop Runner", 120, 150);
-    ctx.fillStyle = "#7dd3fc";
-    ctx.font = "18px system-ui";
-    ctx.fillText("Momentum-based rooftop parkour with click-to-fire grappling.", 120, 194);
-    ctx.fillStyle = "#dbeafe";
-    ctx.fillText(`Best score on this device: ${bestScore}`, 120, 242);
-    if (phase === "gameOver" && lastRun) {
-      ctx.fillText(`Last run: ${lastRun.score} score, ${lastRun.distance}m, combo ${lastRun.bestCombo}.`, 120, 286);
-      ctx.fillText(lastRun.reason, 120, 314);
-    } else {
-      ctx.fillText("Start a run to build flow through grapples, wall tech, slides, and vaults.", 120, 286);
-    }
-  }, [bestScore, hud.districtTier, lastRun, phase]);
+
+    const preview = phase === "title" ? createTitlePreviewState(11) : stateRef.current ?? createTitlePreviewState(11);
+    renderWorld(
+      ctx,
+      preview,
+      {
+        jumpHeld: false,
+        jumpPressed: false,
+        slideHeld: false,
+        slidePressed: false,
+        hookPressed: false,
+        hookReleased: false,
+        aimScreen: { x: WIDTH * 0.72, y: HEIGHT * 0.28 },
+        aimWorld: { x: preview.player.position.x + 150, y: 140 }
+      },
+      spritesReady ? spriteBankRef.current : null
+    );
+  }, [phase, spritesReady]);
 
   useEffect(() => {
     if (phase !== "playing") return;
@@ -1731,12 +2203,15 @@ const RooftopRunner: React.FC = () => {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
 
-    const state = createInitialState(runSeed + 1);
+    const state = stateRef.current ?? createInitialState(runSeed + 1);
+    stateRef.current = state;
     let raf = 0;
     let last = performance.now();
     let hudAccum = 0;
-    let milestonePlayedForTier: DistrictTier = 0;
+    let milestonePlayedForTier: DistrictTier = state.tier;
     let finished = false;
 
     const input: InputState = {
@@ -1763,6 +2238,11 @@ const RooftopRunner: React.FC = () => {
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "Escape") {
+        setPhase("paused");
+        event.preventDefault();
+        return;
+      }
       if (event.code === "ArrowUp" || event.code === "KeyW" || event.code === "Space") {
         if (!input.jumpHeld) {
           input.jumpPressed = true;
@@ -1780,6 +2260,10 @@ const RooftopRunner: React.FC = () => {
       if (event.code === "KeyE" || event.code === "ShiftLeft" || event.code === "ShiftRight") {
         input.hookPressed = true;
         event.preventDefault();
+      }
+      if (event.code === "KeyR") {
+        event.preventDefault();
+        beginRun();
       }
     };
 
@@ -1822,19 +2306,16 @@ const RooftopRunner: React.FC = () => {
       finished = true;
       const accuracy = state.flow.grappleShots > 0 ? Math.round((state.flow.grappleHits / state.flow.grappleShots) * 100) : 0;
       const goldEarned =
-        state.distance < 40
-          ? 1
-          : Math.max(
-              2,
-              Math.min(
-                24,
-                Math.floor(state.distance / 120) +
-                  Math.floor(state.score / 260) +
-                  Math.floor(state.flow.bestCombo / 5) +
-                  state.tier * 2 +
-                  Math.floor(state.coins / 3) +
-                  Math.floor(state.flow.styleScore / 220)
-              )
+        state.distance < 60
+          ? 0
+          : clamp(
+              Math.floor(state.distance / 220) +
+                Math.floor(state.score / 560) +
+                Math.floor(state.flow.bestCombo / 7) +
+                Math.floor(state.flow.styleScore / 260) +
+                Math.floor(state.coins / 5),
+              1,
+              18
             );
       const nextBest = Math.max(bestScoreRef.current, state.score);
       setBestScore(nextBest);
@@ -1848,7 +2329,8 @@ const RooftopRunner: React.FC = () => {
         reason: state.reason,
         bestCombo: state.flow.bestCombo,
         accuracy,
-        styleScore: Math.round(state.flow.styleScore)
+        styleScore: Math.round(state.flow.styleScore),
+        districtName: DISTRICTS[state.activeDistrict].name
       });
       void recordArcadeResult({ scoreGameName: "rooftop_runner", score: state.score, goldEarned }).catch(() => undefined);
       window.setTimeout(() => setPhase("gameOver"), 180);
@@ -1858,7 +2340,7 @@ const RooftopRunner: React.FC = () => {
       const deltaMs = Math.min(33, time - last);
       last = time;
       updatePlayerMovement(state, input, deltaMs);
-      renderWorld(ctx, state, input);
+      renderWorld(ctx, state, input, spritesReady ? spriteBankRef.current : null);
 
       if (state.tier > milestonePlayedForTier) {
         milestonePlayedForTier = state.tier;
@@ -1866,7 +2348,7 @@ const RooftopRunner: React.FC = () => {
       }
 
       hudAccum += deltaMs;
-      if (hudAccum >= 90) {
+      if (hudAccum >= 80) {
         hudAccum = 0;
         const accuracy = state.flow.grappleShots > 0 ? Math.round((state.flow.grappleHits / state.flow.grappleShots) * 100) : 0;
         setHud({
@@ -1875,12 +2357,14 @@ const RooftopRunner: React.FC = () => {
           coins: state.coins,
           speed: Math.round(state.player.velocity.x),
           districtTier: state.tier,
-          areaType: state.activeArea,
+          districtId: state.activeDistrict,
           combo: state.flow.combo,
           bestCombo: state.flow.bestCombo,
           hookReady: state.player.grappleCooldownMs <= 0 && state.player.hook.phase === "idle",
           hookAccuracy: accuracy,
-          styleScore: Math.round(state.flow.styleScore)
+          styleScore: Math.round(state.flow.styleScore),
+          guard: state.player.guard,
+          phaseLabel: DISTRICT_FLOW_NAMES[state.tier]
         });
         setStatus(state.statusText);
       }
@@ -1912,37 +2396,45 @@ const RooftopRunner: React.FC = () => {
       canvas.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointerup", onPointerUp);
     };
-  }, [phase, runSeed]);
+  }, [phase, runSeed, spritesReady]);
 
   const beginRun = () => {
+    const nextState = createInitialState(runSeed + 1);
+    stateRef.current = nextState;
     setLastRun(null);
-    setStatus("Sketch Block is live. Build flow through upper routes, grapples, and clean landings.");
-    setHud({
-      score: 0,
-      distance: 0,
-      coins: 0,
-      speed: getBaseSpeed(0),
-      districtTier: 0,
-      areaType: "openChase",
-      combo: 0,
-      bestCombo: 0,
-      hookReady: true,
-      hookAccuracy: 0,
-      styleScore: 0
-    });
+    setStatus(nextState.statusText);
+    setHud(makeHudState());
     setRunSeed((value) => value + 1);
     setPhase("playing");
   };
+
+  const resumeRun = () => {
+    if (stateRef.current) {
+      setPhase("playing");
+    }
+  };
+
+  useEffect(() => {
+    if (phase !== "title" || autoStartRef.current) return;
+    const search = new URLSearchParams(window.location.search);
+    if (search.get("autostart") !== "1") return;
+    autoStartRef.current = true;
+    const timer = window.setTimeout(() => beginRun(), 260);
+    return () => window.clearTimeout(timer);
+  }, [phase, spritesReady]);
+
+  const activeDistrict = DISTRICTS[hud.districtId];
 
   return (
     <div className="page">
       <NavBar />
       <main className="content card rooftop-shell">
         <div className="rooftop-copy">
+          <span className="rooftop-hero-kicker">Arcade Parkour Runner</span>
           <h1>Rooftop Runner</h1>
           <p>
-            A city parkour action-runner built around chaining jumps, grapples, slides, vaults, and clutch recoveries.
-            The low line is stable. The skyline pays if you can actually hold it.
+            A compact rooftop arcade run built around speed, flow, and stylish survival. Chain slides, vaults, wall kicks,
+            and aimed grapples across eight city districts until the run feels untouchable.
           </p>
         </div>
 
@@ -1953,13 +2445,15 @@ const RooftopRunner: React.FC = () => {
             <div className="rooftop-hud rooftop-hud--top">
               <div className="rooftop-marquee">
                 <span className="rooftop-logo">Rooftop Runner</span>
-                <span className="rooftop-district">{DISTRICT_NAMES[hud.districtTier]}</span>
-                <span className="rooftop-district">{AREA_NAMES[hud.areaType]}</span>
+                <span className="rooftop-pill">{activeDistrict.name}</span>
+                <span className="rooftop-pill rooftop-pill--accent">{hud.phaseLabel}</span>
               </div>
+
               <div className="rooftop-scoreboard">
                 <span>Score {hud.score}</span>
                 <span>{hud.distance}m</span>
                 <span>Coins {hud.coins}</span>
+                <span>Combo x{hud.combo}</span>
               </div>
             </div>
 
@@ -1967,22 +2461,54 @@ const RooftopRunner: React.FC = () => {
               <span>Jump `W` / `Up` / `Space`</span>
               <span>Slide `S` / `Down`</span>
               <span>Grapple click / `E` / `Shift`</span>
-              <span>{hud.hookReady ? "Hook ready" : "Hook cooling"}</span>
+              <span>Pause `Esc`</span>
             </div>
 
             {phase !== "playing" ? (
               <div className="rooftop-overlay">
                 <div className="rooftop-overlay-card rooftop-overlay-card--paper">
-                  <p className="rooftop-overlay-kicker">{phase === "title" ? "Momentum Parkour" : "Run Complete"}</p>
-                  <h2>{phase === "title" ? "Hit the skyline" : `Score ${lastRun?.score ?? 0}`}</h2>
+                  <p className="rooftop-overlay-kicker">
+                    {phase === "title" ? "Momentum Parkour" : phase === "paused" ? "Run Paused" : "Run Complete"}
+                  </p>
+                  <h2>
+                    {phase === "title" ? "Hit the skyline" : phase === "paused" ? "Hold the line" : `Score ${lastRun?.score ?? 0}`}
+                  </h2>
                   <p>
                     {phase === "title"
-                      ? "Free-aim grapples, upper-route bars, wall jumps, slides, vaults, and combo-driven scoring."
-                      : `${lastRun?.reason ?? "Run over."} Combo ${lastRun?.bestCombo ?? 0}. Accuracy ${lastRun?.accuracy ?? 0}%.`}
+                      ? "Mistakes drain guard instead of ending the run instantly. Clean routes, upper bars, and smart slides build the real score."
+                      : phase === "paused"
+                        ? "Resume when you’re ready, or restart and chase a cleaner route through the next district."
+                        : `${lastRun?.reason ?? "Run complete."} Combo ${lastRun?.bestCombo ?? 0}. Accuracy ${lastRun?.accuracy ?? 0}%.`}
                   </p>
-                  <button className="primary-button" type="button" onClick={beginRun}>
-                    {phase === "title" ? "Start Run" : "Run It Back"}
-                  </button>
+
+                  <div className="rooftop-overlay-grid">
+                    {phase === "title" ? (
+                      <>
+                        <span>8 themed districts</span>
+                        <span>Guard-based recovery</span>
+                        <span>Useful slide routes</span>
+                        <span>High-route grapple scoring</span>
+                      </>
+                    ) : lastRun ? (
+                      <>
+                        <span>{lastRun.distance}m covered</span>
+                        <span>{lastRun.coins} pickups</span>
+                        <span>{lastRun.styleScore} style</span>
+                        <span>{lastRun.goldEarned} gold</span>
+                      </>
+                    ) : null}
+                  </div>
+
+                  <div className="rooftop-overlay-actions">
+                    {phase === "paused" ? (
+                      <button className="primary-button" type="button" onClick={resumeRun}>
+                        Resume Run
+                      </button>
+                    ) : null}
+                    <button className="primary-button" type="button" onClick={beginRun}>
+                      {phase === "title" ? "Start Run" : "Run It Back"}
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : null}
@@ -1990,17 +2516,29 @@ const RooftopRunner: React.FC = () => {
 
           <aside className="rooftop-sidepanel">
             <div className="rooftop-panel rooftop-panel--paper">
-              <span className="rooftop-panel-title">Movement</span>
-              <p>Click to fire a traveling grapple toward the cursor. It only sticks when the hook actually hits a valid bar, wire, or recovery anchor.</p>
-              <p>Slides now preserve speed through low-clearance lines. Wall kicks are deliberate recovery tools, not infinite climbing.</p>
+              <span className="rooftop-panel-title">Current District</span>
+              <p>{activeDistrict.subtitle}</p>
+              <p>{activeDistrict.emphasis}</p>
+              <div className="rooftop-districts-grid">
+                {DISTRICT_ORDER.map((districtId) => (
+                  <span
+                    key={districtId}
+                    className={`rooftop-district-chip ${districtId === hud.districtId ? "is-active" : ""}`}
+                    style={{ ["--district-accent" as string]: DISTRICTS[districtId].accent }}
+                  >
+                    {DISTRICTS[districtId].name}
+                  </span>
+                ))}
+              </div>
             </div>
 
             <div className="rooftop-panel rooftop-panel--paper">
-              <span className="rooftop-panel-title">Flow</span>
-              <p>Combo: {hud.combo}</p>
-              <p>Best combo: {hud.bestCombo}</p>
-              <p>Hook accuracy: {hud.hookAccuracy}%</p>
-              <p>Style score: {hud.styleScore}</p>
+              <span className="rooftop-panel-title">Run Readout</span>
+              <p>Speed {hud.speed}</p>
+              <p>Guard {hud.guard}/3</p>
+              <p>Best combo {hud.bestCombo}</p>
+              <p>Hook accuracy {hud.hookAccuracy}%</p>
+              <p>Style score {hud.styleScore}</p>
             </div>
 
             <div className="rooftop-panel rooftop-panel--paper">
@@ -2009,14 +2547,21 @@ const RooftopRunner: React.FC = () => {
               <p>Best score on this device: {bestScore}</p>
               {lastRun ? (
                 <p>
-                  Last run: {lastRun.score} score, {lastRun.distance}m, {lastRun.coins} coins, combo {lastRun.bestCombo}.
+                  Last run: {lastRun.score} score, {lastRun.distance}m, {lastRun.coins} pickups, combo {lastRun.bestCombo}.
                 </p>
               ) : (
-                <p>No clean take yet. The upper route pays more if you can stay there.</p>
+                <p>Low route is safer. Upper route wins runs.</p>
               )}
-              <button className="primary-button" type="button" onClick={beginRun}>
-                {phase === "playing" ? "Restart Run" : phase === "gameOver" ? "Run It Back" : "Start Run"}
-              </button>
+              <div className="rooftop-panel-actions">
+                <button className="primary-button" type="button" onClick={beginRun}>
+                  {phase === "playing" ? "Restart Run" : phase === "paused" ? "Restart Fresh" : "Start Run"}
+                </button>
+                {phase === "paused" ? (
+                  <button className="secondary-button" type="button" onClick={resumeRun}>
+                    Resume
+                  </button>
+                ) : null}
+              </div>
             </div>
           </aside>
         </div>
