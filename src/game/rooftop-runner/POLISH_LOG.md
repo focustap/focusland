@@ -28,5 +28,5 @@
 ## Progress Notes
 
 - 2026-04-19: Initial inspection complete. Existing strengths are momentum verbs and route variety; biggest need is cohesive polish rather than more mechanics.
-- 2026-04-19: Rebuilt the Rooftop Runner page around a stronger arcade loop with guard-based recovery, a clearer title/pause/game-over flow, eight named district themes, improved obstacle readability, and a sprite-based runner instead of the old stick-figure presentation.
-- 2026-04-19: Verified the rework through repeated production builds and browser screenshot passes. The main follow-up signal from testing was to make the opening district order deterministic so the first run teaches before it escalates.
+- 2026-04-20: Discarded the prior Rooftop Runner direction instead of continuing to patch it. The current rebuild is now a clean-sheet side-view rooftop parkour runner with game-specific generated visuals, longer roof traversal spaces, rooftop encounter clusters, and occasional larger roof transitions.
+- 2026-04-20: Replaced the old side-panel page framing with a new full-stage presentation and support deck underneath so the game no longer inherits the previous layout language.
