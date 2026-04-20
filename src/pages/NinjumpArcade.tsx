@@ -87,6 +87,13 @@ const NinjumpArcade: React.FC = () => {
   const bonusAudioRef = useRef<HTMLAudioElement | null>(null);
   const shieldAudioRef = useRef<HTMLAudioElement | null>(null);
   const loseAudioRef = useRef<HTMLAudioElement | null>(null);
+  const soundCooldownsRef = useRef({
+    jump: 0,
+    slash: 0,
+    bonus: 0,
+    shield: 0,
+    lose: 0
+  });
   const [phase, setPhase] = useState<PagePhase>("loading");
   const [hud, setHud] = useState<HudSnapshot>(DEFAULT_HUD);
   const [status, setStatus] = useState("Loading ninja frames.");
@@ -153,6 +160,19 @@ const NinjumpArcade: React.FC = () => {
       });
     };
   }, [assetBase]);
+
+  const playSfx = (key: "jump" | "slash" | "bonus" | "shield" | "lose", audio: HTMLAudioElement | null, cooldownMs: number) => {
+    if (!audio) {
+      return;
+    }
+    const now = performance.now();
+    if (now - soundCooldownsRef.current[key] < cooldownMs) {
+      return;
+    }
+    soundCooldownsRef.current[key] = now;
+    audio.currentTime = 0;
+    void audio.play().catch(() => undefined);
+  };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -224,11 +244,7 @@ const NinjumpArcade: React.FC = () => {
       if (!finished) {
         jumpQueued = true;
         if (phase !== "loading") {
-          const jumpAudio = jumpAudioRef.current;
-          if (jumpAudio) {
-            jumpAudio.currentTime = 0;
-            void jumpAudio.play().catch(() => undefined);
-          }
+          playSfx("jump", jumpAudioRef.current, 85);
         }
       }
     };
@@ -254,35 +270,19 @@ const NinjumpArcade: React.FC = () => {
       }
 
       if (phase === "playing" && state.slashEffects.length > prevSlashCount) {
-        const slashAudio = slashAudioRef.current;
-        if (slashAudio) {
-          slashAudio.currentTime = 0;
-          void slashAudio.play().catch(() => undefined);
-        }
+        playSfx("slash", slashAudioRef.current, 120);
       }
 
       if (phase === "playing" && prevShielded && !state.player.shielded) {
-        const shieldAudio = shieldAudioRef.current;
-        if (shieldAudio) {
-          shieldAudio.currentTime = 0;
-          void shieldAudio.play().catch(() => undefined);
-        }
+        playSfx("shield", shieldAudioRef.current, 180);
       }
 
       if (phase === "playing" && prevBonusTimer <= 0 && state.bonusTimerMs > 0) {
-        const bonusAudio = bonusAudioRef.current;
-        if (bonusAudio) {
-          bonusAudio.currentTime = 0;
-          void bonusAudio.play().catch(() => undefined);
-        }
+        playSfx("bonus", bonusAudioRef.current, 260);
       }
 
       if (phase === "playing" && prevAlive && !state.player.alive) {
-        const loseAudio = loseAudioRef.current;
-        if (loseAudio) {
-          loseAudio.currentTime = 0;
-          void loseAudio.play().catch(() => undefined);
-        }
+        playSfx("lose", loseAudioRef.current, 400);
       }
 
       jumpQueued = false;

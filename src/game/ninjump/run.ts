@@ -18,7 +18,7 @@ const MAX_DELTA_MS = 33;
 const COMBO_WINDOW_MS = 1050;
 const BONUS_TIME_MS = 1800;
 const SHIELD_FLASH_MS = 260;
-const START_MERCY_MS = 4200;
+const START_MERCY_MS = 3000;
 
 export type WallSide = "left" | "right";
 export type EnemyType = "ninja" | "bird" | "squirrel";
@@ -411,15 +411,6 @@ function killPlayer(state: NinjumpState, reason: string) {
   if (!state.player.alive) {
     return;
   }
-  if (hasStartMercy(state)) {
-    preserveAirMomentum(state, JUMP_VX * 0.84);
-    state.player.vy = Math.min(state.player.vy, -320);
-    state.player.trailMs = 160;
-    state.screenShakeMs = Math.max(state.screenShakeMs, 70);
-    awardPopup(state, state.player.x, state.player.y - 52, "MERCY", "#ffe9a6");
-    state.statusText = "Opening grace saved the run.";
-    return;
-  }
   if (consumeShield(state, reason)) {
     preserveAirMomentum(state, JUMP_VX * 0.82);
     state.player.vy = Math.min(state.player.vy, -280);
@@ -564,27 +555,8 @@ function spawnBand(state: NinjumpState) {
   const difficulty = 1 + Math.min(14, state.score / 145);
   const y = state.nextSpawnY;
   const availablePatterns = SPAWN_PATTERNS.filter((pattern) => state.score >= pattern.minScore && state.score < pattern.maxScore);
-  const filteredPatterns = availablePatterns.filter((pattern) => {
-    if (!hasStartMercy(state)) {
-      return true;
-    }
-    const hasBomb = pattern.entries.some((entry) => entry.kind === "bomb");
-    const hasStar = pattern.entries.some((entry) => entry.kind === "star");
-    const hasBarrier = pattern.entries.some((entry) => entry.kind === "barrier");
-    const enemyCount = pattern.entries.filter((entry) => entry.kind === "bird" || entry.kind === "wall-ninja" || entry.kind === "wall-squirrel").length;
-    const pickupCount = pattern.entries.filter((entry) => entry.kind === "shield" || entry.kind === "orb").length;
-
-    if (hasBomb || hasStar) {
-      return false;
-    }
-    if (hasBarrier && enemyCount > 0) {
-      return false;
-    }
-    return enemyCount <= 1 || pickupCount > 0;
-  });
-  const patternPool = filteredPatterns.length > 0 ? filteredPatterns : availablePatterns;
-  const patternIndex = Math.floor(random(state.rngState + y * 0.01) * patternPool.length) % patternPool.length;
-  const pattern = patternPool[patternIndex];
+  const patternIndex = Math.floor(random(state.rngState + y * 0.01) * availablePatterns.length) % availablePatterns.length;
+  const pattern = availablePatterns[patternIndex];
 
   for (const entry of pattern.entries) {
     spawnEntry(state, entry.kind, y + entry.yOffset, difficulty);
@@ -595,6 +567,12 @@ function spawnBand(state: NinjumpState) {
 }
 
 function ensureHazards(state: NinjumpState) {
+  if (hasStartMercy(state)) {
+    state.hazards = [];
+    state.nextSpawnY = state.cameraY - 220;
+    return;
+  }
+
   while (state.nextSpawnY > state.cameraY - SPAWN_BUFFER) {
     spawnBand(state);
   }
