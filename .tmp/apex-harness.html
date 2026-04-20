@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Apex Asphalt QA Harness</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Inter, system-ui, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top left, rgba(56, 189, 248, 0.12), transparent 30%),
+          radial-gradient(circle at bottom right, rgba(249, 115, 22, 0.12), transparent 30%),
+          linear-gradient(180deg, #08101c, #0a1220);
+        color: #eff6ff;
+      }
+
+      .shell {
+        width: min(1320px, calc(100% - 32px));
+        margin: 16px auto;
+        display: grid;
+        gap: 16px;
+      }
+
+      .toolbar,
+      .panel {
+        border: 1px solid rgba(125, 211, 252, 0.18);
+        border-radius: 20px;
+        background: rgba(8, 15, 28, 0.82);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: center;
+        padding: 14px 16px;
+      }
+
+      button,
+      select {
+        border: 1px solid rgba(125, 211, 252, 0.2);
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.95);
+        color: #eff6ff;
+        padding: 10px 14px;
+        cursor: pointer;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 960px) 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+
+      #host {
+        min-height: 540px;
+        border-radius: 26px;
+        overflow: hidden;
+        border: 1px solid rgba(125, 211, 252, 0.18);
+        background: #020617;
+      }
+
+      #host canvas {
+        display: block;
+        width: 100% !important;
+        height: auto !important;
+      }
+
+      .panel {
+        display: grid;
+        gap: 10px;
+        padding: 16px;
+      }
+
+      .panel strong {
+        color: #7dd3fc;
+      }
+
+      .hud {
+        display: grid;
+        gap: 8px;
+      }
+
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .pill {
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.8);
+        border: 1px solid rgba(125, 211, 252, 0.12);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="toolbar">
+        <strong>Apex Asphalt QA Harness</strong>
+        <select id="track"></select>
+        <button id="start">Start Race</button>
+        <button id="restart">Restart Same Track</button>
+        <span id="status">Booting harness...</span>
+      </div>
+      <div class="layout">
+        <div id="host"></div>
+        <div class="panel">
+          <strong>HUD</strong>
+          <div class="hud" id="hud"></div>
+          <strong>Result</strong>
+          <div id="result">No result yet.</div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { mountApexAsphaltGame } from "http://127.0.0.1:4173/focusland/src/game/apex-asphalt/createApexAsphaltGame.ts";
+      import { APEX_TRACKS } from "http://127.0.0.1:4173/focusland/src/game/apex-asphalt/tracks.ts";
+
+      const host = document.getElementById("host");
+      const hud = document.getElementById("hud");
+      const result = document.getElementById("result");
+      const status = document.getElementById("status");
+      const trackSelect = document.getElementById("track");
+      const startButton = document.getElementById("start");
+      const restartButton = document.getElementById("restart");
+      let destroy = null;
+      let selectedTrackId = APEX_TRACKS[0].id;
+
+      APEX_TRACKS.forEach((track) => {
+        const option = document.createElement("option");
+        option.value = track.id;
+        option.textContent = track.name;
+        trackSelect.appendChild(option);
+      });
+
+      function renderHud(snapshot) {
+        hud.innerHTML = "";
+        [
+          `Track ${snapshot.trackName}`,
+          `Lap ${snapshot.lap}/${snapshot.totalLaps}`,
+          `Place P${snapshot.place}/${snapshot.totalRacers}`,
+          `Time ${Math.floor(snapshot.timeMs / 1000)}s`,
+          `Speed ${snapshot.speed} kph`,
+          snapshot.countdown ? `Countdown ${snapshot.countdown}` : "Race live",
+          `Checkpoint ${snapshot.nextCheckpoint}/${snapshot.totalCheckpoints}`,
+          snapshot.message
+        ].forEach((text) => {
+          const pill = document.createElement("div");
+          pill.className = "pill";
+          pill.textContent = text;
+          hud.appendChild(pill);
+        });
+      }
+
+      function launch(trackId) {
+        destroy?.();
+        host.innerHTML = "";
+        result.textContent = "No result yet.";
+        selectedTrackId = trackId;
+        destroy = mountApexAsphaltGame({
+          parent: host,
+          trackId,
+          playerMode: "autopilot",
+          onHudChange: renderHud,
+          onStatus: (message) => {
+            status.textContent = message;
+          },
+          onRaceEnd: (payload) => {
+            result.textContent = `${payload.trackName}: P${payload.place}/${payload.totalRacers} in ${payload.timeMs}ms, score ${payload.score}, gold ${payload.goldEarned}.`;
+          }
+        });
+      }
+
+      trackSelect.addEventListener("change", () => {
+        selectedTrackId = trackSelect.value;
+      });
+      startButton.addEventListener("click", () => launch(trackSelect.value));
+      restartButton.addEventListener("click", () => launch(selectedTrackId));
+
+      launch(selectedTrackId);
+    </script>
+  </body>
+  </html>

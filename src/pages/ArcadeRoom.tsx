@@ -101,6 +101,7 @@ const ArcadeRoom: React.FC = () => {
         }).setOrigin(0.5);
 
         const machines = [
+          { label: "Apex", route: "/arcade/apex-asphalt", x: 104, y: 58, color: 0xfb923c },
           { label: "Hallway 13", route: "/arcade/hallway-13", x: 180, y: 70, color: 0xdc2626 },
           { label: "Gwent", route: "/gwent", x: 104, y: 170, color: 0xf59e0b },
           { label: "Cards", route: "/cards", x: 282, y: 136, color: 0xa855f7 },

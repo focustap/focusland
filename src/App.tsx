@@ -7,6 +7,7 @@ const Brawl = lazy(() => import("./pages/Brawl"));
 const BrawlPvE = lazy(() => import("./pages/BrawlPvE"));
 const BrawlPvEWorld = lazy(() => import("./pages/BrawlPvEWorld"));
 const ArcadeRoom = lazy(() => import("./pages/ArcadeRoom"));
+const ApexAsphalt = lazy(() => import("./pages/ApexAsphalt"));
 const BrawlRoom = lazy(() => import("./pages/BrawlRoom"));
 const CardBattle = lazy(() => import("./pages/CardBattle"));
 const CardDeckWorkshop = lazy(() => import("./pages/CardDeckWorkshop"));
@@ -143,6 +144,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <ArcadeRoom />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/arcade/apex-asphalt"
+            element={
+              <ProtectedRoute>
+                <ApexAsphalt />
               </ProtectedRoute>
             }
           />
