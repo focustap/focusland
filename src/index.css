@@ -7362,12 +7362,30 @@ body[data-theme="dark"] .card-battle-card--hidden {
   text-align: left;
 }
 
+.campfire-game-stage--lobby .campfire-centerpiece .campfire-phase-card,
+.campfire-game-stage--customCards .campfire-centerpiece .campfire-phase-card {
+  display: none;
+}
+
 .campfire-centerpiece .campfire-prompt-card {
   right: 50%;
-  top: 6%;
+  top: 34%;
   bottom: auto;
   transform: translate(50%, -50%) rotate(-1deg);
   width: min(500px, 92%);
+}
+
+.campfire-game-stage--lobby .campfire-centerpiece .campfire-prompt-card,
+.campfire-game-stage--customCards .campfire-centerpiece .campfire-prompt-card {
+  top: 52%;
+}
+
+.campfire-game-stage--submitting .campfire-centerpiece .campfire-prompt-card,
+.campfire-game-stage--locked .campfire-centerpiece .campfire-prompt-card,
+.campfire-game-stage--judging .campfire-centerpiece .campfire-prompt-card,
+.campfire-game-stage--winner .campfire-centerpiece .campfire-prompt-card,
+.campfire-game-stage--gameOver .campfire-centerpiece .campfire-prompt-card {
+  top: 22%;
 }
 
 .campfire-lobby-bar {
@@ -7699,8 +7717,13 @@ body[data-theme="dark"] .card-battle-card--hidden {
   }
 
   .campfire-centerpiece .campfire-prompt-card {
-    top: 24%;
+    top: 32%;
     bottom: auto;
+  }
+
+  .campfire-game-stage--lobby .campfire-centerpiece .campfire-prompt-card,
+  .campfire-game-stage--customCards .campfire-centerpiece .campfire-prompt-card {
+    top: 58%;
   }
 
   .campfire-room-chip--floating,

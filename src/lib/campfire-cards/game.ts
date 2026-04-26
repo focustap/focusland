@@ -84,6 +84,7 @@ const MIN_PLAYERS = 3;
 const DEFAULT_TARGET_SCORE = 7;
 const STARTING_REDRAWS = 3;
 const MAX_CUSTOM_CARD_LENGTH = 96;
+const CUSTOM_DRAW_CHANCE = 0.25;
 
 export const CAMPFIRE_LIMITS = {
   handSize: HAND_SIZE,
@@ -152,11 +153,22 @@ function createDecks(enabledPackIds: string[], customRoomCards: CampfireAnswerCa
 
   return {
     promptDeck: shuffle(prompts),
-    answerDeck: shuffle([...answers, ...customRoomCards.filter((card) => !card.reported)])
+    answerDeck: shuffle(answers)
   };
 }
 
-function drawAnswer(deck: CampfireAnswerCard[], discardPile: CampfireAnswerCard[]) {
+function drawCustomAnswer(customRoomCards: CampfireAnswerCard[], currentHand: CampfireAnswerCard[]) {
+  const handTexts = new Set(currentHand.map((card) => card.text.toLowerCase()));
+  const available = customRoomCards.filter((card) => !card.reported && !handTexts.has(card.text.toLowerCase()));
+  if (!available.length) return null;
+  const source = available[Math.floor(Math.random() * available.length)];
+  return {
+    ...source,
+    id: makeId("custom-draw")
+  };
+}
+
+function drawBaseAnswer(deck: CampfireAnswerCard[], discardPile: CampfireAnswerCard[]) {
   let nextDeck = [...deck];
   let nextDiscard = [...discardPile];
   if (nextDeck.length === 0 && nextDiscard.length > 0) {
@@ -166,6 +178,30 @@ function drawAnswer(deck: CampfireAnswerCard[], discardPile: CampfireAnswerCard[
 
   const card = nextDeck.shift();
   return { card: card ?? null, answerDeck: nextDeck, discardPile: nextDiscard };
+}
+
+function drawAnswer(
+  deck: CampfireAnswerCard[],
+  discardPile: CampfireAnswerCard[],
+  customRoomCards: CampfireAnswerCard[],
+  currentHand: CampfireAnswerCard[]
+) {
+  if (customRoomCards.some((card) => !card.reported) && Math.random() < CUSTOM_DRAW_CHANCE) {
+    const customCard = drawCustomAnswer(customRoomCards, currentHand);
+    if (customCard) {
+      return { card: customCard, answerDeck: deck, discardPile };
+    }
+  }
+
+  const baseResult = drawBaseAnswer(deck, discardPile);
+  if (baseResult.card) return baseResult;
+
+  const fallbackCustom = drawCustomAnswer(customRoomCards, currentHand);
+  return {
+    card: fallbackCustom,
+    answerDeck: baseResult.answerDeck,
+    discardPile: baseResult.discardPile
+  };
 }
 
 function drawPrompt(deck: CampfirePromptCard[], enabledPackIds: string[]) {
@@ -179,13 +215,18 @@ function drawPrompt(deck: CampfirePromptCard[], enabledPackIds: string[]) {
   };
 }
 
-function fillHand(player: CampfirePlayer, answerDeck: CampfireAnswerCard[], discardPile: CampfireAnswerCard[]) {
+function fillHand(
+  player: CampfirePlayer,
+  answerDeck: CampfireAnswerCard[],
+  discardPile: CampfireAnswerCard[],
+  customRoomCards: CampfireAnswerCard[]
+) {
   let nextPlayer = { ...player, hand: [...player.hand] };
   let nextDeck = [...answerDeck];
   let nextDiscard = [...discardPile];
 
   while (nextPlayer.hand.length < HAND_SIZE) {
-    const result = drawAnswer(nextDeck, nextDiscard);
+    const result = drawAnswer(nextDeck, nextDiscard, customRoomCards, nextPlayer.hand);
     if (!result.card) break;
     nextDeck = result.answerDeck;
     nextDiscard = result.discardPile;
@@ -224,7 +265,7 @@ function startRound(state: CampfireState, judgeIndex: number) {
   let answerDeck = state.answerDeck;
   let discardPile = state.discardPile;
   const players = state.players.map((player) => {
-    const result = fillHand(player, answerDeck, discardPile);
+    const result = fillHand(player, answerDeck, discardPile, state.customRoomCards);
     answerDeck = result.answerDeck;
     discardPile = result.discardPile;
     return result.player;
@@ -353,10 +394,10 @@ export function campfireReducer(state: CampfireState, action: CampfireAction): C
     const card = player?.hand.find((entry) => entry.id === action.cardId);
     if (!player || !card) return state;
 
-    const drawResult = drawAnswer(state.answerDeck, state.discardPile);
+    const nextHand = player.hand.filter((handCard) => handCard.id !== action.cardId);
+    const drawResult = drawAnswer(state.answerDeck, state.discardPile, state.customRoomCards, nextHand);
     const players = state.players.map((entry) => {
       if (entry.userId !== action.playerId) return entry;
-      const nextHand = entry.hand.filter((handCard) => handCard.id !== action.cardId);
       return {
         ...entry,
         hand: drawResult.card ? [...nextHand, drawResult.card] : nextHand
@@ -397,7 +438,7 @@ export function campfireReducer(state: CampfireState, action: CampfireAction): C
     let discardPile = [...state.discardPile, ...selected];
     let nextHand = player.hand.filter((card) => !uniqueIds.includes(card.id));
     while (nextHand.length < HAND_SIZE) {
-      const result = drawAnswer(answerDeck, discardPile);
+      const result = drawAnswer(answerDeck, discardPile, state.customRoomCards, nextHand);
       if (!result.card) break;
       answerDeck = result.answerDeck;
       discardPile = result.discardPile;
@@ -478,7 +519,7 @@ export function campfireReducer(state: CampfireState, action: CampfireAction): C
       answerDeck: state.answerDeck.filter((card) => card.id !== action.cardId),
       players: state.players.map((player) => ({
         ...player,
-        hand: player.hand.filter((card) => card.id !== action.cardId)
+        hand: player.hand.filter((card) => card.id !== action.cardId && card.text !== target.text)
       })),
       message: "A custom card was removed from this room."
     };
