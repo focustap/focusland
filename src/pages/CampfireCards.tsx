@@ -407,12 +407,12 @@ const CampfireCards: React.FC = () => {
                   <p>{judge ? `${judge.username} is the Card Czar.` : `Host: ${hostName}`}</p>
                 </div>
                 {state.currentPrompt ? (
-                  <article className="campfire-prompt-card">
-                    <span>Prompt</span>
+                  <article className="campfire-prompt-card" aria-label="Current round prompt">
+                    <span>Round prompt</span>
                     <p>{state.currentPrompt.text}</p>
                   </article>
                 ) : (
-                  <article className="campfire-prompt-card">
+                  <article className="campfire-prompt-card" aria-label="Waiting for round prompt">
                     <span>Waiting at the campfire</span>
                     <p>Gather 3-8 players, choose packs, and add two write-ins before the first prompt drops.</p>
                   </article>
@@ -493,7 +493,7 @@ const CampfireCards: React.FC = () => {
                     <div className="campfire-hand-header">
                       <div>
                         <h2>Your Hand</h2>
-                        <p>{isJudge ? "You are judging. Enjoy the power." : alreadySubmitted ? "Submitted. Waiting for the reveal." : "Pick your strongest nonsense."}</p>
+                        <p>{isJudge ? "You are judging. Enjoy the power." : alreadySubmitted ? "Submitted. Waiting for the reveal." : state.currentPrompt ? "Choose an answer for the prompt at the fire." : "Pick your strongest nonsense."}</p>
                       </div>
                       <strong>Redraws left: {gamePlayer?.redrawsLeft ?? 0}</strong>
                     </div>
