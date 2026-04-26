@@ -12,6 +12,7 @@ const BrawlRoom = lazy(() => import("./pages/BrawlRoom"));
 const CardBattle = lazy(() => import("./pages/CardBattle"));
 const CardDeckWorkshop = lazy(() => import("./pages/CardDeckWorkshop"));
 const CardRoom = lazy(() => import("./pages/CardRoom"));
+const CampfireCards = lazy(() => import("./pages/CampfireCards"));
 const Casino = lazy(() => import("./pages/Casino"));
 const CasinoRoom = lazy(() => import("./pages/CasinoRoom"));
 const CatchGame = lazy(() => import("./pages/CatchGame"));
@@ -176,6 +177,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <NinjumpArcade />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/arcade/campfire-cards"
+            element={
+              <ProtectedRoute>
+                <CampfireCards />
               </ProtectedRoute>
             }
           />

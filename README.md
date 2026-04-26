@@ -144,6 +144,26 @@ You should see the login page. After signing up and logging in, you’ll be redi
 
 ---
 
+## Campfire Cards Packs
+
+The multiplayer party card game lives at `/arcade/campfire-cards`. Its original default card content is stored in `src/lib/campfire-cards/packs.ts`.
+
+To add a pack, append a new object to `CAMPFIRE_CARD_PACKS`:
+
+```ts
+{
+  id: "your-pack-id",
+  name: "Your Pack Name",
+  description: "Short room setup description.",
+  prompts: ["A prompt with ____."],
+  answers: ["an original answer card"]
+}
+```
+
+Keep pack ids stable because rooms store enabled pack ids in realtime state. The Friend Group Pack is intentionally present as an empty placeholder for future private jokes. Bundled Campfire Cards art/audio sources and licenses are listed in `public/assets/campfire-cards/CREDITS.md`.
+
+---
+
 ## How Authentication Works
 
 - The frontend uses the official **`@supabase/supabase-js`** client from `src/lib/supabase.ts`.

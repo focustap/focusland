@@ -6543,3 +6543,1082 @@ body[data-theme="dark"] .card-battle-card--hidden {
   }
 }
 
+.campfire-page {
+  --campfire-cream: #fff7df;
+  --campfire-paper: #f8e7c4;
+  --campfire-ink: #2d1b13;
+  --campfire-ember: #f97316;
+  --campfire-gold: #f6c56c;
+  --campfire-moss: #4d7c56;
+  --campfire-night: #120d17;
+  position: relative;
+  min-height: 100vh;
+  color: var(--campfire-cream);
+  background:
+    linear-gradient(180deg, rgba(18, 13, 23, 0.38), rgba(18, 13, 23, 0.88)),
+    url("/assets/campfire-cards/backgrounds/forest-background.png") center / cover fixed,
+    #120d17;
+  overflow-x: hidden;
+}
+
+.campfire-page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 36%, rgba(249, 115, 22, 0.42), transparent 28%),
+    radial-gradient(circle at 18% 18%, rgba(246, 197, 108, 0.16), transparent 24%),
+    linear-gradient(90deg, rgba(18, 13, 23, 0.34), rgba(18, 13, 23, 0.08), rgba(18, 13, 23, 0.42));
+}
+
+.campfire-shell {
+  position: relative;
+  z-index: 1;
+  width: min(1480px, calc(100% - 28px));
+  margin: 0 auto;
+  padding: 1.1rem 0 2.5rem;
+}
+
+.campfire-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0.8rem 0 1rem;
+}
+
+.campfire-header h1 {
+  margin: 0;
+  font-size: clamp(2.35rem, 6vw, 5.2rem);
+  line-height: 0.95;
+  color: #fff2bd;
+  text-shadow: 0 8px 28px rgba(72, 28, 10, 0.7);
+}
+
+.campfire-header p {
+  max-width: 760px;
+  margin: 0.45rem 0 0;
+  color: #f8e7c4;
+  line-height: 1.55;
+}
+
+.campfire-kicker {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #f6c56c;
+}
+
+.campfire-audio,
+.campfire-actions,
+.campfire-room-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.campfire-icon-button,
+.campfire-primary,
+.campfire-secondary {
+  border: 1px solid rgba(246, 197, 108, 0.36);
+  border-radius: 8px;
+  color: #fff8df;
+  background: rgba(67, 36, 20, 0.82);
+  box-shadow: 0 10px 24px rgba(17, 10, 8, 0.24);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.campfire-icon-button {
+  padding: 0.58rem 0.78rem;
+}
+
+.campfire-primary,
+.campfire-secondary {
+  padding: 0.75rem 1rem;
+}
+
+.campfire-primary {
+  background: linear-gradient(180deg, #de6b21, #8f3f1d);
+}
+
+.campfire-secondary {
+  background: rgba(41, 31, 25, 0.78);
+}
+
+.campfire-icon-button:disabled,
+.campfire-primary:disabled,
+.campfire-secondary:disabled,
+.campfire-answer-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.campfire-pack:disabled {
+  cursor: not-allowed;
+  opacity: 0.82;
+}
+
+.campfire-table {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 300px;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.campfire-scoreboard,
+.campfire-side-panel,
+.campfire-panel,
+.campfire-phase-card {
+  border: 1px solid rgba(246, 197, 108, 0.22);
+  border-radius: 8px;
+  background: rgba(31, 22, 20, 0.78);
+  box-shadow: 0 18px 50px rgba(5, 3, 2, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.campfire-scoreboard,
+.campfire-side-panel,
+.campfire-panel {
+  padding: 1rem;
+}
+
+.campfire-scoreboard,
+.campfire-side-panel {
+  display: grid;
+  gap: 0.75rem;
+  align-content: start;
+}
+
+.campfire-side-panel h2,
+.campfire-panel h2 {
+  margin: 0;
+  color: #fff2bd;
+}
+
+.campfire-side-panel p,
+.campfire-panel p {
+  margin: 0;
+  color: #efd7ae;
+  line-height: 1.48;
+}
+
+.campfire-room-chip {
+  justify-content: space-between;
+  padding: 0.6rem 0.7rem;
+  border-radius: 8px;
+  background: rgba(12, 9, 10, 0.52);
+  color: #efd7ae;
+}
+
+.campfire-room-chip strong {
+  color: #fff2bd;
+}
+
+.campfire-player-seat {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.65rem;
+  border-radius: 8px;
+  background: rgba(84, 48, 28, 0.44);
+  border: 1px solid rgba(246, 197, 108, 0.14);
+}
+
+.campfire-player-seat.is-judge {
+  border-color: rgba(249, 115, 22, 0.82);
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.24), 0 0 22px rgba(249, 115, 22, 0.18);
+}
+
+.campfire-player-seat.is-you {
+  background: rgba(77, 124, 86, 0.34);
+}
+
+.campfire-player-seat strong,
+.campfire-player-seat span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.campfire-player-seat span {
+  color: #e8cba0;
+  font-size: 0.86rem;
+}
+
+.campfire-avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  color: #2d1b13;
+  background: linear-gradient(160deg, #fff2bd, #e9893a);
+  font-weight: 900;
+}
+
+.campfire-center {
+  position: relative;
+  min-height: 420px;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 55%, rgba(249, 115, 22, 0.28), transparent 32%),
+    radial-gradient(ellipse at center, rgba(44, 29, 20, 0.9), rgba(14, 9, 11, 0.54) 68%, rgba(14, 9, 11, 0.72));
+  border: 1px solid rgba(246, 197, 108, 0.2);
+  overflow: hidden;
+}
+
+.campfire-center::before {
+  content: "";
+  position: absolute;
+  width: 86%;
+  aspect-ratio: 1.65;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(90, 55, 32, 0.9), rgba(38, 22, 17, 0.76) 58%, rgba(18, 13, 23, 0) 72%);
+  transform: translateY(36px);
+}
+
+.campfire-fire {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  display: grid;
+  place-items: end center;
+  filter: drop-shadow(0 0 24px rgba(249, 115, 22, 0.8));
+}
+
+.campfire-flame {
+  position: absolute;
+  bottom: 34px;
+  width: 58px;
+  height: 92px;
+  border-radius: 58% 42% 58% 42%;
+  transform: rotate(45deg);
+  animation: campfire-flicker 1.25s ease-in-out infinite alternate;
+}
+
+.campfire-flame--one {
+  background: #ffedd5;
+  width: 38px;
+  height: 66px;
+  z-index: 3;
+}
+
+.campfire-flame--two {
+  background: #facc15;
+  width: 56px;
+  height: 90px;
+  animation-delay: -0.32s;
+  z-index: 2;
+}
+
+.campfire-flame--three {
+  background: #ea580c;
+  width: 76px;
+  height: 104px;
+  animation-delay: -0.7s;
+}
+
+.campfire-logs {
+  position: absolute;
+  bottom: 22px;
+  width: 116px;
+  height: 24px;
+  border-radius: 999px;
+  background:
+    linear-gradient(20deg, transparent 44%, #5b3419 45% 58%, transparent 59%),
+    linear-gradient(-20deg, transparent 44%, #7a4420 45% 58%, transparent 59%);
+}
+
+.campfire-phase-card {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  max-width: 280px;
+  padding: 0.85rem;
+}
+
+.campfire-phase-card span,
+.campfire-prompt-card span,
+.campfire-answer-card span {
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: #d99b55;
+}
+
+.campfire-phase-card strong,
+.campfire-phase-card p {
+  display: block;
+  margin: 0.16rem 0 0;
+}
+
+.campfire-prompt-card {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  width: min(420px, calc(100% - 2rem));
+  min-height: 172px;
+  padding: 1.1rem;
+  border-radius: 8px;
+  color: var(--campfire-cream);
+  background:
+    linear-gradient(180deg, rgba(67, 36, 20, 0.94), rgba(37, 25, 22, 0.94)),
+    url("/assets/campfire-cards/ui/card-empty.png") center / 70px auto repeat;
+  border: 1px solid rgba(246, 197, 108, 0.42);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+}
+
+.campfire-prompt-card p {
+  margin: 0.4rem 0 0;
+  font-size: 1.35rem;
+  line-height: 1.25;
+  font-weight: 900;
+}
+
+.campfire-setup-grid,
+.campfire-play-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.8fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.campfire-pack-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin: 0.8rem 0;
+}
+
+.campfire-pack {
+  min-height: 120px;
+  padding: 0.85rem;
+  border-radius: 8px;
+  color: #f8e7c4;
+  text-align: left;
+  background: rgba(18, 13, 23, 0.5);
+  border: 1px solid rgba(246, 197, 108, 0.16);
+  cursor: pointer;
+}
+
+.campfire-pack.is-enabled {
+  border-color: rgba(246, 197, 108, 0.72);
+  background: linear-gradient(160deg, rgba(77, 124, 86, 0.58), rgba(95, 52, 24, 0.68));
+}
+
+.campfire-pack strong,
+.campfire-pack span {
+  display: block;
+}
+
+.campfire-pack span {
+  margin-top: 0.4rem;
+  line-height: 1.38;
+  color: #e8cba0;
+}
+
+.campfire-field {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.8rem;
+  color: #f6c56c;
+  font-weight: 800;
+}
+
+.campfire-field input {
+  width: 100%;
+  border: 1px solid rgba(246, 197, 108, 0.28);
+  border-radius: 8px;
+  padding: 0.72rem 0.8rem;
+  color: #fff7df;
+  background: rgba(12, 9, 10, 0.72);
+}
+
+.campfire-custom-list {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  margin-top: 0.8rem;
+}
+
+.campfire-custom-list span {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  background: rgba(12, 9, 10, 0.52);
+}
+
+.campfire-custom-list button {
+  border: 0;
+  color: #ffd6a5;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.campfire-submissions {
+  min-height: 310px;
+}
+
+.campfire-facedown-row,
+.campfire-reveal-grid,
+.campfire-hand {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.campfire-facedown-row {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.campfire-card-back {
+  display: grid;
+  place-items: center;
+  min-height: 154px;
+  border-radius: 8px;
+  border: 1px solid rgba(246, 197, 108, 0.28);
+  background:
+    linear-gradient(180deg, rgba(43, 27, 22, 0.34), rgba(12, 9, 10, 0.6)),
+    url("/assets/campfire-cards/ui/card-back.png") center / 74px auto repeat;
+  color: #e8cba0;
+  transform: rotate(-1deg);
+}
+
+.campfire-card-back.is-filled {
+  color: #fff2bd;
+  box-shadow: 0 0 24px rgba(249, 115, 22, 0.24);
+  animation: campfire-card-pop 0.38s ease both;
+}
+
+.campfire-reveal-grid,
+.campfire-hand {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.campfire-answer-card {
+  min-height: 176px;
+  display: grid;
+  align-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 8px;
+  border: 1px solid rgba(95, 52, 24, 0.24);
+  color: var(--campfire-ink);
+  text-align: left;
+  background:
+    linear-gradient(180deg, rgba(255, 247, 223, 0.92), rgba(248, 231, 196, 0.94)),
+    url("/assets/campfire-cards/ui/card-empty.png") center / 62px auto repeat;
+  box-shadow: 0 12px 26px rgba(17, 10, 8, 0.2);
+  cursor: pointer;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.campfire-answer-card:hover:not(:disabled) {
+  transform: translateY(-8px) rotate(-1deg);
+  box-shadow: 0 18px 36px rgba(17, 10, 8, 0.28);
+}
+
+.campfire-answer-card.is-selected,
+.campfire-answer-card.is-redraw,
+.campfire-answer-card.is-winner {
+  border-color: #f97316;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.24), 0 18px 36px rgba(17, 10, 8, 0.28);
+}
+
+.campfire-answer-card.is-redraw {
+  background: linear-gradient(180deg, #fed7aa, #f8e7c4);
+}
+
+.campfire-answer-card--reveal {
+  animation: campfire-card-pop 0.38s ease both;
+}
+
+.campfire-answer-card strong {
+  font-size: 1rem;
+  line-height: 1.32;
+}
+
+.campfire-hand-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.campfire-hand-header strong {
+  padding: 0.46rem 0.62rem;
+  border-radius: 8px;
+  color: #2d1b13;
+  background: #f6c56c;
+  white-space: nowrap;
+}
+
+.campfire-winner-banner {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 8px;
+  background: linear-gradient(160deg, rgba(77, 124, 86, 0.62), rgba(249, 115, 22, 0.32));
+  border: 1px solid rgba(246, 197, 108, 0.36);
+}
+
+.campfire-winner-banner strong {
+  font-size: 1.35rem;
+  color: #fff2bd;
+}
+
+.campfire-embers {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.campfire-embers span {
+  position: absolute;
+  left: calc((var(--ember-index) * 41px) % 100vw);
+  bottom: -24px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f6c56c;
+  box-shadow: 0 0 12px rgba(246, 197, 108, 0.9);
+  animation: campfire-ember-rise calc(5s + (var(--ember-index) * 0.18s)) linear infinite;
+  animation-delay: calc(var(--ember-index) * -0.43s);
+  opacity: 0.72;
+}
+
+@keyframes campfire-flicker {
+  from {
+    transform: rotate(45deg) scale(0.92, 1.02);
+  }
+  to {
+    transform: rotate(43deg) scale(1.08, 0.94);
+  }
+}
+
+@keyframes campfire-card-pop {
+  from {
+    opacity: 0;
+    transform: translateY(18px) rotate(2deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+@keyframes campfire-ember-rise {
+  from {
+    transform: translateY(0) translateX(0) scale(0.8);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.78;
+  }
+  to {
+    transform: translateY(-110vh) translateX(44px) scale(0.2);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 1120px) {
+  .campfire-table,
+  .campfire-setup-grid,
+  .campfire-play-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .campfire-scoreboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .campfire-shell {
+    width: min(100% - 16px, 1480px);
+  }
+
+  .campfire-header,
+  .campfire-hand-header {
+    display: grid;
+  }
+
+  .campfire-scoreboard,
+  .campfire-pack-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .campfire-center {
+    min-height: 520px;
+  }
+
+  .campfire-phase-card,
+  .campfire-prompt-card {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: none;
+  }
+}
+
+.campfire-game-shell {
+  position: relative;
+  z-index: 2;
+  width: min(1540px, calc(100% - 20px));
+  min-height: calc(100vh - 72px);
+  margin: 0 auto;
+  padding: 0.75rem 0 1rem;
+  display: grid;
+  grid-template-rows: auto minmax(640px, 1fr);
+  gap: 0.75rem;
+}
+
+.campfire-game-hud {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(246, 197, 108, 0.18);
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(18, 13, 23, 0.78), rgba(67, 36, 20, 0.48), rgba(18, 13, 23, 0.58));
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+}
+
+.campfire-game-hud h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4.5vw, 4.7rem);
+  line-height: 0.92;
+  color: #fff2bd;
+  text-shadow: 0 8px 28px rgba(72, 28, 10, 0.7);
+}
+
+.campfire-game-hud p {
+  margin: 0.35rem 0 0;
+  max-width: 760px;
+  color: #f8e7c4;
+  line-height: 1.35;
+}
+
+.campfire-game-controls {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.campfire-game-stage {
+  position: relative;
+  display: grid;
+  min-height: 640px;
+  border-radius: 8px;
+  border: 1px solid rgba(246, 197, 108, 0.22);
+  background:
+    radial-gradient(circle at 50% 46%, rgba(249, 115, 22, 0.28), transparent 28%),
+    radial-gradient(ellipse at center, rgba(62, 36, 24, 0.88), rgba(18, 13, 23, 0.36) 56%, rgba(10, 7, 9, 0.72)),
+    linear-gradient(180deg, rgba(18, 13, 23, 0.2), rgba(18, 13, 23, 0.48));
+  box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.38), 0 24px 70px rgba(0, 0, 0, 0.32);
+  overflow: hidden;
+}
+
+.campfire-game-stage::before {
+  content: "";
+  position: absolute;
+  inset: 4%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at center, rgba(103, 62, 32, 0.92), rgba(51, 29, 20, 0.9) 42%, rgba(25, 17, 16, 0.42) 68%, transparent 70%);
+  transform: scaleX(1.18);
+  box-shadow: inset 0 0 0 2px rgba(246, 197, 108, 0.14), inset 0 0 80px rgba(0, 0, 0, 0.42);
+}
+
+.campfire-tabletop {
+  position: relative;
+  min-height: inherit;
+  isolation: isolate;
+}
+
+.campfire-room-chip--floating,
+.campfire-room-chip--packs {
+  position: absolute;
+  z-index: 8;
+  top: 1rem;
+}
+
+.campfire-room-chip--floating {
+  left: 1rem;
+}
+
+.campfire-room-chip--packs {
+  right: 1rem;
+  max-width: min(360px, calc(100% - 2rem));
+}
+
+.campfire-seats {
+  position: absolute;
+  inset: 5.5rem 1.5rem 8.5rem;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.campfire-seats .campfire-player-seat,
+.campfire-empty-seat {
+  position: absolute;
+  width: min(220px, 23vw);
+  min-height: 62px;
+  pointer-events: auto;
+}
+
+.campfire-seats > :nth-child(1) {
+  left: 50%;
+  top: 0;
+  transform: translate(-50%, 0);
+}
+
+.campfire-seats > :nth-child(2) {
+  right: 11%;
+  top: 8%;
+  transform: rotate(5deg);
+}
+
+.campfire-seats > :nth-child(3) {
+  right: 0;
+  top: 42%;
+  transform: translateY(-50%) rotate(3deg);
+}
+
+.campfire-seats > :nth-child(4) {
+  right: 12%;
+  bottom: 0;
+  transform: rotate(-4deg);
+}
+
+.campfire-seats > :nth-child(5) {
+  left: 50%;
+  bottom: -1rem;
+  transform: translate(-50%, 0);
+}
+
+.campfire-seats > :nth-child(6) {
+  left: 12%;
+  bottom: 0;
+  transform: rotate(4deg);
+}
+
+.campfire-seats > :nth-child(7) {
+  left: 0;
+  top: 42%;
+  transform: translateY(-50%) rotate(-3deg);
+}
+
+.campfire-seats > :nth-child(8) {
+  left: 11%;
+  top: 8%;
+  transform: rotate(-5deg);
+}
+
+.campfire-empty-seat {
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(246, 197, 108, 0.2);
+  border-radius: 8px;
+  color: rgba(248, 231, 196, 0.55);
+  background: rgba(18, 13, 23, 0.24);
+  font-weight: 800;
+}
+
+.campfire-centerpiece {
+  position: absolute;
+  z-index: 4;
+  inset: 8rem 18rem 10rem;
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+}
+
+.campfire-centerpiece .campfire-fire {
+  transform: translateY(-6px) scale(1.3);
+}
+
+.campfire-centerpiece .campfire-phase-card {
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(320px, 92%);
+  text-align: center;
+}
+
+.campfire-centerpiece .campfire-prompt-card {
+  right: 50%;
+  bottom: 0;
+  transform: translateX(50%) rotate(-1deg);
+  width: min(500px, 92%);
+}
+
+.campfire-lobby-bar {
+  position: absolute;
+  z-index: 9;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  width: min(760px, calc(100% - 2rem));
+  display: flex;
+  justify-content: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  padding: 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(246, 197, 108, 0.22);
+  background: rgba(18, 13, 23, 0.72);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(10px);
+}
+
+.campfire-submission-tray,
+.campfire-hand-dock {
+  position: absolute;
+  z-index: 10;
+  border: 1px solid rgba(246, 197, 108, 0.22);
+  border-radius: 8px;
+  background: rgba(31, 22, 20, 0.82);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(12px);
+}
+
+.campfire-submission-tray {
+  top: 5rem;
+  right: 1rem;
+  width: min(470px, calc(100% - 2rem));
+  max-height: 52vh;
+  overflow: auto;
+  padding: 0.9rem;
+}
+
+.campfire-submission-tray h2,
+.campfire-hand-dock h2 {
+  margin: 0;
+  color: #fff2bd;
+}
+
+.campfire-hand-dock {
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  padding: 0.9rem;
+}
+
+.campfire-hand-dock .campfire-hand {
+  display: flex;
+  gap: 0.65rem;
+  overflow-x: auto;
+  padding: 0.5rem 0.15rem 0.25rem;
+  scroll-snap-type: x proximity;
+}
+
+.campfire-hand-dock .campfire-answer-card {
+  flex: 0 0 clamp(150px, 14vw, 205px);
+  min-height: 150px;
+  scroll-snap-align: start;
+}
+
+.campfire-submission-tray .campfire-facedown-row,
+.campfire-submission-tray .campfire-reveal-grid {
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+}
+
+.campfire-submission-tray .campfire-card-back,
+.campfire-submission-tray .campfire-answer-card {
+  min-height: 138px;
+}
+
+.campfire-overlay {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(7, 5, 8, 0.58);
+  backdrop-filter: blur(8px);
+}
+
+.campfire-overlay-card {
+  width: min(900px, 96vw);
+  max-height: min(760px, 88vh);
+  overflow: auto;
+  border: 1px solid rgba(246, 197, 108, 0.3);
+  border-radius: 8px;
+  padding: 1rem;
+  color: #fff7df;
+  background:
+    linear-gradient(180deg, rgba(40, 25, 21, 0.96), rgba(16, 11, 13, 0.97)),
+    url("/assets/campfire-cards/backgrounds/forest-background.png") center / cover;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.5);
+}
+
+.campfire-overlay-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 0.8rem;
+}
+
+.campfire-overlay-header span {
+  color: #f6c56c;
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.campfire-overlay-header h2 {
+  margin: 0.1rem 0 0;
+  color: #fff2bd;
+}
+
+.campfire-overlay-copy,
+.campfire-rules-list p {
+  color: #efd7ae;
+  line-height: 1.5;
+}
+
+.campfire-rules-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.campfire-full-message {
+  align-self: center;
+  justify-self: center;
+  width: min(520px, 92vw);
+  padding: 1.2rem;
+  border-radius: 8px;
+  border: 1px solid rgba(246, 197, 108, 0.26);
+  background: rgba(31, 22, 20, 0.82);
+  text-align: center;
+}
+
+@media (max-width: 1180px) {
+  .campfire-game-shell {
+    grid-template-rows: auto minmax(760px, 1fr);
+  }
+
+  .campfire-game-hud {
+    display: grid;
+  }
+
+  .campfire-game-controls {
+    justify-content: flex-start;
+  }
+
+  .campfire-centerpiece {
+    inset: 9rem 11rem 15rem;
+  }
+
+  .campfire-submission-tray {
+    top: auto;
+    left: 1rem;
+    right: 1rem;
+    bottom: 18rem;
+    width: auto;
+    max-height: 210px;
+  }
+}
+
+@media (max-width: 820px) {
+  .campfire-game-shell {
+    width: min(100% - 12px, 1540px);
+    grid-template-rows: auto minmax(860px, 1fr);
+  }
+
+  .campfire-game-hud h1 {
+    font-size: clamp(2rem, 13vw, 3.3rem);
+  }
+
+  .campfire-game-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .campfire-icon-button,
+  .campfire-primary,
+  .campfire-secondary {
+    width: 100%;
+  }
+
+  .campfire-seats {
+    inset: 5rem 0.6rem 18rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    gap: 0.5rem;
+  }
+
+  .campfire-seats .campfire-player-seat,
+  .campfire-empty-seat,
+  .campfire-seats > * {
+    position: static;
+    width: auto;
+    min-height: 54px;
+    transform: none !important;
+  }
+
+  .campfire-centerpiece {
+    inset: 19rem 0.75rem 18rem;
+    min-height: 280px;
+  }
+
+  .campfire-centerpiece .campfire-fire {
+    transform: translateY(-12px) scale(0.9);
+  }
+
+  .campfire-centerpiece .campfire-phase-card {
+    top: -1rem;
+  }
+
+  .campfire-centerpiece .campfire-prompt-card {
+    bottom: 0;
+  }
+
+  .campfire-room-chip--floating,
+  .campfire-room-chip--packs {
+    position: static;
+    margin: 0.5rem;
+  }
+
+  .campfire-submission-tray {
+    bottom: 18rem;
+    max-height: 180px;
+  }
+
+  .campfire-lobby-bar,
+  .campfire-hand-dock {
+    left: 0.5rem;
+    right: 0.5rem;
+    width: auto;
+    transform: none;
+  }
+
+  .campfire-lobby-bar {
+    bottom: 0.5rem;
+  }
+
+  .campfire-hand-dock {
+    bottom: 0.5rem;
+  }
+}
+

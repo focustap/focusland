@@ -113,7 +113,8 @@ const ArcadeRoom: React.FC = () => {
           { label: "Town Rush", route: "/town-rush", x: 334, y: 346, color: 0x38bdf8 },
           { label: "Rooftop", route: "/rooftop-runner", x: 454, y: 346, color: 0xf97316 },
           { label: "Invaders", route: "/hangar", x: 574, y: 346, color: 0xeab308 },
-          { label: "NinJump", route: "/arcade/ninjump", x: 676, y: 346, color: 0x60a5fa }
+          { label: "NinJump", route: "/arcade/ninjump", x: 676, y: 346, color: 0x60a5fa },
+          { label: "Campfire", route: "/arcade/campfire-cards", x: 676, y: 238, color: 0xf97316 }
         ];
 
         machines.forEach((machine) => {
