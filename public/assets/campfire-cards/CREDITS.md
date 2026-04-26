@@ -3,10 +3,12 @@
 Game UI composition in `src/pages/CampfireCards.tsx` and `src/lib/campfire-cards` is original to this project.
 
 Card pack text in `src/lib/campfire-cards/packs.ts` was imported from the user-provided local CSV at `D:/Downloads/Base Card Pack.csv`.
+Main Deck text in `src/lib/campfire-cards/packs.ts` was imported from the user-provided local CSV at `D:/Downloads/Cards Against Humanity - CAH Main Deck.csv`.
 
 ## Card Import Notes
 
 - Local CSV import source: `D:/Downloads/Base Card Pack.csv`.
+- Local main deck CSV source: `D:/Downloads/Cards Against Humanity - CAH Main Deck.csv`.
 - Import filter: only one-answer prompts were included. Multi-answer prompts such as `PICK 2`, `PICK 3`, draw-multiple prompts, and multiple-blank prompts were excluded.
 - Reimport path: provide a CSV of prompt/response cards, then run `node scripts/import-campfire-cards.mjs path/to/cards.csv`.
 

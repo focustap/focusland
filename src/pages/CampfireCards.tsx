@@ -55,6 +55,8 @@ const CampfireCards: React.FC = () => {
   const [musicOn, setMusicOn] = useState(false);
   const [audioMuted, setAudioMuted] = useState(false);
   const [activeOverlay, setActiveOverlay] = useState<OverlayId | null>(null);
+  const [showIncompletePacks, setShowIncompletePacks] = useState(false);
+  const [handCollapsed, setHandCollapsed] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const stateRef = useRef<CampfireState>(createEmptyCampfireState());
   const playersRef = useRef<CampfirePresencePlayer[]>([]);
@@ -88,13 +90,13 @@ const CampfireCards: React.FC = () => {
     state.phase === "winner" ||
     state.phase === "gameOver";
 
-  const selectedPackNames = useMemo(
-    () =>
-      CAMPFIRE_CARD_PACKS.filter((pack) => state.enabledPackIds.includes(pack.id))
-        .map((pack) => pack.name)
-        .join(", "),
-    [state.enabledPackIds]
-  );
+  const packMenu = useMemo(() => {
+    const playable = CAMPFIRE_CARD_PACKS.filter((pack) => pack.prompts.length > 0 && pack.answers.length > 0);
+    const incomplete = CAMPFIRE_CARD_PACKS.filter((pack) => pack.prompts.length === 0 || pack.answers.length === 0);
+    return { playable, incomplete };
+  }, []);
+
+  const enabledPackSummary = `${state.enabledPackIds.length} pack${state.enabledPackIds.length === 1 ? "" : "s"} enabled`;
 
   const displayPlayers = state.players.length
     ? state.players
@@ -367,7 +369,7 @@ const CampfireCards: React.FC = () => {
               </div>
               <div className="campfire-room-chip campfire-room-chip--packs">
                 <span>Packs</span>
-                <strong>{selectedPackNames || "None"}</strong>
+                <strong>{enabledPackSummary}</strong>
               </div>
 
               <div className="campfire-seats" aria-label="Players around the table">
@@ -489,44 +491,56 @@ const CampfireCards: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="campfire-hand-dock">
+                  <div className={`campfire-hand-dock${handCollapsed ? " is-collapsed" : ""}`}>
                     <div className="campfire-hand-header">
                       <div>
                         <h2>Your Hand</h2>
                         <p>{isJudge ? "You are judging. Enjoy the power." : alreadySubmitted ? "Submitted. Waiting for the reveal." : state.currentPrompt ? "Choose an answer for the prompt at the fire." : "Pick your strongest nonsense."}</p>
                       </div>
                       <strong>Redraws left: {gamePlayer?.redrawsLeft ?? 0}</strong>
+                      <button className="campfire-secondary campfire-hand-toggle" type="button" onClick={() => setHandCollapsed((value) => !value)}>
+                        {handCollapsed ? "Expand hand" : "Collapse"}
+                      </button>
                     </div>
-                    <div className="campfire-hand">
-                      {gamePlayer?.hand.map((card) => {
-                        const selectedForRedraw = redrawSelection.includes(card.id);
-                        return (
-                          <button
-                            key={card.id}
-                            type="button"
-                            className={`campfire-answer-card${selectedCardId === card.id ? " is-selected" : ""}${selectedForRedraw ? " is-redraw" : ""}`}
-                            onClick={() => redrawMode ? toggleRedrawCard(card.id) : setSelectedCardId(card.id)}
-                            disabled={isJudge || alreadySubmitted || state.phase !== "submitting"}
-                          >
-                            <span>{card.packId === "custom" ? "Write-in" : card.packId}</span>
-                            <strong>{card.text}</strong>
+                    {handCollapsed ? (
+                      <button className="campfire-hand-compact" type="button" onClick={() => setHandCollapsed(false)}>
+                        <span>Your Hand</span>
+                        <strong>{gamePlayer?.hand.length ?? 0} cards / Redraws left: {gamePlayer?.redrawsLeft ?? 0}</strong>
+                      </button>
+                    ) : (
+                      <>
+                        <div className="campfire-hand">
+                          {gamePlayer?.hand.map((card) => {
+                            const selectedForRedraw = redrawSelection.includes(card.id);
+                            return (
+                              <button
+                                key={card.id}
+                                type="button"
+                                className={`campfire-answer-card${selectedCardId === card.id ? " is-selected" : ""}${selectedForRedraw ? " is-redraw" : ""}`}
+                                onClick={() => redrawMode ? toggleRedrawCard(card.id) : setSelectedCardId(card.id)}
+                                disabled={isJudge || alreadySubmitted || state.phase !== "submitting"}
+                              >
+                                <span>{card.packId === "custom" ? "Write-in" : card.packId}</span>
+                                <strong>{card.text}</strong>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="campfire-actions">
+                          <button className="campfire-primary" type="button" onClick={submitAnswer} disabled={!selectedCard || isJudge || alreadySubmitted || state.phase !== "submitting" || redrawMode}>
+                            Submit answer
                           </button>
-                        );
-                      })}
-                    </div>
-                    <div className="campfire-actions">
-                      <button className="campfire-primary" type="button" onClick={submitAnswer} disabled={!selectedCard || isJudge || alreadySubmitted || state.phase !== "submitting" || redrawMode}>
-                        Submit answer
-                      </button>
-                      <button className="campfire-secondary" type="button" onClick={() => setRedrawMode((value) => !value)} disabled={isJudge || alreadySubmitted || state.phase !== "submitting" || !gamePlayer?.redrawsLeft}>
-                        {redrawMode ? "Cancel redraw" : "Redraw cards"}
-                      </button>
-                      {redrawMode && (
-                        <button className="campfire-secondary" type="button" onClick={confirmRedraw} disabled={redrawSelection.length < 1 || redrawSelection.length >= CAMPFIRE_LIMITS.handSize}>
-                          Redraw {redrawSelection.length}
-                        </button>
-                      )}
-                    </div>
+                          <button className="campfire-secondary" type="button" onClick={() => setRedrawMode((value) => !value)} disabled={isJudge || alreadySubmitted || state.phase !== "submitting" || !gamePlayer?.redrawsLeft}>
+                            {redrawMode ? "Cancel redraw" : "Redraw cards"}
+                          </button>
+                          {redrawMode && (
+                            <button className="campfire-secondary" type="button" onClick={confirmRedraw} disabled={redrawSelection.length < 1 || redrawSelection.length >= CAMPFIRE_LIMITS.handSize}>
+                              Redraw {redrawSelection.length}
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </>
               )}
@@ -552,9 +566,9 @@ const CampfireCards: React.FC = () => {
 
               {activeOverlay === "packs" && (
                 <>
-                  <p className="campfire-overlay-copy">Host chooses which original packs are shuffled into this room.</p>
+                  <p className="campfire-overlay-copy">Host chooses which packs are shuffled into this room. Main Deck starts enabled by default.</p>
                   <div className="campfire-pack-grid">
-                    {CAMPFIRE_CARD_PACKS.map((pack) => (
+                    {packMenu.playable.map((pack) => (
                       <button
                         key={pack.id}
                         type="button"
@@ -563,9 +577,32 @@ const CampfireCards: React.FC = () => {
                         disabled={!isHost || !inLobby}
                       >
                         <strong>{pack.name}</strong>
+                        <small>{pack.prompts.length} prompts, {pack.answers.length} responses</small>
                         <span>{pack.description}</span>
                       </button>
                     ))}
+                  </div>
+                  <div className="campfire-pack-section">
+                    <button className="campfire-secondary" type="button" onClick={() => setShowIncompletePacks((value) => !value)}>
+                      {showIncompletePacks ? "Hide incomplete packs" : `Show incomplete/add-on packs (${packMenu.incomplete.length})`}
+                    </button>
+                    {showIncompletePacks && (
+                      <div className="campfire-pack-grid campfire-pack-grid--compact">
+                        {packMenu.incomplete.map((pack) => (
+                          <button
+                            key={pack.id}
+                            type="button"
+                            className={`campfire-pack campfire-pack--incomplete${state.enabledPackIds.includes(pack.id) ? " is-enabled" : ""}`}
+                            onClick={() => togglePack(pack.id)}
+                            disabled={!isHost || !inLobby}
+                          >
+                            <strong>{pack.name}</strong>
+                            <small>{pack.prompts.length} prompts, {pack.answers.length} responses</small>
+                            <span>{pack.description}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
