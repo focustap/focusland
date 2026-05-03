@@ -582,6 +582,300 @@ a {
   background: rgba(251, 191, 36, 0.24);
 }
 
+.house-page {
+  background:
+    radial-gradient(circle at 18% 8%, rgba(253, 186, 116, 0.24), transparent 28%),
+    radial-gradient(circle at 82% 4%, rgba(125, 211, 252, 0.16), transparent 24%),
+    linear-gradient(180deg, #1d1524 0%, #2d1b24 46%, #3a241d 100%);
+  color: #fff7ed;
+}
+
+.house-shell {
+  --house-tile: min(48px, calc((100vw - 32px) / 12));
+  width: min(1180px, calc(100% - 24px));
+  margin: 1.25rem auto 2rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.house-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1rem;
+  border: 1px solid rgba(246, 197, 108, 0.2);
+  border-radius: 8px;
+  background: rgba(18, 13, 23, 0.62);
+  box-shadow: 0 20px 48px rgba(12, 8, 10, 0.28);
+}
+
+.house-header h1,
+.house-header p,
+.house-inventory h2,
+.house-inventory p,
+.house-status {
+  margin: 0;
+}
+
+.house-header h1 {
+  color: #fff2bd;
+  font-size: clamp(2rem, 5vw, 3.8rem);
+  line-height: 0.95;
+}
+
+.house-header p,
+.house-inventory p {
+  color: #f8d6aa;
+  line-height: 1.4;
+}
+
+.house-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.house-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1rem;
+  align-items: start;
+}
+
+.house-stage-wrap,
+.house-inventory {
+  border: 1px solid rgba(246, 197, 108, 0.22);
+  border-radius: 8px;
+  background: rgba(18, 13, 23, 0.58);
+  box-shadow: 0 24px 54px rgba(12, 8, 10, 0.32);
+}
+
+.house-stage-wrap {
+  padding: clamp(0.6rem, 2vw, 1rem);
+  overflow-x: auto;
+}
+
+.house-room {
+  position: relative;
+  width: calc(12 * var(--house-tile));
+  height: calc(7 * var(--house-tile));
+  margin: 0 auto;
+  overflow: hidden;
+  isolation: isolate;
+  border: 2px solid rgba(95, 52, 24, 0.82);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 247, 220, 0.18), transparent 52%),
+    linear-gradient(180deg, #c98b5b 0 43%, #8d5b3a 43% 100%);
+  cursor: default;
+}
+
+.house-room.is-editing {
+  cursor: crosshair;
+}
+
+.house-room.is-editing::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 140;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 247, 220, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 247, 220, 0.18) 1px, transparent 1px);
+  background-size: var(--house-tile) var(--house-tile);
+}
+
+.house-room__wall,
+.house-room__floor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.house-room__wall {
+  z-index: 1;
+  height: calc(3 * var(--house-tile));
+  background:
+    radial-gradient(circle at 12% 30%, rgba(255, 242, 189, 0.2), transparent 16%),
+    linear-gradient(90deg, rgba(255, 247, 220, 0.12), transparent 18% 82%, rgba(87, 44, 30, 0.22)),
+    repeating-linear-gradient(90deg, rgba(95, 52, 24, 0.16) 0 2px, transparent 2px 48px),
+    #cf8f62;
+}
+
+.house-room__floor {
+  top: calc(3 * var(--house-tile));
+  z-index: 2;
+  background:
+    repeating-linear-gradient(0deg, rgba(76, 39, 26, 0.18) 0 2px, transparent 2px 48px),
+    repeating-linear-gradient(90deg, rgba(255, 247, 220, 0.09) 0 2px, transparent 2px 96px),
+    linear-gradient(180deg, #9b6843, #724329);
+}
+
+.house-placed-item,
+.house-ghost {
+  position: absolute;
+  display: grid;
+  align-items: end;
+  justify-items: start;
+  padding: 0;
+}
+
+.house-placed-item {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.house-placed-item img,
+.house-ghost img,
+.house-inventory-item img {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  user-select: none;
+  pointer-events: none;
+}
+
+.house-placed-item.is-selected {
+  outline: 2px solid #fbbf24;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.house-ghost {
+  z-index: 150;
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+.house-ghost.is-invalid {
+  opacity: 0.42;
+  filter: sepia(1) saturate(2.4) hue-rotate(305deg);
+}
+
+.house-ghost.is-invalid::after,
+.house-ghost.is-valid::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+}
+
+.house-ghost.is-valid::after {
+  border: 2px solid rgba(134, 239, 172, 0.82);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.house-ghost.is-invalid::after {
+  border: 2px solid rgba(248, 113, 113, 0.9);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.house-status {
+  margin-top: 0.8rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 8px;
+  color: #fff7ed;
+  background: rgba(67, 36, 20, 0.56);
+}
+
+.house-status.is-warning {
+  color: #fee2e2;
+  background: rgba(127, 29, 29, 0.58);
+}
+
+.house-inventory {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+}
+
+.house-inventory h2 {
+  color: #fff2bd;
+}
+
+.house-inventory__grid {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.house-inventory-item {
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  grid-template-rows: auto auto;
+  gap: 0.15rem 0.65rem;
+  align-items: center;
+  min-height: 68px;
+  padding: 0.5rem;
+  border: 1px solid rgba(246, 197, 108, 0.18);
+  border-radius: 8px;
+  color: #fff7ed;
+  text-align: left;
+  background: rgba(12, 9, 10, 0.42);
+  cursor: pointer;
+}
+
+.house-inventory-item:hover:not(:disabled),
+.house-inventory-item.is-selected {
+  border-color: rgba(246, 197, 108, 0.78);
+  background: rgba(95, 52, 24, 0.58);
+}
+
+.house-inventory-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.house-inventory-item img {
+  grid-row: 1 / 3;
+  width: 48px;
+  max-height: 48px;
+  object-fit: contain;
+}
+
+.house-inventory-item span {
+  font-weight: 800;
+}
+
+.house-inventory-item small {
+  color: #f6c56c;
+}
+
+@media (max-width: 980px) {
+  .house-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .house-inventory__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .house-shell {
+    width: min(100% - 12px, 1180px);
+  }
+
+  .house-header,
+  .house-actions {
+    display: grid;
+  }
+
+  .house-actions,
+  .house-actions button {
+    width: 100%;
+  }
+
+  .house-inventory__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 form {
   display: flex;
   flex-direction: column;
@@ -6880,6 +7174,28 @@ body[data-theme="dark"] .card-battle-card--hidden {
   font-size: 1.35rem;
   line-height: 1.25;
   font-weight: 900;
+}
+
+.campfire-prompt-skip {
+  margin-top: 0.9rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid rgba(246, 197, 108, 0.36);
+  border-radius: 999px;
+  color: #f8e7c4;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.campfire-prompt-skip:hover:not(:disabled) {
+  border-color: rgba(246, 197, 108, 0.72);
+  background: rgba(246, 197, 108, 0.16);
+  transform: translateY(-1px);
+}
+
+.campfire-prompt-skip:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .campfire-setup-grid,

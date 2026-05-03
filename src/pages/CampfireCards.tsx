@@ -300,6 +300,11 @@ const CampfireCards: React.FC = () => {
     void sendAction({ type: "start-game", players: seatedPlayers });
   };
 
+  const skipPrompt = () => {
+    if (!currentUserId) return;
+    void sendAction({ type: "skip-prompt", judgeId: currentUserId });
+  };
+
   const submitAnswer = () => {
     if (!currentUserId || !selectedCard) return;
     void sendAction({ type: "submit-answer", playerId: currentUserId, cardId: selectedCard.id });
@@ -412,6 +417,17 @@ const CampfireCards: React.FC = () => {
                   <article className="campfire-prompt-card" aria-label="Current round prompt">
                     <span>Round prompt</span>
                     <p>{state.currentPrompt.text}</p>
+                    {isJudge && state.phase === "submitting" && (
+                      <button
+                        className="campfire-prompt-skip"
+                        type="button"
+                        onClick={skipPrompt}
+                        disabled={state.submissions.length > 0}
+                        title={state.submissions.length > 0 ? "Prompts can only be skipped before answers are submitted." : "Draw a different prompt."}
+                      >
+                        Skip prompt
+                      </button>
+                    )}
                   </article>
                 ) : (
                   <article className="campfire-prompt-card" aria-label="Waiting for round prompt">
