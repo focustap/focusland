@@ -9,6 +9,7 @@ const BrawlPvEWorld = lazy(() => import("./pages/BrawlPvEWorld"));
 const ArcadeRoom = lazy(() => import("./pages/ArcadeRoom"));
 const ApexAsphalt = lazy(() => import("./pages/ApexAsphalt"));
 const BrawlRoom = lazy(() => import("./pages/BrawlRoom"));
+const BeachBumpBash = lazy(() => import("./pages/BeachBumpBash"));
 const CardBattle = lazy(() => import("./pages/CardBattle"));
 const CardDeckWorkshop = lazy(() => import("./pages/CardDeckWorkshop"));
 const CardRoom = lazy(() => import("./pages/CardRoom"));
@@ -186,6 +187,14 @@ const App = () => {
             element={
               <ProtectedRoute>
                 <CampfireCards />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/arcade/beach-bump-bash"
+            element={
+              <ProtectedRoute>
+                <BeachBumpBash />
               </ProtectedRoute>
             }
           />

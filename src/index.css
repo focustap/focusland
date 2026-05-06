@@ -8145,3 +8145,248 @@ body[data-theme="dark"] .card-battle-card--hidden {
   }
 }
 
+.beach-bump-page {
+  min-height: 100vh;
+  color: #fff7ed;
+  background:
+    linear-gradient(180deg, rgba(14, 116, 144, 0.2), rgba(15, 23, 42, 0.9)),
+    url("/assets/volleyball/beach-background.svg") center / cover fixed,
+    #0f766e;
+}
+
+.beach-bump-shell {
+  width: min(1240px, calc(100% - 24px));
+  margin: 1rem auto 2rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.beach-bump-topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: end;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(255, 247, 237, 0.22);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.76);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.28);
+}
+
+.beach-bump-topbar h1,
+.beach-bump-topbar p,
+.beach-bump-topbar span,
+.beach-bump-panel h2,
+.beach-bump-panel p {
+  margin: 0;
+}
+
+.beach-bump-topbar h1 {
+  font-size: clamp(2rem, 5vw, 4rem);
+  line-height: 0.95;
+}
+
+.beach-bump-kicker {
+  color: #fde68a;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.beach-bump-topbar span,
+.beach-bump-panel p,
+.beach-bump-copy-grid p {
+  color: #dff8f6;
+}
+
+.beach-bump-actions,
+.beach-bump-field-row {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.beach-bump-actions button,
+.beach-bump-panel button,
+.beach-bump-modal button {
+  border: 1px solid rgba(255, 247, 237, 0.28);
+  border-radius: 8px;
+  padding: 0.62rem 0.82rem;
+  background: rgba(15, 23, 42, 0.7);
+  color: #fff7ed;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.beach-bump-actions button:hover,
+.beach-bump-panel button:hover,
+.beach-bump-modal button:hover {
+  border-color: rgba(253, 224, 71, 0.7);
+  background: rgba(20, 83, 45, 0.72);
+}
+
+.beach-bump-panel button:disabled,
+.beach-bump-modal button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.beach-bump-panel .beach-bump-primary,
+.beach-bump-field-row button.is-active {
+  background: linear-gradient(180deg, #f97316, #be4b1a);
+  border-color: rgba(255, 247, 237, 0.44);
+}
+
+.beach-bump-menu,
+.beach-bump-waiting {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.beach-bump-waiting {
+  grid-template-columns: 1fr;
+  justify-items: center;
+}
+
+.beach-bump-panel {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 247, 237, 0.2);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.82);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.25);
+}
+
+.beach-bump-panel--wide {
+  width: min(620px, 100%);
+  text-align: center;
+}
+
+.beach-bump-field {
+  display: grid;
+  gap: 0.35rem;
+  color: #fde68a;
+  font-weight: 800;
+}
+
+.beach-bump-field input,
+.beach-bump-field select {
+  border: 1px solid rgba(255, 247, 237, 0.26);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+  background: rgba(2, 6, 23, 0.72);
+  color: #fff7ed;
+  font: inherit;
+}
+
+.beach-bump-room-list,
+.beach-bump-roster,
+.beach-bump-copy-grid {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.beach-bump-room-list button,
+.beach-bump-roster span {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  text-align: left;
+}
+
+.beach-bump-room-list span,
+.beach-bump-roster span {
+  color: #dff8f6;
+}
+
+.beach-bump-room-code {
+  justify-self: center;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid rgba(253, 224, 71, 0.42);
+  border-radius: 8px;
+  background: rgba(120, 53, 15, 0.35);
+  color: #fef3c7;
+  font-size: 1.35rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+}
+
+.beach-bump-stage-wrap {
+  display: grid;
+  place-items: center;
+}
+
+.beach-bump-stage {
+  width: min(100%, 1100px);
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid rgba(255, 247, 237, 0.28);
+  border-radius: 8px;
+  background: #7dd3fc;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.38);
+}
+
+.beach-bump-stage canvas {
+  display: block;
+}
+
+.beach-bump-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.68);
+}
+
+.beach-bump-modal-card {
+  width: min(620px, 96vw);
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid rgba(255, 247, 237, 0.24);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(20, 83, 45, 0.92)),
+    #0f172a;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.46);
+}
+
+.beach-bump-modal-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.beach-bump-modal-head h2 {
+  margin: 0;
+}
+
+@media (max-width: 820px) {
+  .beach-bump-topbar,
+  .beach-bump-menu {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .beach-bump-actions {
+    justify-content: start;
+  }
+
+  .beach-bump-actions button {
+    flex: 1 1 120px;
+  }
+
+  .beach-bump-shell {
+    width: min(100% - 12px, 1240px);
+  }
+}
+
