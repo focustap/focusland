@@ -87,10 +87,10 @@ export const VOLLEYBALL_NET_WIDTH = 16;
 export const VOLLEYBALL_PLAYER_RADIUS = 24;
 export const VOLLEYBALL_BALL_RADIUS = 14;
 
-const PLAYER_SPEED = 270;
-const DIVE_SPEED = 430;
-const JUMP_SPEED = -710;
-const GRAVITY = 1420;
+export const PLAYER_SPEED = 270;
+export const DIVE_SPEED = 430;
+export const JUMP_SPEED = -710;
+export const GRAVITY = 1420;
 const BALL_GRAVITY = 980;
 const BALL_DRAG = 0.998;
 const COURT_MARGIN = 44;
@@ -354,72 +354,75 @@ export function stepVolleyballState(
 }
 
 function updatePlayers(state: VolleyballMatchState, inputs: VolleyballInputs, dt: number) {
-  return state.players.map((player) => {
-    const input = inputs[player.id] ?? {};
-    const move = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-    const minX = player.team === "sun" ? COURT_MARGIN : VOLLEYBALL_NET_X + VOLLEYBALL_NET_WIDTH / 2 + VOLLEYBALL_PLAYER_RADIUS;
-    const maxX = player.team === "sun" ? VOLLEYBALL_NET_X - VOLLEYBALL_NET_WIDTH / 2 - VOLLEYBALL_PLAYER_RADIUS : VOLLEYBALL_WIDTH - COURT_MARGIN;
-    const nextRecovery = Math.max(0, player.recoveryMs - dt * 1000);
-    let vx = move * PLAYER_SPEED;
-    let vy = player.vy + GRAVITY * dt;
-    let action: VolleyballAction = move === 0 ? "idle" : "run";
-    let actionMs = Math.max(0, player.actionMs - dt * 1000);
-    let recoveryMs = nextRecovery;
-    const contactCooldownMs = Math.max(0, (player.contactCooldownMs ?? 0) - dt * 1000);
+  return state.players.map((player) => advanceVolleyballPlayer(player, inputs[player.id] ?? emptyVolleyballInput, dt));
+}
 
-    if (player.actionMs > 0 && player.action !== "jump") {
-      action = player.action;
-    }
+const emptyVolleyballInput: VolleyballInput = {};
 
-    if (player.grounded && input.jump && recoveryMs <= 0) {
-      vy = JUMP_SPEED;
-      action = "jump";
-      actionMs = 240;
-    }
+export function advanceVolleyballPlayer(player: VolleyballPlayer, input: VolleyballInput, dt: number): VolleyballPlayer {
+  const move = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const minX = player.team === "sun" ? COURT_MARGIN : VOLLEYBALL_NET_X + VOLLEYBALL_NET_WIDTH / 2 + VOLLEYBALL_PLAYER_RADIUS;
+  const maxX = player.team === "sun" ? VOLLEYBALL_NET_X - VOLLEYBALL_NET_WIDTH / 2 - VOLLEYBALL_PLAYER_RADIUS : VOLLEYBALL_WIDTH - COURT_MARGIN;
+  const nextRecovery = Math.max(0, player.recoveryMs - dt * 1000);
+  let vx = move * PLAYER_SPEED;
+  let vy = player.vy + GRAVITY * dt;
+  let action: VolleyballAction = move === 0 ? "idle" : "run";
+  let actionMs = Math.max(0, player.actionMs - dt * 1000);
+  let recoveryMs = nextRecovery;
+  const contactCooldownMs = Math.max(0, (player.contactCooldownMs ?? 0) - dt * 1000);
 
-    if (input.dive && recoveryMs <= 0) {
-      vx = (move || player.facing) * DIVE_SPEED;
-      action = "dive";
-      actionMs = 360;
-      recoveryMs = 560;
-    } else if (input.spike && recoveryMs <= 0) {
-      action = "spike";
-      actionMs = 260;
-      recoveryMs = 180;
-    } else if (input.set && recoveryMs <= 0) {
-      action = "set";
-      actionMs = 260;
-      recoveryMs = 160;
-    } else if (input.bump && recoveryMs <= 0) {
-      action = "bump";
-      actionMs = 240;
-      recoveryMs = 130;
-    }
+  if (player.actionMs > 0 && player.action !== "jump") {
+    action = player.action;
+  }
 
-    let x = PhaserClamp(player.x + vx * dt, minX, maxX);
-    let y = player.y + vy * dt;
-    let grounded = false;
-    if (y >= VOLLEYBALL_FLOOR_Y - VOLLEYBALL_PLAYER_RADIUS) {
-      y = VOLLEYBALL_FLOOR_Y - VOLLEYBALL_PLAYER_RADIUS;
-      vy = 0;
-      grounded = true;
-      if (action === "jump") action = move === 0 ? "idle" : "run";
-    }
+  if (player.grounded && input.jump && recoveryMs <= 0) {
+    vy = JUMP_SPEED;
+    action = "jump";
+    actionMs = 240;
+  }
 
-    return {
-      ...player,
-      x,
-      y,
-      vx,
-      vy,
-      facing: move < 0 ? -1 : move > 0 ? 1 : player.facing,
-      grounded,
-      action,
-      actionMs,
-      recoveryMs,
-      contactCooldownMs
-    };
-  });
+  if (input.dive && recoveryMs <= 0) {
+    vx = (move || player.facing) * DIVE_SPEED;
+    action = "dive";
+    actionMs = 360;
+    recoveryMs = 560;
+  } else if (input.spike && recoveryMs <= 0) {
+    action = "spike";
+    actionMs = 260;
+    recoveryMs = 180;
+  } else if (input.set && recoveryMs <= 0) {
+    action = "set";
+    actionMs = 260;
+    recoveryMs = 160;
+  } else if (input.bump && recoveryMs <= 0) {
+    action = "bump";
+    actionMs = 240;
+    recoveryMs = 130;
+  }
+
+  let x = PhaserClamp(player.x + vx * dt, minX, maxX);
+  let y = player.y + vy * dt;
+  let grounded = false;
+  if (y >= VOLLEYBALL_FLOOR_Y - VOLLEYBALL_PLAYER_RADIUS) {
+    y = VOLLEYBALL_FLOOR_Y - VOLLEYBALL_PLAYER_RADIUS;
+    vy = 0;
+    grounded = true;
+    if (action === "jump") action = move === 0 ? "idle" : "run";
+  }
+
+  return {
+    ...player,
+    x,
+    y,
+    vx,
+    vy,
+    facing: move < 0 ? -1 : move > 0 ? 1 : player.facing,
+    grounded,
+    action,
+    actionMs,
+    recoveryMs,
+    contactCooldownMs
+  };
 }
 
 function updateBall(ball: VolleyballBall, dt: number): VolleyballBall {

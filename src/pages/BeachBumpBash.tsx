@@ -46,6 +46,8 @@ type RoomPhase = "menu" | "waiting" | "playing";
 const LOCAL_BOT_ID = "focusland-volleyball-local-bot";
 const emptyInput: VolleyballInput = {};
 const ACTION_LATCH_MS = 180;
+const INPUT_BROADCAST_INTERVAL_MS = 50;
+const STATE_BROADCAST_INTERVAL_MS = 50;
 
 const BeachBumpBash: React.FC = () => {
   const navigate = useNavigate();
@@ -402,12 +404,14 @@ const BeachBumpBash: React.FC = () => {
     if (!gameContainerRef.current || gameRef.current || phase !== "playing") return;
     const game = createBeachBumpBashGame(gameContainerRef.current, assetBase, {
       getState: () => stateRef.current,
+      getLocalPlayerId: () => currentUserIdRef.current,
+      isLocalAuthoritative: () => currentUserIdRef.current === hostIdRef.current,
       onTick: (localInput, deltaMs) => {
         inputsRef.current[currentUserIdRef.current] = localInput;
         if (roomChannelRef.current && currentUserIdRef.current !== hostIdRef.current) {
           const now = performance.now();
           const hasAction = Boolean(localInput.jump || localInput.bump || localInput.set || localInput.spike || localInput.dive);
-          if (hasAction || now - lastInputBroadcastRef.current > 42) {
+          if (hasAction || now - lastInputBroadcastRef.current > INPUT_BROADCAST_INTERVAL_MS) {
             lastInputBroadcastRef.current = now;
             void roomChannelRef.current.send({
               type: "broadcast",
@@ -440,7 +444,7 @@ const BeachBumpBash: React.FC = () => {
         if (nextState !== stateRef.current) {
           publishState(nextState);
           const now = performance.now();
-          if (roomChannelRef.current && now - lastBroadcastRef.current > 50) {
+          if (roomChannelRef.current && now - lastBroadcastRef.current > STATE_BROADCAST_INTERVAL_MS) {
             lastBroadcastRef.current = now;
             void roomChannelRef.current.send({
               type: "broadcast",
@@ -464,6 +468,29 @@ const BeachBumpBash: React.FC = () => {
       void removeVolleyballChannel(lobbyChannelRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const debugWindow = window as typeof window & {
+      __beachBumpDebug?: {
+        getState: () => VolleyballMatchState;
+        getPlayers: () => VolleyballPresencePlayer[];
+        getRoomCode: () => string;
+        getHostId: () => string | null;
+        getCurrentUserId: () => string;
+      };
+    };
+    debugWindow.__beachBumpDebug = {
+      getState: () => stateRef.current,
+      getPlayers: () => playersRef.current,
+      getRoomCode: () => roomCode,
+      getHostId: () => hostIdRef.current,
+      getCurrentUserId: () => currentUserIdRef.current
+    };
+    return () => {
+      delete debugWindow.__beachBumpDebug;
+    };
+  }, [roomCode]);
 
   const modalTitle = activeOverlay === "help" ? "How to Play" : activeOverlay === "settings" ? "Settings" : "Room Info";
   const playerCountLabel = `${players.length}/${getMaxPlayers(mode)}`;
