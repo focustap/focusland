@@ -23,6 +23,7 @@ export type VolleyballPlayer = {
   action: VolleyballAction;
   actionMs: number;
   recoveryMs: number;
+  contactCooldownMs: number;
 };
 
 export type VolleyballBall = {
@@ -136,7 +137,8 @@ export function assignVolleyballTeams(players: VolleyballPresencePlayer[], mode:
       grounded: true,
       action: "idle",
       actionMs: 0,
-      recoveryMs: 0
+      recoveryMs: 0,
+      contactCooldownMs: 0
     };
   });
 }
@@ -236,9 +238,17 @@ export function calculateHitVelocity(
 
   if (action === "spike") {
     const airborneBonus = player.grounded ? 0.72 : 1;
+    const targetX = player.team === "sun"
+      ? Math.max(VOLLEYBALL_NET_X + 145, Math.min(VOLLEYBALL_WIDTH - 118, ball.x + 275))
+      : Math.min(VOLLEYBALL_NET_X - 145, Math.max(118, ball.x - 275));
+    const distance = Math.max(130, Math.abs(targetX - ball.x));
+    const speed = (player.grounded ? 660 : 840) * airborneBonus;
+    const travelTime = Math.min(0.58, Math.max(0.24, distance / speed));
+    const targetY = player.grounded ? VOLLEYBALL_FLOOR_Y - 92 : VOLLEYBALL_FLOOR_Y - 54;
+    const vy = (targetY - ball.y - 0.5 * BALL_GRAVITY * travelTime * travelTime) / travelTime;
     return {
-      vx: (520 * sideDirection + 80 * reachDirection) * airborneBonus,
-      vy: player.grounded ? -280 : 520
+      vx: speed * sideDirection,
+      vy: PhaserClamp(vy, player.grounded ? -420 : -220, player.grounded ? 120 : 120)
     };
   }
 
@@ -324,20 +334,20 @@ export function stepVolleyballState(
   const separatedPlayers = separatePlayers(players, state.mode);
   const hitResult = applyPlayerHits(ball, separatedPlayers, possession.possessionTeam, possession.sideHitCount);
   if (hitResult.fault) {
-    return applyPoint({ ...state, players: separatedPlayers, ball }, hitResult.fault.winner);
+    return applyPoint({ ...state, players: hitResult.players, ball }, hitResult.fault.winner);
   }
   const hitBall = hitResult.ball;
   const netBall = resolveNet(hitBall);
   const scored = getPointWinner(netBall);
   if (scored) {
-    return applyPoint({ ...state, players: separatedPlayers, ball: netBall }, scored);
+    return applyPoint({ ...state, players: hitResult.players, ball: netBall }, scored);
   }
 
   return {
     ...state,
     possessionTeam: hitResult.possessionTeam,
     sideHitCount: hitResult.sideHitCount,
-    players: separatedPlayers,
+    players: hitResult.players,
     ball: netBall,
     sequence: state.sequence + 1
   };
@@ -355,6 +365,7 @@ function updatePlayers(state: VolleyballMatchState, inputs: VolleyballInputs, dt
     let action: VolleyballAction = move === 0 ? "idle" : "run";
     let actionMs = Math.max(0, player.actionMs - dt * 1000);
     let recoveryMs = nextRecovery;
+    const contactCooldownMs = Math.max(0, (player.contactCooldownMs ?? 0) - dt * 1000);
 
     if (player.actionMs > 0 && player.action !== "jump") {
       action = player.action;
@@ -405,7 +416,8 @@ function updatePlayers(state: VolleyballMatchState, inputs: VolleyballInputs, dt
       grounded,
       action,
       actionMs,
-      recoveryMs
+      recoveryMs,
+      contactCooldownMs
     };
   });
 }
@@ -427,12 +439,16 @@ function applyPlayerHits(
   sideHitCount: number
 ) {
   let nextBall = ball;
+  const nextPlayers = players.map((player) => ({ ...player }));
   let nextPossessionTeam = possessionTeam;
   let nextSideHitCount = sideHitCount;
   let fault: { winner: VolleyballTeam } | null = null;
-  players.forEach((player) => {
+  nextPlayers.forEach((player, index) => {
     if (fault) return;
     const activeHit = player.action === "bump" || player.action === "set" || player.action === "spike" || player.action === "dive";
+    if (player.contactCooldownMs > 0) {
+      return;
+    }
     const reachX = player.action === "dive" ? 76 : player.action === "spike" ? 60 : 54;
     const reachY = player.action === "spike" ? 90 : player.action === "set" ? 82 : 72;
     const distanceX = Math.abs(nextBall.x - player.x);
@@ -451,6 +467,10 @@ function applyPlayerHits(
     }
     const velocity = calculateHitVelocity(player.action as Exclude<VolleyballAction, "idle" | "run" | "jump">, player, nextBall);
     nextSideHitCount += 1;
+    nextPlayers[index] = {
+      ...player,
+      contactCooldownMs: 220
+    };
     nextBall = {
       ...nextBall,
       vx: velocity.vx,
@@ -460,7 +480,7 @@ function applyPlayerHits(
       lastTeam: player.team
     };
   });
-  return { ball: nextBall, possessionTeam: nextPossessionTeam, sideHitCount: nextSideHitCount, fault };
+  return { ball: nextBall, players: nextPlayers, possessionTeam: nextPossessionTeam, sideHitCount: nextSideHitCount, fault };
 }
 
 function resolveNet(ball: VolleyballBall): VolleyballBall {

@@ -129,8 +129,19 @@ describe("volleyball scoring and hit math", () => {
     const spike = calculateHitVelocity("spike", { ...player, grounded: false }, ball);
     const dive = calculateHitVelocity("dive", player, ball);
     expect(set.vy).toBeLessThan(bump.vy);
-    expect(spike.vy).toBeGreaterThan(0);
+    expect(spike.vy).toBeGreaterThan(set.vy);
+    expect(Math.abs(spike.vx)).toBeGreaterThan(Math.abs(bump.vx));
     expect(Math.abs(dive.vx)).toBeGreaterThan(Math.abs(bump.vx));
+  });
+
+  it("aims airborne spikes across the net before they drop", () => {
+    const tide = assignVolleyballTeams(players, "1v1")[1];
+    const ball = { x: tide.x - 35, y: 252, vx: 0, vy: 0 };
+    const spike = calculateHitVelocity("spike", { ...tide, grounded: false }, ball);
+    const timeToNet = Math.abs((ball.x - 480) / spike.vx);
+    const yAtNet = ball.y + spike.vy * timeToNet + 0.5 * 980 * timeToNet * timeToNet;
+    expect(spike.vx).toBeLessThan(0);
+    expect(yAtNet).toBeLessThan(306 - 14);
   });
 
   it("advances countdown and awards a point when the ball hits sand", () => {
@@ -163,6 +174,30 @@ describe("volleyball scoring and hit math", () => {
     }, {}, 34);
     expect(crossed.possessionTeam).toBe("tide");
     expect(crossed.sideHitCount).toBe(0);
+  });
+
+  it("does not count one spike contact as an immediate extra touch fault", () => {
+    const base = startVolleyballMatch(players.slice(0, 2), "1v1", 7);
+    const tide = base.players[1];
+    const state = {
+      ...base,
+      phase: "playing" as const,
+      countdownMs: 0,
+      possessionTeam: "tide" as const,
+      sideHitCount: 2,
+      players: base.players.map((player) => player.id === tide.id
+        ? { ...player, action: "spike" as const, actionMs: 240, grounded: false, y: 360 }
+        : player),
+      ball: { x: tide.x - 8, y: 302, vx: 0, vy: 40, lastTeam: "tide" as const }
+    };
+
+    const afterContact = stepVolleyballState(state, {}, 16);
+    expect(afterContact.phase).toBe("playing");
+    expect(afterContact.sideHitCount).toBe(3);
+
+    const afterNextFrame = stepVolleyballState(afterContact, {}, 16);
+    expect(afterNextFrame.phase).toBe("playing");
+    expect(afterNextFrame.score.sun).toBe(0);
   });
 });
 
