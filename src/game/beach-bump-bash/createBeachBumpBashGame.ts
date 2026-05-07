@@ -29,6 +29,10 @@ const PLAYER_INTERPOLATION_DELAY_MS = 96;
 const ACTION_VISUAL_GRACE_MS = 180;
 const PLAYER_HARD_SNAP_DISTANCE = 132;
 const BALL_HARD_SNAP_DISTANCE = 176;
+const LOCAL_PLAYER_HARD_SNAP_DISTANCE = 168;
+const LOCAL_PLAYER_SOFT_RECONCILE_DISTANCE = 44;
+const LOCAL_PLAYER_ACTIVE_RECONCILE = 0.035;
+const LOCAL_PLAYER_IDLE_RECONCILE = 0.22;
 const STILL_VELOCITY_EPSILON = 8;
 
 const ACTION_TEXTURES: Record<VolleyballPlayer["action"], string> = {
@@ -173,9 +177,10 @@ export function createBeachBumpBashGame(
     private buildInterpolatedState(state: VolleyballMatchState, snap: boolean): VolleyballMatchState {
       this.pushSnapshot(state);
       const localAuthoritative = callbacks.isLocalAuthoritative();
+      const frameDt = Math.min(0.034, this.game.loop.delta / 1000);
       if (snap || localAuthoritative || this.snapshotBuffer.length <= 1) {
         if (!localAuthoritative) {
-          return this.withPredictedLocalPlayer(state, 0);
+          return this.withPredictedLocalPlayer(state, frameDt);
         }
         return state;
       }
@@ -212,7 +217,7 @@ export function createBeachBumpBashGame(
         ...state,
         players: interpolatedPlayers,
         ball: interpolatedBall
-      }, Math.min(0.034, this.game.loop.delta / 1000));
+      }, frameDt);
     }
 
     private withPredictedLocalPlayer(state: VolleyballMatchState, dt: number): VolleyballMatchState {
@@ -230,18 +235,37 @@ export function createBeachBumpBashGame(
       }
 
       const predicted = this.predictedLocalPlayers.get(localPlayerId);
+      const localInputActive = Boolean(
+        this.latestInput.left ||
+        this.latestInput.right ||
+        this.latestInput.jump ||
+        this.latestInput.bump ||
+        this.latestInput.set ||
+        this.latestInput.spike ||
+        this.latestInput.dive
+      );
       const needsSnap = !predicted ||
         state.phase !== "playing" ||
-        Phaser.Math.Distance.Between(predicted.x, predicted.y, authoritativeLocal.x, authoritativeLocal.y) > PLAYER_HARD_SNAP_DISTANCE;
+        Phaser.Math.Distance.Between(predicted.x, predicted.y, authoritativeLocal.x, authoritativeLocal.y) > LOCAL_PLAYER_HARD_SNAP_DISTANCE;
       const seeded = needsSnap ? { ...authoritativeLocal } : { ...predicted };
       let nextPredicted = dt > 0 ? advanceVolleyballPlayer(seeded, this.latestInput, dt) : seeded;
+      const predictionError = Phaser.Math.Distance.Between(
+        nextPredicted.x,
+        nextPredicted.y,
+        authoritativeLocal.x,
+        authoritativeLocal.y
+      );
+      const shouldSoftReconcile = predictionError > LOCAL_PLAYER_SOFT_RECONCILE_DISTANCE;
+      const reconcileFactor = shouldSoftReconcile
+        ? (localInputActive || !nextPredicted.grounded ? LOCAL_PLAYER_ACTIVE_RECONCILE : LOCAL_PLAYER_IDLE_RECONCILE)
+        : 0;
 
       nextPredicted = {
         ...nextPredicted,
-        x: Phaser.Math.Linear(nextPredicted.x, authoritativeLocal.x, 0.12),
-        y: Phaser.Math.Linear(nextPredicted.y, authoritativeLocal.y, 0.18),
-        vx: Phaser.Math.Linear(nextPredicted.vx, authoritativeLocal.vx, 0.14),
-        vy: Phaser.Math.Linear(nextPredicted.vy, authoritativeLocal.vy, 0.14),
+        x: reconcileFactor > 0 ? Phaser.Math.Linear(nextPredicted.x, authoritativeLocal.x, reconcileFactor) : nextPredicted.x,
+        y: reconcileFactor > 0 ? Phaser.Math.Linear(nextPredicted.y, authoritativeLocal.y, reconcileFactor) : nextPredicted.y,
+        vx: reconcileFactor > 0 ? Phaser.Math.Linear(nextPredicted.vx, authoritativeLocal.vx, reconcileFactor * 1.15) : nextPredicted.vx,
+        vy: reconcileFactor > 0 ? Phaser.Math.Linear(nextPredicted.vy, authoritativeLocal.vy, reconcileFactor * 1.15) : nextPredicted.vy,
         facing: this.latestInput.left ? -1 : this.latestInput.right ? 1 : authoritativeLocal.facing,
         grounded: authoritativeLocal.grounded ? nextPredicted.grounded : false,
         action: getPredictedAction(authoritativeLocal, nextPredicted, this.latestInput),
