@@ -102,7 +102,30 @@ export async function removeVolleyballChannel(channel: ReturnType<typeof supabas
 }
 
 export function isRoomJoinable(room: RoomSummary) {
-  return room.status === "open" && room.playerCount < room.maxPlayers;
+  return Boolean(room.hostId) && room.status === "open" && room.playerCount < room.maxPlayers;
+}
+
+export function updateRoomPlayerCount(room: RoomSummary, playerCount: number): RoomSummary {
+  return {
+    ...room,
+    playerCount: Math.max(0, Math.min(room.maxPlayers, playerCount)),
+    updatedAt: Date.now()
+  };
+}
+
+export function reassignRoomHost(
+  room: RoomSummary,
+  players: VolleyballPresencePlayer[]
+): RoomSummary | null {
+  const nextHost = players[0];
+  if (!nextHost) return null;
+  return {
+    ...room,
+    hostId: nextHost.userId,
+    hostName: nextHost.username,
+    playerCount: Math.min(players.length, room.maxPlayers),
+    updatedAt: Date.now()
+  };
 }
 
 export function pruneStaleRooms(rooms: RoomSummary[], now = Date.now()) {

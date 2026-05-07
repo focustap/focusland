@@ -45,6 +45,8 @@ export type VolleyballMatchState = {
   targetScore: number;
   servingTeam: VolleyballTeam;
   winner: VolleyballTeam | null;
+  possessionTeam: VolleyballTeam;
+  sideHitCount: number;
   message: string;
   countdownMs: number;
   pointPauseMs: number;
@@ -79,16 +81,16 @@ export const VOLLEYBALL_WIDTH = 960;
 export const VOLLEYBALL_HEIGHT = 540;
 export const VOLLEYBALL_FLOOR_Y = 456;
 export const VOLLEYBALL_NET_X = VOLLEYBALL_WIDTH / 2;
-export const VOLLEYBALL_NET_TOP = 258;
+export const VOLLEYBALL_NET_TOP = 306;
 export const VOLLEYBALL_NET_WIDTH = 16;
 export const VOLLEYBALL_PLAYER_RADIUS = 24;
 export const VOLLEYBALL_BALL_RADIUS = 14;
 
 const PLAYER_SPEED = 270;
-const DIVE_SPEED = 410;
-const JUMP_SPEED = -575;
-const GRAVITY = 1480;
-const BALL_GRAVITY = 920;
+const DIVE_SPEED = 430;
+const JUMP_SPEED = -710;
+const GRAVITY = 1420;
+const BALL_GRAVITY = 980;
 const BALL_DRAG = 0.998;
 const COURT_MARGIN = 44;
 const DEFAULT_TARGET_SCORE = 7;
@@ -106,6 +108,10 @@ export function createRoomCode(seed = Math.random()) {
 
 export function getMaxPlayers(mode: VolleyballMode) {
   return mode === "2v2" ? 4 : 2;
+}
+
+export function canStartVolleyballMatch(players: VolleyballPresencePlayer[], mode: VolleyballMode) {
+  return players.length === getMaxPlayers(mode);
 }
 
 export function sanitizeTargetScore(value: number) {
@@ -154,15 +160,17 @@ export function createInitialVolleyballState(
   return {
     version: 1,
     mode,
-    phase: assignedPlayers.length >= getMaxPlayers(mode) ? "countdown" : "lobby",
+    phase: canStartVolleyballMatch(players, mode) ? "countdown" : "lobby",
     players: assignedPlayers,
     ball: createServeBall("sun"),
     score: { sun: 0, tide: 0 },
     targetScore: sanitizeTargetScore(targetScore),
     servingTeam: "sun",
     winner: null,
-    message: assignedPlayers.length >= getMaxPlayers(mode) ? "Serve in 3" : "Waiting for players",
-    countdownMs: assignedPlayers.length >= getMaxPlayers(mode) ? 2200 : 0,
+    possessionTeam: "sun",
+    sideHitCount: 0,
+    message: canStartVolleyballMatch(players, mode) ? "Serve in 3" : "Waiting for players",
+    countdownMs: canStartVolleyballMatch(players, mode) ? 2200 : 0,
     pointPauseMs: 0,
     sequence: 0
   };
@@ -172,9 +180,9 @@ export function createServeBall(servingTeam: VolleyballTeam): VolleyballBall {
   const direction = servingTeam === "sun" ? 1 : -1;
   return {
     x: servingTeam === "sun" ? VOLLEYBALL_NET_X - 238 : VOLLEYBALL_NET_X + 238,
-    y: 176,
-    vx: 150 * direction,
-    vy: -120,
+    y: 206,
+    vx: 210 * direction,
+    vy: -260,
     lastTeam: servingTeam
   };
 }
@@ -203,6 +211,9 @@ export function startVolleyballMatch(
   mode: VolleyballMode,
   targetScore = DEFAULT_TARGET_SCORE
 ) {
+  if (!canStartVolleyballMatch(players, mode)) {
+    return createInitialVolleyballState(players, mode, targetScore);
+  }
   return createInitialVolleyballState(players, mode, targetScore);
 }
 
@@ -211,7 +222,7 @@ export function calculateHitVelocity(
   player: Pick<VolleyballPlayer, "team" | "facing" | "grounded" | "x">,
   ball: Pick<VolleyballBall, "x" | "y" | "vx" | "vy">
 ) {
-  const sideDirection = player.team === "sun" ? 1 : -1;
+    const sideDirection = player.team === "sun" ? 1 : -1;
   const reachDirection = ball.x >= player.x ? 1 : -1;
   const forward = player.facing || sideDirection;
   const crossNetBias = Math.sign(forward) === sideDirection ? sideDirection : reachDirection;
@@ -219,28 +230,28 @@ export function calculateHitVelocity(
   if (action === "set") {
     return {
       vx: 90 * crossNetBias + (ball.x - player.x) * 1.2,
-      vy: -650
+      vy: -760
     };
   }
 
   if (action === "spike") {
     const airborneBonus = player.grounded ? 0.72 : 1;
     return {
-      vx: (430 * sideDirection + 70 * reachDirection) * airborneBonus,
-      vy: player.grounded ? -210 : 385
+      vx: (520 * sideDirection + 80 * reachDirection) * airborneBonus,
+      vy: player.grounded ? -280 : 520
     };
   }
 
   if (action === "dive") {
     return {
-      vx: 300 * sideDirection + 120 * reachDirection,
-      vy: -440
+      vx: 335 * sideDirection + 130 * reachDirection,
+      vy: -520
     };
   }
 
   return {
-    vx: 210 * crossNetBias + (ball.x - player.x) * 0.65,
-    vy: -540
+    vx: 255 * crossNetBias + (ball.x - player.x) * 0.7,
+    vy: -610
   };
 }
 
@@ -253,6 +264,8 @@ export function applyPoint(state: VolleyballMatchState, winner: VolleyballTeam):
     score,
     servingTeam: winner,
     winner: matchWinner,
+    possessionTeam: winner,
+    sideHitCount: 0,
     pointPauseMs: matchWinner ? 0 : 1500,
     message: matchWinner ? `${getTeamLabel(winner)} wins!` : `${getTeamLabel(winner)} scores`,
     sequence: state.sequence + 1
@@ -270,6 +283,8 @@ export function resetForServe(state: VolleyballMatchState): VolleyballMatchState
     phase: "countdown",
     players: assignVolleyballTeams(presence, state.mode),
     ball: createServeBall(state.servingTeam),
+    possessionTeam: state.servingTeam,
+    sideHitCount: 0,
     countdownMs: 1800,
     pointPauseMs: 0,
     message: "Serve in 2",
@@ -305,8 +320,13 @@ export function stepVolleyballState(
 
   const players = updatePlayers(state, inputs, dt);
   const ball = updateBall(state.ball, dt);
+  const possession = updatePossessionForCrossing(state, ball);
   const separatedPlayers = separatePlayers(players, state.mode);
-  const hitBall = applyPlayerHits(ball, separatedPlayers);
+  const hitResult = applyPlayerHits(ball, separatedPlayers, possession.possessionTeam, possession.sideHitCount);
+  if (hitResult.fault) {
+    return applyPoint({ ...state, players: separatedPlayers, ball }, hitResult.fault.winner);
+  }
+  const hitBall = hitResult.ball;
   const netBall = resolveNet(hitBall);
   const scored = getPointWinner(netBall);
   if (scored) {
@@ -315,6 +335,8 @@ export function stepVolleyballState(
 
   return {
     ...state,
+    possessionTeam: hitResult.possessionTeam,
+    sideHitCount: hitResult.sideHitCount,
     players: separatedPlayers,
     ball: netBall,
     sequence: state.sequence + 1
@@ -398,28 +420,47 @@ function updateBall(ball: VolleyballBall, dt: number): VolleyballBall {
   };
 }
 
-function applyPlayerHits(ball: VolleyballBall, players: VolleyballPlayer[]) {
+function applyPlayerHits(
+  ball: VolleyballBall,
+  players: VolleyballPlayer[],
+  possessionTeam: VolleyballTeam,
+  sideHitCount: number
+) {
   let nextBall = ball;
+  let nextPossessionTeam = possessionTeam;
+  let nextSideHitCount = sideHitCount;
+  let fault: { winner: VolleyballTeam } | null = null;
   players.forEach((player) => {
+    if (fault) return;
     const activeHit = player.action === "bump" || player.action === "set" || player.action === "spike" || player.action === "dive";
-    const reachX = player.action === "dive" ? 58 : player.action === "spike" ? 48 : 42;
-    const reachY = player.action === "spike" ? 70 : 56;
+    const reachX = player.action === "dive" ? 76 : player.action === "spike" ? 60 : 54;
+    const reachY = player.action === "spike" ? 90 : player.action === "set" ? 82 : 72;
     const distanceX = Math.abs(nextBall.x - player.x);
-    const distanceY = Math.abs(nextBall.y - (player.y - 18));
-    if (!activeHit || distanceX > reachX || distanceY > reachY || nextBall.lastTeam === player.team && nextBall.vy < -360) {
+    const contactY = player.action === "spike" ? player.y - 58 : player.y - 24;
+    const distanceY = Math.abs(nextBall.y - contactY);
+    if (!activeHit || distanceX > reachX || distanceY > reachY || nextBall.lastTeam === player.team && nextBall.vy < -500) {
+      return;
+    }
+    if (player.team !== nextPossessionTeam) {
+      nextPossessionTeam = player.team;
+      nextSideHitCount = 0;
+    }
+    if (nextSideHitCount >= 3) {
+      fault = { winner: getOpponentTeam(player.team) };
       return;
     }
     const velocity = calculateHitVelocity(player.action as Exclude<VolleyballAction, "idle" | "run" | "jump">, player, nextBall);
+    nextSideHitCount += 1;
     nextBall = {
       ...nextBall,
       vx: velocity.vx,
       vy: velocity.vy,
       x: player.x + Math.sign(nextBall.x - player.x || player.facing) * (VOLLEYBALL_PLAYER_RADIUS + VOLLEYBALL_BALL_RADIUS + 2),
-      y: Math.min(nextBall.y, player.y - 42),
+      y: Math.min(nextBall.y, contactY),
       lastTeam: player.team
     };
   });
-  return nextBall;
+  return { ball: nextBall, possessionTeam: nextPossessionTeam, sideHitCount: nextSideHitCount, fault };
 }
 
 function resolveNet(ball: VolleyballBall): VolleyballBall {
@@ -432,8 +473,8 @@ function resolveNet(ball: VolleyballBall): VolleyballBall {
   return {
     ...ball,
     x: VOLLEYBALL_NET_X + side * (VOLLEYBALL_NET_WIDTH / 2 + VOLLEYBALL_BALL_RADIUS),
-    vx: -ball.vx * 0.38,
-    vy: Math.min(ball.vy, -120)
+    vx: -ball.vx * 0.45,
+    vy: Math.min(ball.vy, -210)
   };
 }
 
@@ -469,6 +510,23 @@ function separatePlayers(players: VolleyballPlayer[], mode: VolleyballMode) {
     }
   });
   return next;
+}
+
+function updatePossessionForCrossing(state: VolleyballMatchState, ball: VolleyballBall) {
+  const crossedLeftToRight = state.ball.x < VOLLEYBALL_NET_X && ball.x >= VOLLEYBALL_NET_X;
+  const crossedRightToLeft = state.ball.x > VOLLEYBALL_NET_X && ball.x <= VOLLEYBALL_NET_X;
+  const cleanCross = ball.y < VOLLEYBALL_NET_TOP - VOLLEYBALL_BALL_RADIUS;
+  if (cleanCross && crossedLeftToRight) {
+    return { possessionTeam: "tide" as VolleyballTeam, sideHitCount: 0 };
+  }
+  if (cleanCross && crossedRightToLeft) {
+    return { possessionTeam: "sun" as VolleyballTeam, sideHitCount: 0 };
+  }
+  return { possessionTeam: state.possessionTeam, sideHitCount: state.sideHitCount };
+}
+
+export function getOpponentTeam(team: VolleyballTeam): VolleyballTeam {
+  return team === "sun" ? "tide" : "sun";
 }
 
 function PhaserClamp(value: number, min: number, max: number) {

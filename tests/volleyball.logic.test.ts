@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  createHarnessPlayer,
+  createHarnessRoom,
+  harnessChangeMode,
+  harnessJoin,
+  harnessLeave,
+  harnessStart
+} from "../src/lib/volleyball/devHarness";
+import {
   applyPoint,
   assignVolleyballTeams,
+  canStartVolleyballMatch,
   calculateHitVelocity,
   configureVolleyballPlayers,
   createInitialVolleyballState,
   getMaxPlayers,
+  getOpponentTeam,
   resetForServe,
   startVolleyballMatch,
   stepVolleyballState,
@@ -15,7 +25,9 @@ import {
   createVolleyballRoomSummary,
   isRoomJoinable,
   normalizeRoomCode,
-  pruneStaleRooms
+  pruneStaleRooms,
+  reassignRoomHost,
+  updateRoomPlayerCount
 } from "../src/lib/volleyball/realtime";
 
 const players: VolleyballPresencePlayer[] = [
@@ -50,6 +62,20 @@ describe("volleyball room helpers", () => {
     expect(isRoomJoinable(room)).toBe(true);
     expect(isRoomJoinable({ ...room, playerCount: 4 })).toBe(false);
     expect(isRoomJoinable({ ...room, status: "playing" })).toBe(false);
+    expect(isRoomJoinable({ ...room, hostId: "" })).toBe(false);
+  });
+
+  it("updates capacity, host reassignment, and full-room rejection", () => {
+    const room = createVolleyballRoomSummary({
+      hostId: "a",
+      hostName: "Ari",
+      mode: "1v1",
+      targetScore: 7,
+      playerCount: 1
+    });
+    expect(updateRoomPlayerCount(room, 9).playerCount).toBe(2);
+    expect(reassignRoomHost(room, players.slice(1, 3))?.hostId).toBe("b");
+    expect(reassignRoomHost(room, [])).toBeNull();
   });
 });
 
@@ -72,6 +98,13 @@ describe("volleyball player assignment", () => {
     expect(next.mode).toBe("1v1");
     expect(next.players).toHaveLength(2);
     expect(next.targetScore).toBe(11);
+  });
+
+  it("requires exact room capacity before start", () => {
+    expect(canStartVolleyballMatch(players.slice(0, 1), "1v1")).toBe(false);
+    expect(canStartVolleyballMatch(players.slice(0, 2), "1v1")).toBe(true);
+    expect(canStartVolleyballMatch(players.slice(0, 3), "1v1")).toBe(false);
+    expect(canStartVolleyballMatch(players.slice(0, 4), "2v2")).toBe(true);
   });
 });
 
@@ -110,5 +143,54 @@ describe("volleyball scoring and hit math", () => {
     const scored = stepVolleyballState(dropped, {}, 34);
     expect(scored.phase).toBe("point");
     expect(scored.score.tide).toBe(1);
+  });
+
+  it("enforces three hits per side and resets possession on a clean net crossing", () => {
+    let state = startVolleyballMatch(players.slice(0, 2), "1v1", 7);
+    state = { ...state, phase: "playing", countdownMs: 0, possessionTeam: "sun", sideHitCount: 3 };
+    const sun = state.players[0];
+    const faulted = stepVolleyballState({
+      ...state,
+      ball: { x: sun.x + 10, y: sun.y - 24, vx: 0, vy: 20, lastTeam: "tide" }
+    }, { [sun.id]: { bump: true } }, 16);
+    expect(faulted.phase).toBe("point");
+    expect(faulted.score[getOpponentTeam("sun")]).toBe(1);
+
+    const crossed = stepVolleyballState({
+      ...state,
+      sideHitCount: 2,
+      ball: { x: 476, y: 240, vx: 400, vy: 0, lastTeam: "sun" }
+    }, {}, 34);
+    expect(crossed.possessionTeam).toBe("tide");
+    expect(crossed.sideHitCount).toBe(0);
+  });
+});
+
+describe("volleyball development harness", () => {
+  it("simulates 1v1 join, start, leave, and host reassignment", () => {
+    let room = createHarnessRoom("1v1", 7);
+    expect(harnessStart(room).started).toBe(false);
+    const joinResult = harnessJoin(room, createHarnessPlayer(2));
+    room = joinResult.room;
+    expect(joinResult.joined).toBe(true);
+    expect(harnessJoin(room, createHarnessPlayer(3)).joined).toBe(false);
+    const started = harnessStart(room);
+    expect(started.started).toBe(true);
+    expect(started.room.state?.players).toHaveLength(2);
+    const afterHostLeave = harnessLeave(started.room, "harness-player-1");
+    expect(afterHostLeave?.summary.hostId).toBe("harness-player-2");
+    expect(afterHostLeave?.state).toBeNull();
+  });
+
+  it("simulates 2v2 capacity and mode changes before start", () => {
+    let room = harnessChangeMode(createHarnessRoom("1v1"), "2v2");
+    for (let index = 2; index <= 4; index += 1) {
+      room = harnessJoin(room, createHarnessPlayer(index)).room;
+    }
+    expect(room.players).toHaveLength(4);
+    expect(harnessStart(room).started).toBe(true);
+    const switched = harnessChangeMode(room, "1v1");
+    expect(switched.players).toHaveLength(2);
+    expect(switched.summary.maxPlayers).toBe(2);
   });
 });

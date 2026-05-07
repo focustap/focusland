@@ -8150,7 +8150,7 @@ body[data-theme="dark"] .card-battle-card--hidden {
   color: #fff7ed;
   background:
     linear-gradient(180deg, rgba(14, 116, 144, 0.2), rgba(15, 23, 42, 0.9)),
-    url("/assets/volleyball/beach-background.svg") center / cover fixed,
+    url("/assets/volleyball/beach-background-ai.png") center / cover fixed,
     #0f766e;
 }
 

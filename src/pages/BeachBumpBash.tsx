@@ -5,6 +5,7 @@ import NavBar from "../components/NavBar";
 import { createBeachBumpBashGame } from "../game/beach-bump-bash/createBeachBumpBashGame";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
 import {
+  canStartVolleyballMatch,
   configureVolleyballPlayers,
   createInitialVolleyballState,
   getMaxPlayers,
@@ -32,6 +33,7 @@ import {
   isRoomJoinable,
   normalizeRoomCode,
   pruneStaleRooms,
+  reassignRoomHost,
   removeVolleyballChannel,
   type VolleyballRealtimeInputPayload,
   type VolleyballRoomConfig,
@@ -43,6 +45,7 @@ type RoomPhase = "menu" | "waiting" | "playing";
 
 const LOCAL_BOT_ID = "focusland-volleyball-local-bot";
 const emptyInput: VolleyballInput = {};
+const ACTION_LATCH_MS = 180;
 
 const BeachBumpBash: React.FC = () => {
   const navigate = useNavigate();
@@ -51,7 +54,9 @@ const BeachBumpBash: React.FC = () => {
   const gameRef = useRef<Phaser.Game | null>(null);
   const stateRef = useRef<VolleyballMatchState>(createInitialVolleyballState());
   const inputsRef = useRef<VolleyballInputs>({});
+  const remoteActionLatchRef = useRef<Record<string, Partial<Record<"jump" | "bump" | "set" | "spike" | "dive", number>>>>({});
   const currentUserIdRef = useRef<string>("local-player");
+  const playersRef = useRef<VolleyballPresencePlayer[]>([]);
   const hostIdRef = useRef<string | null>(null);
   const roomSummaryRef = useRef<RoomSummary | null>(null);
   const lastBroadcastRef = useRef(0);
@@ -75,7 +80,7 @@ const BeachBumpBash: React.FC = () => {
 
   const state = stateRef.current;
   const isHost = Boolean(currentUserId && hostIdRef.current === currentUserId);
-  const roomIsReady = players.length >= getMaxPlayers(mode);
+  const roomIsReady = canStartVolleyballMatch(players, mode);
   const realtimeReady = canUseVolleyballRealtime();
 
   const publishState = useCallback((nextState: VolleyballMatchState) => {
@@ -98,7 +103,7 @@ const BeachBumpBash: React.FC = () => {
     const nextSummary: RoomSummary = {
       ...summary,
       ...override,
-      playerCount: players.length || summary.playerCount,
+      playerCount: override?.playerCount ?? (playersRef.current.length || summary.playerCount),
       maxPlayers: getMaxPlayers((override?.mode as VolleyballMode | undefined) ?? summary.mode),
       updatedAt: Date.now()
     };
@@ -109,7 +114,7 @@ const BeachBumpBash: React.FC = () => {
       event: ROOM_AD_EVENT,
       payload: nextSummary
     });
-  }, [players.length]);
+  }, []);
 
   useEffect(() => {
     currentUserIdRef.current = currentUserId;
@@ -118,6 +123,10 @@ const BeachBumpBash: React.FC = () => {
   useEffect(() => {
     roomSummaryRef.current = roomSummary;
   }, [roomSummary]);
+
+  useEffect(() => {
+    playersRef.current = players;
+  }, [players]);
 
   useEffect(() => {
     let cancelled = false;
@@ -192,6 +201,7 @@ const BeachBumpBash: React.FC = () => {
     void removeVolleyballChannel(channel);
     hostIdRef.current = null;
     inputsRef.current = {};
+    remoteActionLatchRef.current = {};
     setPlayers([]);
     setConnected(false);
     setRoomCode("");
@@ -224,9 +234,21 @@ const BeachBumpBash: React.FC = () => {
       const presentPlayers = getPlayersFromVolleyballPresence(
         channel.presenceState() as Record<string, Array<{ userId: string; username: string; onlineAt: string }>>
       ).slice(0, getMaxPlayers(summary.mode));
+      playersRef.current = presentPlayers;
       setPlayers(presentPlayers);
       const hostId = presentPlayers[0]?.userId ?? summary.hostId;
       hostIdRef.current = hostId;
+      inputsRef.current = Object.fromEntries(
+        Object.entries(inputsRef.current).filter(([userId]) => presentPlayers.some((player) => player.userId === userId))
+      );
+      remoteActionLatchRef.current = Object.fromEntries(
+        Object.entries(remoteActionLatchRef.current).filter(([userId]) => presentPlayers.some((player) => player.userId === userId))
+      );
+      const reassigned = reassignRoomHost(roomSummaryRef.current ?? summary, presentPlayers);
+      if (reassigned) {
+        roomSummaryRef.current = reassigned;
+        setRoomSummary(reassigned);
+      }
       if (hostId === currentUserIdRef.current && stateRef.current.phase === "lobby") {
         const nextState = configureVolleyballPlayers(stateRef.current, presentPlayers, summary.mode, summary.targetScore);
         void broadcastState(nextState);
@@ -245,6 +267,14 @@ const BeachBumpBash: React.FC = () => {
       if (currentUserIdRef.current !== hostIdRef.current) return;
       const incoming = payload as VolleyballRealtimeInputPayload;
       inputsRef.current[incoming.userId] = incoming.input;
+      const now = performance.now();
+      const latches = remoteActionLatchRef.current[incoming.userId] ?? {};
+      (["jump", "bump", "set", "spike", "dive"] as const).forEach((action) => {
+        if (incoming.input[action]) {
+          latches[action] = now + ACTION_LATCH_MS;
+        }
+      });
+      remoteActionLatchRef.current[incoming.userId] = latches;
     });
     channel.on("broadcast", { event: ROOM_CONFIG_EVENT }, ({ payload }) => {
       const config = payload as VolleyballRoomConfig;
@@ -254,7 +284,7 @@ const BeachBumpBash: React.FC = () => {
       setRoomSummary(nextSummary);
       roomSummaryRef.current = nextSummary;
       if (currentUserIdRef.current === hostIdRef.current) {
-        const nextState = configureVolleyballPlayers(stateRef.current, players, config.mode, config.targetScore);
+        const nextState = configureVolleyballPlayers(stateRef.current, playersRef.current, config.mode, config.targetScore);
         void broadcastState(nextState);
       }
     });
@@ -272,6 +302,11 @@ const BeachBumpBash: React.FC = () => {
       );
       if (presentPlayers.length >= getMaxPlayers(summary.mode) && !presentPlayers.some((player) => player.userId === currentUserId)) {
         setStatus("Room is full.");
+        await removeVolleyballChannel(channel);
+        if (roomChannelRef.current === channel) {
+          roomChannelRef.current = null;
+        }
+        setPhase("menu");
         return;
       }
       await channel.track({
@@ -285,7 +320,7 @@ const BeachBumpBash: React.FC = () => {
         void advertiseRoom({ playerCount: presentPlayers.length + 1 });
       }
     });
-  }, [advertiseRoom, broadcastState, currentUserId, currentUsername, players, publishState]);
+  }, [advertiseRoom, broadcastState, currentUserId, currentUsername, publishState]);
 
   const createRoom = () => {
     if (!realtimeReady) {
@@ -298,6 +333,8 @@ const BeachBumpBash: React.FC = () => {
       mode,
       targetScore
     });
+    roomSummaryRef.current = summary;
+    setRoomSummary(summary);
     void setupRoomChannel(summary);
     void advertiseRoom(summary);
   };
@@ -316,14 +353,11 @@ const BeachBumpBash: React.FC = () => {
       setStatus("Enter a 5 character room code.");
       return;
     }
-    const summary = availableRooms.find((room) => room.code === code) ?? createVolleyballRoomSummary({
-      code,
-      hostId: "",
-      hostName: "Host",
-      mode,
-      targetScore,
-      playerCount: 0
-    });
+    const summary = availableRooms.find((room) => room.code === code);
+    if (!summary) {
+      setStatus("No active room is advertising that code.");
+      return;
+    }
     void setupRoomChannel(summary);
   };
 
@@ -334,13 +368,13 @@ const BeachBumpBash: React.FC = () => {
     if (!isHost || !roomChannelRef.current) return;
     void roomChannelRef.current.send({ type: "broadcast", event: ROOM_CONFIG_EVENT, payload: config });
     void advertiseRoom(config);
-    const nextState = configureVolleyballPlayers(stateRef.current, players, config.mode, config.targetScore);
+    const nextState = configureVolleyballPlayers(stateRef.current, playersRef.current, config.mode, config.targetScore);
     void broadcastState(nextState);
   };
 
   const startRoomGame = () => {
-    if (!isHost || !roomIsReady) return;
-    const nextState = startVolleyballMatch(players, mode, targetScore);
+    if (!isHost || !canStartVolleyballMatch(playersRef.current, mode)) return;
+    const nextState = startVolleyballMatch(playersRef.current, mode, targetScore);
     void broadcastState(nextState);
     void roomChannelRef.current?.send({ type: "broadcast", event: ROOM_START_EVENT, payload: nextState });
     void advertiseRoom({ status: "playing" });
@@ -372,7 +406,8 @@ const BeachBumpBash: React.FC = () => {
         inputsRef.current[currentUserIdRef.current] = localInput;
         if (roomChannelRef.current && currentUserIdRef.current !== hostIdRef.current) {
           const now = performance.now();
-          if (now - lastInputBroadcastRef.current > 42) {
+          const hasAction = Boolean(localInput.jump || localInput.bump || localInput.set || localInput.spike || localInput.dive);
+          if (hasAction || now - lastInputBroadcastRef.current > 42) {
             lastInputBroadcastRef.current = now;
             void roomChannelRef.current.send({
               type: "broadcast",
@@ -383,11 +418,25 @@ const BeachBumpBash: React.FC = () => {
           return;
         }
 
+        const now = performance.now();
+        const hostInputs: VolleyballInputs = { ...inputsRef.current };
+        Object.entries(remoteActionLatchRef.current).forEach(([userId, latches]) => {
+          const input = hostInputs[userId] ?? {};
+          hostInputs[userId] = {
+            ...input,
+            jump: input.jump || Boolean(latches.jump && latches.jump > now),
+            bump: input.bump || Boolean(latches.bump && latches.bump > now),
+            set: input.set || Boolean(latches.set && latches.set > now),
+            spike: input.spike || Boolean(latches.spike && latches.spike > now),
+            dive: input.dive || Boolean(latches.dive && latches.dive > now)
+          };
+        });
+
         if (stateRef.current.players.some((player) => player.id === LOCAL_BOT_ID)) {
-          inputsRef.current[LOCAL_BOT_ID] = getPracticeBotInput(stateRef.current);
+          hostInputs[LOCAL_BOT_ID] = getPracticeBotInput(stateRef.current);
         }
 
-        const nextState = stepVolleyballState(stateRef.current, inputsRef.current, deltaMs);
+        const nextState = stepVolleyballState(stateRef.current, hostInputs, deltaMs);
         if (nextState !== stateRef.current) {
           publishState(nextState);
           const now = performance.now();

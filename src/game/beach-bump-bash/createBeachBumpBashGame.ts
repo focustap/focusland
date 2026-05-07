@@ -4,6 +4,7 @@ import {
   VOLLEYBALL_FLOOR_Y,
   VOLLEYBALL_HEIGHT,
   VOLLEYBALL_NET_X,
+  VOLLEYBALL_NET_TOP,
   VOLLEYBALL_WIDTH,
   getTeamLabel,
   type VolleyballInput,
@@ -42,7 +43,7 @@ export function createBeachBumpBashGame(
 
     preload() {
       const base = `${assetBase}assets/volleyball/`;
-      this.load.svg("volleyball-bg", `${base}beach-background.svg`, { width: VOLLEYBALL_WIDTH, height: VOLLEYBALL_HEIGHT });
+      this.load.image("volleyball-bg", `${base}beach-background-ai.png`);
       this.load.svg("volleyball-court", `${base}sand-court.svg`, { width: VOLLEYBALL_WIDTH, height: 170 });
       this.load.svg("volleyball-net", `${base}net.svg`, { width: 96, height: 228 });
       this.load.svg("volleyball-ball", `${base}volleyball.svg`, { width: 40, height: 40 });
@@ -57,10 +58,15 @@ export function createBeachBumpBashGame(
     }
 
     create() {
-      this.add.image(VOLLEYBALL_WIDTH / 2, VOLLEYBALL_HEIGHT / 2, "volleyball-bg").setDepth(0);
-      this.add.image(VOLLEYBALL_WIDTH / 2, VOLLEYBALL_FLOOR_Y + 40, "volleyball-court").setDepth(1);
-      this.add.image(VOLLEYBALL_NET_X, VOLLEYBALL_FLOOR_Y - 114, "volleyball-net").setDepth(5);
-      this.add.rectangle(VOLLEYBALL_NET_X, VOLLEYBALL_FLOOR_Y - 100, 3, 186, 0x0f172a, 0.22).setDepth(6);
+      this.add.image(VOLLEYBALL_WIDTH / 2, VOLLEYBALL_HEIGHT / 2, "volleyball-bg")
+        .setDisplaySize(VOLLEYBALL_WIDTH, VOLLEYBALL_HEIGHT)
+        .setDepth(0);
+      this.add.image(VOLLEYBALL_WIDTH / 2, VOLLEYBALL_FLOOR_Y + 40, "volleyball-court").setAlpha(0.42).setDepth(1);
+      const netHeight = VOLLEYBALL_FLOOR_Y - VOLLEYBALL_NET_TOP + 22;
+      this.add.image(VOLLEYBALL_NET_X, VOLLEYBALL_NET_TOP + netHeight / 2 - 8, "volleyball-net")
+        .setDisplaySize(84, netHeight)
+        .setDepth(5);
+      this.add.rectangle(VOLLEYBALL_NET_X, VOLLEYBALL_NET_TOP + netHeight / 2 - 8, 3, netHeight - 18, 0x0f172a, 0.22).setDepth(6);
 
       this.ballSprite = this.add.image(VOLLEYBALL_WIDTH / 2, 170, "volleyball-ball").setDepth(20);
       this.ballSprite.setDisplaySize(VOLLEYBALL_BALL_RADIUS * 2.35, VOLLEYBALL_BALL_RADIUS * 2.35);
