@@ -1792,7 +1792,7 @@ input {
 
 .ride-bus-table {
   position: relative;
-  min-height: 620px;
+  min-height: 760px;
   margin: 1.5rem 0;
 }
 
@@ -8858,6 +8858,12 @@ body[data-theme="dark"] .card-battle-card--hidden {
   }
 }
 
+@media (min-width: 761px) {
+  .ride-bus-table {
+    margin-bottom: 5rem;
+  }
+}
+
 @media (max-width: 760px) {
   .casino-game-header {
     display: grid;
@@ -8871,17 +8877,33 @@ body[data-theme="dark"] .card-battle-card--hidden {
   .casino-table-wrap,
   .ride-bus-table {
     min-height: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
     padding: 0.55rem;
+    overflow: visible;
   }
 
   .casino-table-felt,
   .ride-bus-felt {
+    position: relative;
+    inset: auto;
     min-height: 210px;
     margin-bottom: 0.2rem;
   }
 
   .casino-seat {
+    position: relative;
     width: 100%;
+    left: auto !important;
+    right: auto !important;
+    top: auto !important;
+    transform: none !important;
+  }
+
+  .ride-bus-seat {
+    z-index: 1;
+    margin-top: 0;
   }
 
   .ride-bus-route-line {
