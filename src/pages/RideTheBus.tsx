@@ -512,14 +512,22 @@ const RideTheBus: React.FC = () => {
   };
 
   return (
-    <div className="page">
+    <div className="page casino-page">
       <NavBar />
-      <div className="content card" style={{ maxWidth: 1080 }}>
-        <h2>Ride the Bus</h2>
-        <p>Color, higher or lower, inside or outside, then the suit. Cash out after any hit, or push for the full 20x finish.</p>
+      <div className="content card casino-game-card ride-bus-game-card" style={{ maxWidth: 1120 }}>
+        <div className="casino-game-header">
+          <div>
+            <h2>Ride the Bus</h2>
+            <p>Color, higher or lower, inside or outside, then the suit. Cash out after any hit, or push for the full 20x finish.</p>
+          </div>
+          <div className="casino-gold-meter">
+            <span>Gold</span>
+            <strong>{currentGold}</strong>
+          </div>
+        </div>
 
-        <div className="info">
-          Seats filled: {Math.min(players.length, MAX_PLAYERS)}/{MAX_PLAYERS} | Gold: {currentGold}
+        <div className="info casino-status-ribbon">
+          Seats filled: {Math.min(players.length, MAX_PLAYERS)}/{MAX_PLAYERS}
           {connected && !roomFull ? ` | ${currentUsername}` : ""}
         </div>
 
@@ -527,6 +535,13 @@ const RideTheBus: React.FC = () => {
 
         <div className="ride-bus-table">
           <div className="ride-bus-felt">
+            <div className="ride-bus-route-line" aria-hidden="true">
+              <span>1x</span>
+              <span>2x</span>
+              <span>3x</span>
+              <span>5x</span>
+              <span>20x</span>
+            </div>
             <div className="ride-bus-center">
               <strong>Ride the Bus</strong>
               <span>Cash out whenever the odds feel right.</span>
@@ -561,7 +576,7 @@ const RideTheBus: React.FC = () => {
           ))}
         </div>
 
-        <p className="info">{status}</p>
+        <p className="info casino-status-ribbon">{status}</p>
 
         <div className="button-row">
           {[10, 25, 50, 100].map((amount) => (

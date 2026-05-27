@@ -282,12 +282,16 @@ const CasinoRoom: React.FC = () => {
   }, [navigate]);
 
   return (
-    <div className="page">
+    <div className="page casino-page casino-room-page">
       <NavBar />
-      <div className="content card" style={{ maxWidth: 820 }}>
-        <h2>Casino Room</h2>
-        <p>Walk to a table to play, or use the door at the bottom to return to the main hub.</p>
-        <div ref={containerRef} style={{ width: "100%", maxWidth: 760, margin: "1rem auto" }} />
+      <div className="content card casino-game-card casino-room-card" style={{ maxWidth: 900 }}>
+        <div className="casino-game-header">
+          <div>
+            <h2>Focusland Casino</h2>
+            <p>Walk to a table to play, or use the door at the bottom to return to the main hub.</p>
+          </div>
+        </div>
+        <div className="casino-room-stage" ref={containerRef} />
       </div>
     </div>
   );

@@ -2345,10 +2345,11 @@ const Brawl: React.FC = () => {
                         onClick={() => void selectCharacter(character)}
                         disabled={players.length !== 2}
                         style={{
+                          "--brawl-pick-text": "#0f172a",
+                          "--brawl-pick-muted": "#475569",
                           borderColor: config.color,
-                          color: "#0f172a",
                           background: `linear-gradient(160deg, ${config.accent}, #ffffff 72%)`
-                        }}
+                        } as React.CSSProperties}
                       >
                         <strong>{config.name}</strong>
                         <span>{config.title}</span>
@@ -2367,12 +2368,14 @@ const Brawl: React.FC = () => {
                         onClick={() => void selectMap(mapId)}
                         disabled={!isHost}
                         style={{
+                          "--brawl-pick-text": "#0f172a",
+                          "--brawl-pick-muted": "#475569",
                           borderColor: map.accent,
                           background:
                             mapId === brawlState.selectedMap
                               ? `linear-gradient(160deg, ${map.accent}, #ffffff 72%)`
                               : "#ffffff"
-                        }}
+                        } as React.CSSProperties}
                       >
                         <strong>{map.name}</strong>
                         <span>{map.subtitle}</span>

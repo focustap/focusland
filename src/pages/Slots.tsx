@@ -67,15 +67,32 @@ const Slots: React.FC = () => {
   };
 
   return (
-    <div className="page">
+    <div className="page casino-page casino-slots-page">
       <NavBar />
-      <div className="content card" style={{ maxWidth: 760 }}>
-        <h2>Slots</h2>
-        <p>Simple three-reel slot machine. Each spin costs {SPIN_COST} gold.</p>
+      <div className="content card casino-game-card casino-slots-card" style={{ maxWidth: 840 }}>
+        <div className="casino-game-header">
+          <div>
+            <h2>Slots</h2>
+            <p>Simple three-reel slot machine. Each spin costs {SPIN_COST} in-game gold.</p>
+          </div>
+          <div className="casino-gold-meter">
+            <span>Gold</span>
+            <strong>{gold}</strong>
+          </div>
+        </div>
         <div className="casino-slot-shell">
           <div className="casino-slot-header">
-            <strong>Gold: {gold}</strong>
+            <strong>Lucky Spin</strong>
             <span>777 pays 120</span>
+          </div>
+          <div className="casino-slot-marquee" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
           </div>
           <div className="casino-slot-reels">
             {reels.map((reel, index) => (
@@ -84,13 +101,19 @@ const Slots: React.FC = () => {
               </div>
             ))}
           </div>
+          <div className="casino-payline">
+            <span>7 7 7 / 120</span>
+            <span>BAR / 70</span>
+            <span>GEM / 55</span>
+            <span>CHERRY CHERRY / 16</span>
+          </div>
           <div className="button-row">
             <button className="primary-button" type="button" onClick={() => void spin()} disabled={spinning}>
               {spinning ? "Spinning..." : `Spin (${SPIN_COST}g)`}
             </button>
           </div>
         </div>
-        <p className="info">{status}</p>
+        <p className="info casino-status-ribbon">{status}</p>
       </div>
     </div>
   );

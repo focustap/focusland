@@ -653,14 +653,22 @@ const Casino: React.FC = () => {
   };
 
   return (
-    <div className="page">
+    <div className="page casino-page">
       <NavBar />
-      <div className="content card" style={{ maxWidth: 980 }}>
-        <h2>Casino 21</h2>
-        <p>Two to five players gather around one live felt table. Every bet comes out of your real gold balance.</p>
+      <div className="content card casino-game-card casino-21-card" style={{ maxWidth: 1100 }}>
+        <div className="casino-game-header">
+          <div>
+            <h2>Casino 21</h2>
+            <p>Two to five players gather around one live felt table. Every bet comes out of your in-game gold balance.</p>
+          </div>
+          <div className="casino-gold-meter">
+            <span>Gold</span>
+            <strong>{currentGold}</strong>
+          </div>
+        </div>
 
-        <div className="info">
-          Seats filled: {playerCountLabel} | Your gold: {currentGold}
+        <div className="info casino-status-ribbon">
+          Seats filled: {playerCountLabel}
           {connected && !roomFull ? ` | ${isHost ? "You are the dealer host." : "Waiting for the host."}` : ""}
         </div>
 
@@ -688,6 +696,7 @@ const Casino: React.FC = () => {
 
             <div className="casino-table-wrap">
               <div className="casino-table-felt">
+                <div className="casino-table-logo">21</div>
                 <div className="casino-pot-display">
                   <span>Pot</span>
                   <strong>{potSize}</strong>
@@ -722,7 +731,7 @@ const Casino: React.FC = () => {
               ))}
             </div>
 
-            <p className="info">{status}</p>
+            <p className="info casino-status-ribbon">{status}</p>
 
             {gameState.phase === "waiting" && isHost && (
               <button
